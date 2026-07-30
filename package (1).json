@@ -15,4 +15,8 @@
     "typescript": "^5.4.0"
   },
   "packageManager": "pnpm@8.0.0"
+"main": "dist/index.js"
+"devDependencies": {
+  "typescript": "^5.4.0"
+}
 }
