@@ -2,6 +2,13 @@ import { Client, GatewayIntentBits, TextChannel, REST, Routes, SlashCommandBuild
 import { WebcastPushConnection } from 'tiktok-live-connector';
 import { joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerStatus } from '@discordjs/voice';
 import play from 'play-dl';
+import ffmpeg from 'ffmpeg-static';
+import prism from 'prism-media';
+
+// Wymuszenie użycia statycznego ffmpeg dla @discordjs/voice / prism-media
+if (ffmpeg) {
+    process.env.FFMPEG_PATH = ffmpeg;
+}
 
 const token = process.env.DISCORD_BOT_TOKEN;
 if (!token) throw new Error("Brak tokena Discord bota!");
@@ -103,7 +110,7 @@ async function playStream(url: string, connection: any) {
             audioPlayer.play(resource);
             connection.subscribe(audioPlayer);
         }
-        console.log('Odtwarzanie muzyki zostało uruchomione.');
+        console.log('Odtwarzanie muzyki zostało uruchomione pomyślnie.');
     } catch (err) {
         console.error('Błąd odtwarzania strumienia:', err);
     }
@@ -150,7 +157,7 @@ client.once('ready', async () => {
                 console.log(`Nie znaleziono kanału głosowego: ${CHANNEL_GLOSOWY}`);
             }
         });
-    }, 3000); // Czeka 3 sekundy po starcie na załadowanie serwera
+    }, 3000);
 
     setInterval(async () => {
         const channel = client.channels.cache.find(ch => ch.isTextBased() && 'name' in ch && ch.name === CHANNEL_OGLOSZENIA) as TextChannel;
