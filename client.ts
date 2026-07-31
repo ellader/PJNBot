@@ -16,14 +16,31 @@ const client = new Client({
 const TIKTOK_USER = "Languspjn";
 const CHANNEL_OGLOSZENIA = "ogłoszenia";
 const CHANNEL_POWITANIA = "witamy";
+const CHANNEL_CZAT_TIKTOK = "czat-tiktok"; // Nowy kanał na czat z TikToka
 
 const tiktokConn = new WebcastPushConnection(TIKTOK_USER);
 
 const commands = [
-    new SlashCommandBuilder().setName('testogloszenia').setDescription('Testuje wysyłanie ogłoszenia z TikToka'),
+    new SlashCommandBuilder().setName('testogloszenia').setDescription('Wysyła testowe ogłoszenie o profilach streamingowych'),
+    new SlashCommandBuilder().setName('testczattiktok').setDescription('Testuje ramkę z czatu TikToka na osobnym kanale'),
     new SlashCommandBuilder().setName('testlive').setDescription('Testuje status transmisji TikTok'),
     new SlashCommandBuilder().setName('testwitania').setDescription('Testuje wiadomość powitalną w ramce'),
 ].map(command => command.toJSON());
+
+// Funkcja generująca ładną ramkę ogłoszenia
+function createOgłoszenieEmbed() {
+    return new EmbedBuilder()
+        .setColor(0x5865F2)
+        .setTitle('🌟 Witamy na PJN Server!')
+        .setDescription('Cieszymy się, że jesteś częścią naszej społeczności! Pamiętaj, aby regularnie wspierać nasze projekty i śledzić oficjalne profile streamingowe:')
+        .addFields(
+            { name: '🔗 TikTok', value: '[tiktok.com/@LangusPJN](https://www.tiktok.com/@LangusPJN)', inline: true },
+            { name: '🔗 Kick', value: '[kick.com/LangusPJN](https://www.kick.com/LangusPJN)', inline: true },
+            { name: '💡 Społeczność', value: 'Zostaw po sobie ślad, zaproś znajomych na nasz serwer Discord i buduj z nami najlepszą społeczność w sieci! 🚀' }
+        )
+        .setTimestamp()
+        .setFooter({ text: 'PJN System Automatyczny' });
+}
 
 client.once('ready', async () => {
     console.log(`Zalogowano jako ${client.user?.tag}!`);
@@ -42,7 +59,7 @@ client.once('ready', async () => {
         console.error('Błąd połączenia z TikTokiem (brak aktywnego live\'a):', err);
     });
 
-    // Automatyczne ogłoszenie godzinne w ładnej ramce (Embed)
+    // Automatyczne ogłoszenie godzinne w ładnej ramce (Embed) na kanale ogłoszenia
     setInterval(async () => {
         const channel = client.channels.cache.find(
             ch => ch.isTextBased() && 'name' in ch && ch.name === CHANNEL_OGLOSZENIA
@@ -50,19 +67,7 @@ client.once('ready', async () => {
 
         if (channel) {
             try {
-                const embedOgłoszenie = new EmbedBuilder()
-                    .setColor(0x5865F2) // Kolor ramki (np. niebieski Discordowy)
-                    .setTitle('🌟 Witamy na PJN Server!')
-                    .setDescription('Cieszymy się, że jesteś częścią naszej społeczności! Pamiętaj, aby regularnie wspierać nasze projekty i śledzić oficjalne profile streamingowe:')
-                    .addFields(
-                        { name: '🔗 TikTok', value: '[tiktok.com/@LangusPJN](https://www.tiktok.com/@LangusPJN)', inline: true },
-                        { name: '🔗 Kick', value: '[kick.com/LangusPJN](https://www.kick.com/LangusPJN)', inline: true },
-                        { name: '💡 Społeczność', value: 'Zostaw po sobie ślad, zaproś znajomych na nasz serwer Discord i buduj z nami najlepszą społeczność w sieci! 🚀' }
-                    )
-                    .setTimestamp()
-                    .setFooter({ text: 'PJN System Automatyczny' });
-
-                await channel.send({ embeds: [embedOgłoszenie] });
+                await channel.send({ embeds: [createOgłoszenieEmbed()] });
                 console.log('Wysłano automatyczne ogłoszenie godzinne w ramce.');
             } catch (err) {
                 console.error('Błąd wysyłania automatycznego ogłoszenia:', err);
@@ -70,17 +75,17 @@ client.once('ready', async () => {
         }
     }, 60 * 60 * 1000); // Co 1 godzinę
 
-    // Przekazywanie wiadomości z czatu TikToka w ładnej ramce
+    // Przekazywanie wiadomości z czatu TikToka na dedykowany kanał czat-tiktok
     tiktokConn.on('chat', async data => {
         console.log(`${data.uniqueId}: ${data.comment}`);
         const channel = client.channels.cache.find(
-            ch => ch.isTextBased() && 'name' in ch && ch.name === CHANNEL_OGLOSZENIA
+            ch => ch.isTextBased() && 'name' in ch && ch.name === CHANNEL_CZAT_TIKTOK
         ) as TextChannel;
 
         if (channel) {
             try {
                 const chatEmbed = new EmbedBuilder()
-                    .setColor(0xFE2C55) // Kolor w stylu TikToka (różowo-czerwony)
+                    .setColor(0xFE2C55)
                     .setAuthor({ name: `Czat TikTok • ${data.uniqueId}` })
                     .setDescription(data.comment)
                     .setTimestamp();
@@ -93,7 +98,7 @@ client.once('ready', async () => {
     });
 });
 
-// Automatyczne powitanie nowych osób w eleganckiej ramce
+// Automatyczne powitanie nowych osób w eleganckiej ramce na kanale witamy
 client.on('guildMemberAdd', async member => {
     const channel = member.guild.channels.cache.find(
         ch => ch.isTextBased() && 'name' in ch && ch.name === CHANNEL_POWITANIA
@@ -102,7 +107,7 @@ client.on('guildMemberAdd', async member => {
     if (channel) {
         try {
             const embedPowitanie = new EmbedBuilder()
-                .setColor(0x57F287) // Zielony kolor powitalny
+                .setColor(0x57F287)
                 .setTitle('👋 Nowy użytkownik na pokładzie!')
                 .setDescription(`Witaj na serwerze PJN, ${member}! Cieszymy się, że jesteś z nami! 🎉\n\nSprawdź kanał z ogłoszeniami i rozgość się w naszej społeczności.`)
                 .setThumbnail(member.user.displayAvatarURL())
@@ -129,6 +134,18 @@ client.on('interactionCreate', async interaction => {
         ) as TextChannel;
 
         if (channel) {
+            await channel.send({ embeds: [createOgłoszenieEmbed()] });
+            await interaction.editReply({ content: 'Testowe ogłoszenie o profilach streamingowych zostało pomyślnie wysłane!' });
+        } else {
+            await interaction.editReply({ content: 'Nie znaleziono kanału o nazwie "ogłoszenia"!' });
+        }
+    }
+    else if (commandName === 'testczattiktok') {
+        const channel = interaction.guild?.channels.cache.find(
+            ch => ch.isTextBased() && 'name' in ch && ch.name === CHANNEL_CZAT_TIKTOK
+        ) as TextChannel;
+
+        if (channel) {
             const testEmbed = new EmbedBuilder()
                 .setColor(0xFE2C55)
                 .setAuthor({ name: 'Czat TikTok • Użytkownik_Testowy' })
@@ -136,11 +153,11 @@ client.on('interactionCreate', async interaction => {
                 .setTimestamp();
 
             await channel.send({ embeds: [testEmbed] });
-            await interaction.editReply({ content: 'Testowy komunikat z TikToka został pomyślnie wysłany jako ramka!' });
+            await interaction.editReply({ content: 'Testowy komunikat czatu został wysłany na kanał czat-tiktok!' });
         } else {
-            await interaction.editReply({ content: 'Nie znaleziono kanału o nazwie "ogłoszenia"!' });
+            await interaction.editReply({ content: 'Nie znaleziono kanału o nazwie "czat-tiktok"!' });
         }
-    } 
+    }
     else if (commandName === 'testlive') {
         const isLive = tiktokConn.isLive;
         await interaction.editReply({ 
