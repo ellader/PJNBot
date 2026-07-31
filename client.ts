@@ -35,7 +35,6 @@ const commands = [
     new SlashCommandBuilder().setName('testlive').setDescription('Wysyła testowe powiadomienie o live z @everyone na ogłoszenia (TikTok)'),
     new SlashCommandBuilder().setName('testlivekick').setDescription('Wysyła testowe powiadomienie o live z @everyone na ogłoszenia (Kick)'),
     new SlashCommandBuilder().setName('testwitania').setDescription('Testuje wiadomość powitalną w ramce'),
-    new SlashCommandBuilder().setName('wlaczmuzyke').setDescription('Wmusza wejście bota na kanał muzyczny i startuje radio'),
     new SlashCommandBuilder()
         .setName('zmiennemuzyke')
         .setDescription('Zmienia odtwarzaną muzykę / set na stałym kanale')
@@ -123,6 +122,36 @@ client.once('ready', async () => {
 
     tiktokConn.connect().catch(() => {});
 
+    // Automatyczne wejście na kanał muzyczny po wystartowaniu bota
+    setTimeout(() => {
+        client.guilds.cache.forEach(async guild => {
+            const voiceChannel = guild.channels.cache.find(
+                ch => ch.isVoiceBased() && ch.name === CHANNEL_GLOSOWY
+            );
+
+            if (voiceChannel) {
+                try {
+                    const connection = joinVoiceChannel({
+                        channelId: voiceChannel.id,
+                        guildId: guild.id,
+                        adapterCreator: guild.voiceAdapterCreator,
+                    });
+
+                    await playStream('eska', connection);
+                    console.log(`Bot automatycznie dołączył do kanału: ${CHANNEL_GLOSOWY}`);
+
+                    audioPlayer.on(AudioPlayerStatus.Idle, async () => {
+                        await playStream('eska', connection);
+                    });
+                } catch (err) {
+                    console.error('Błąd automatycznego łączenia z kanałem głosu:', err);
+                }
+            } else {
+                console.log(`Nie znaleziono kanału głosowego: ${CHANNEL_GLOSOWY}`);
+            }
+        });
+    }, 3000); // Czeka 3 sekundy po starcie na załadowanie serwera
+
     setInterval(async () => {
         const channel = client.channels.cache.find(ch => ch.isTextBased() && 'name' in ch && ch.name === CHANNEL_OGLOSZENIA) as TextChannel;
         if (channel) {
@@ -194,40 +223,7 @@ client.on('interactionCreate', async interaction => {
     if (!interaction.isChatInputCommand()) return;
     const { commandName } = interaction;
 
-    if (commandName === 'wlaczmuzyke') {
-        await interaction.deferReply({ ephemeral: true });
-        const guild = interaction.guild;
-        if (!guild) return;
-
-        const voiceChannel = guild.channels.cache.find(
-            ch => ch.isVoiceBased() && ch.name === CHANNEL_GLOSOWY
-        );
-
-        if (!voiceChannel) {
-            await interaction.editReply({ content: `❌ Nie znaleziono kanału "${CHANNEL_GLOSOWY}"!` });
-            return;
-        }
-
-        try {
-            const connection = joinVoiceChannel({
-                channelId: voiceChannel.id,
-                guildId: guild.id,
-                adapterCreator: guild.voiceAdapterCreator,
-            });
-
-            await playStream('eska', connection);
-            
-            audioPlayer.on(AudioPlayerStatus.Idle, async () => {
-                await playStream('eska', connection);
-            });
-
-            await interaction.editReply({ content: `✅ Bot wszedł na kanał **${CHANNEL_GLOSOWY}** i odpalił muzykę!` });
-        } catch (error) {
-            console.error(error);
-            await interaction.editReply({ content: '❌ Wystąpił błąd podczas uruchamiania muzyki.' });
-        }
-    }
-    else if (commandName === 'zmiennemuzyke') {
+    if (commandName === 'zmiennemuzyke') {
         await interaction.deferReply({ ephemeral: true });
         const query = interaction.options.getString('url', true);
         const guild = interaction.guild;
