@@ -21,8 +21,6 @@ const KICK_USER = "languspjn";
 const CHANNEL_OGLOSZENIA = "ogłoszenia";
 const CHANNEL_POWITANIA = "witamy";
 const CHANNEL_CZAT_TIKTOK = "czat-tiktok";
-
-// Twój nowo utworzony kanał głosowy
 const CHANNEL_GLOSOWY = "🎧 Muza 24/7 - Wejdź i Słuchaj 🎧"; 
 
 const LIVE_IMAGE_URL = "https://cdn.discordapp.com/attachments/1532862421729808565/1532865034642919574/1784490427936.png?ex=6a6e674f&is=6a6d15cf&hm=92695ee6d6999e9212a4ff8f86d3fdf6e70ee32a9c9e4cb175e54579f8b44fde&";
@@ -37,6 +35,7 @@ const commands = [
     new SlashCommandBuilder().setName('testlive').setDescription('Wysyła testowe powiadomienie o live z @everyone na ogłoszenia (TikTok)'),
     new SlashCommandBuilder().setName('testlivekick').setDescription('Wysyła testowe powiadomienie o live z @everyone na ogłoszenia (Kick)'),
     new SlashCommandBuilder().setName('testwitania').setDescription('Testuje wiadomość powitalną w ramce'),
+    new SlashCommandBuilder().setName('wlaczmuzyke').setDescription('Wmusza wejście bota na kanał muzyczny i startuje radio'),
     new SlashCommandBuilder()
         .setName('zmiennemuzyke')
         .setDescription('Zmienia odtwarzaną muzykę / set na stałym kanale')
@@ -124,26 +123,6 @@ client.once('ready', async () => {
 
     tiktokConn.connect().catch(() => {});
 
-    client.guilds.cache.forEach(async guild => {
-        const voiceChannel = guild.channels.cache.find(
-            ch => ch.isVoiceBased() && ch.name === CHANNEL_GLOSOWY
-        );
-
-        if (voiceChannel) {
-            const connection = joinVoiceChannel({
-                channelId: voiceChannel.id,
-                guildId: guild.id,
-                adapterCreator: guild.voiceAdapterCreator,
-            });
-
-            await playStream('eska', connection);
-
-            audioPlayer.on(AudioPlayerStatus.Idle, async () => {
-                await playStream('eska', connection);
-            });
-        }
-    });
-
     setInterval(async () => {
         const channel = client.channels.cache.find(ch => ch.isTextBased() && 'name' in ch && ch.name === CHANNEL_OGLOSZENIA) as TextChannel;
         if (channel) {
@@ -215,11 +194,9 @@ client.on('interactionCreate', async interaction => {
     if (!interaction.isChatInputCommand()) return;
     const { commandName } = interaction;
 
-    if (commandName === 'zmiennemuzyke') {
+    if (commandName === 'wlaczmuzyke') {
         await interaction.deferReply({ ephemeral: true });
-        const query = interaction.options.getString('url', true);
         const guild = interaction.guild;
-
         if (!guild) return;
 
         const voiceChannel = guild.channels.cache.find(
@@ -227,7 +204,41 @@ client.on('interactionCreate', async interaction => {
         );
 
         if (!voiceChannel) {
-            await interaction.editReply({ content: `❌ Nie znaleziono kanału głosowego o nazwie "${CHANNEL_GLOSOWY}"!` });
+            await interaction.editReply({ content: `❌ Nie znaleziono kanału "${CHANNEL_GLOSOWY}"!` });
+            return;
+        }
+
+        try {
+            const connection = joinVoiceChannel({
+                channelId: voiceChannel.id,
+                guildId: guild.id,
+                adapterCreator: guild.voiceAdapterCreator,
+            });
+
+            await playStream('eska', connection);
+            
+            audioPlayer.on(AudioPlayerStatus.Idle, async () => {
+                await playStream('eska', connection);
+            });
+
+            await interaction.editReply({ content: `✅ Bot wszedł na kanał **${CHANNEL_GLOSOWY}** i odpalił muzykę!` });
+        } catch (error) {
+            console.error(error);
+            await interaction.editReply({ content: '❌ Wystąpił błąd podczas uruchamiania muzyki.' });
+        }
+    }
+    else if (commandName === 'zmiennemuzyke') {
+        await interaction.deferReply({ ephemeral: true });
+        const query = interaction.options.getString('url', true);
+        const guild = interaction.guild;
+        if (!guild) return;
+
+        const voiceChannel = guild.channels.cache.find(
+            ch => ch.isVoiceBased() && ch.name === CHANNEL_GLOSOWY
+        );
+
+        if (!voiceChannel) {
+            await interaction.editReply({ content: `❌ Nie znaleziono kanału "${CHANNEL_GLOSOWY}"!` });
             return;
         }
 
@@ -272,4 +283,3 @@ client.on('interactionCreate', async interaction => {
 });
 
 client.login(token);
-                
