@@ -77,5 +77,9 @@ tiktokConn.on("streamStart", () => {
     wasTikTokLive = true;
 
     const embed = new EmbedBuilder()
-      .setTitle("🎥 LangusPJN rozpoczął transmisję na TikTok!")
-      .setColor(C
+    .setTitle("🎥 LangusPJN rozpoczął transmisję!")
+    .setColor(COLORS[1]);
+
+channel.send({ embeds: [embed] });
+  }
+});
