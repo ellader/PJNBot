@@ -5,7 +5,7 @@
   "scripts": {
     "build": "npm run typecheck --if-present",
     "typecheck": "echo 'skip'",
-    "start": "npx tsx src/bot/Client.ts"
+    "start": "npx tsx src/bot/client.ts"
   },
   "private": true,
   "dependencies": {
