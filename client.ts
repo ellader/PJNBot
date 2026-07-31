@@ -16,18 +16,18 @@ const client = new Client({
 const TIKTOK_USER = "Languspjn";
 const CHANNEL_OGLOSZENIA = "ogłoszenia";
 const CHANNEL_POWITANIA = "witamy";
-const CHANNEL_CZAT_TIKTOK = "czat-tiktok"; // Nowy kanał na czat z TikToka
+const CHANNEL_CZAT_TIKTOK = "czat-tiktok";
 
 const tiktokConn = new WebcastPushConnection(TIKTOK_USER);
 
 const commands = [
     new SlashCommandBuilder().setName('testogloszenia').setDescription('Wysyła testowe ogłoszenie o profilach streamingowych'),
     new SlashCommandBuilder().setName('testczattiktok').setDescription('Testuje ramkę z czatu TikToka na osobnym kanale'),
-    new SlashCommandBuilder().setName('testlive').setDescription('Testuje status transmisji TikTok'),
+    new SlashCommandBuilder().setName('testlive').setDescription('Wysyła testowe powiadomienie o live z @everyone na ogłoszenia'),
     new SlashCommandBuilder().setName('testwitania').setDescription('Testuje wiadomość powitalną w ramce'),
 ].map(command => command.toJSON());
 
-// Funkcja generująca ładną ramkę ogłoszenia
+// Funkcja generująca ładną ramkę ogłoszenia godzinnego/profilowego
 function createOgłoszenieEmbed() {
     return new EmbedBuilder()
         .setColor(0x5865F2)
@@ -40,6 +40,19 @@ function createOgłoszenieEmbed() {
         )
         .setTimestamp()
         .setFooter({ text: 'PJN System Automatyczny' });
+}
+
+// Funkcja generująca ramkę powiadomienia o Live
+function createLiveEmbed() {
+    return new EmbedBuilder()
+        .setColor(0xFE2C55)
+        .setTitle('🔴 TRANSMISJA NA ŻYWO RUSZYŁA!')
+        .setDescription(`**@LangusPJN** właśnie rozpoczął nowy stream na TikToku! Wpadnij, zostaw follow i dołącz do wspólnej zabawy.`)
+        .addFields(
+            { name: '🔗 Oglądaj tutaj', value: '[tiktok.com/@LangusPJN/live](https://www.tiktok.com/@LangusPJN/live)' }
+        )
+        .setTimestamp()
+        .setFooter({ text: 'PJN Powiadomienia Live' });
 }
 
 client.once('ready', async () => {
@@ -74,6 +87,26 @@ client.once('ready', async () => {
             }
         }
     }, 60 * 60 * 1000); // Co 1 godzinę
+
+    // Automatyczne powiadomienie o rozpoczęciu live'a dla wszystkich (@everyone)
+    tiktokConn.on('liveStart', async () => {
+        console.log('Wykryto start transmisji na żywo!');
+        const channel = client.channels.cache.find(
+            ch => ch.isTextBased() && 'name' in ch && ch.name === CHANNEL_OGLOSZENIA
+        ) as TextChannel;
+
+        if (channel) {
+            try {
+                await channel.send({
+                    content: '@everyone',
+                    embeds: [createLiveEmbed()]
+                });
+                console.log('Wysłano powiadomienie o live do wszystkich.');
+            } catch (err) {
+                console.error('Błąd wysyłania powiadomienia o live:', err);
+            }
+        }
+    });
 
     // Przekazywanie wiadomości z czatu TikToka na dedykowany kanał czat-tiktok
     tiktokConn.on('chat', async data => {
@@ -159,10 +192,19 @@ client.on('interactionCreate', async interaction => {
         }
     }
     else if (commandName === 'testlive') {
-        const isLive = tiktokConn.isLive;
-        await interaction.editReply({ 
-            content: isLive ? `Status: Transmisja na żywo jest aktywna! 🔴` : `Status: Brak aktywnej transmisji na żywo (użytkownik offline). ❌` 
-        });
+        const channel = interaction.guild?.channels.cache.find(
+            ch => ch.isTextBased() && 'name' in ch && ch.name === CHANNEL_OGLOSZENIA
+        ) as TextChannel;
+
+        if (channel) {
+            await channel.send({
+                content: '@everyone',
+                embeds: [createLiveEmbed()]
+            });
+            await interaction.editReply({ content: 'Testowe powiadomienie o live z @everyone zostało wysłane na kanał ogłoszenia!' });
+        } else {
+            await interaction.editReply({ content: 'Nie znaleziono kanału o nazwie "ogłoszenia"!' });
+        }
     } 
     else if (commandName === 'testwitania') {
         const channel = interaction.guild?.channels.cache.find(
