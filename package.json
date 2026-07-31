@@ -1,22 +1,17 @@
 {
-  "name": "workspace",
-  "version": "0.0.0",
-  "license": "MIT",
+  "name": "PJN",
+  "version": "1.0.0",
+  "main": "client.ts",
   "scripts": {
-    "build": "npm run typecheck --if-present",
-    "typecheck": "echo 'skip'",
     "start": "npx tsx client.ts"
-    
-    
   },
-  "private": true,
   "dependencies": {
-    "@replit/connectors-sdk": "^0.4.1",
-    "tsx": "^4.0.0"
+    "discord.js": "^14.14.1",
+    "node-fetch": "^2.7.0",
+    "tiktok-live-connector": "^1.2.9"
   },
   "devDependencies": {
-    "prettier": "^3.9.6",
-    "typescript": "~5.9.3"
+    "tsx": "^4.7.1",
+    "typescript": "^5.3.3"
   }
 }
-
