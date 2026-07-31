@@ -19,9 +19,10 @@ const CHANNEL_OGLOSZENIA = "ogłoszenia";
 const CHANNEL_POWITANIA = "witamy";
 const CHANNEL_CZAT_TIKTOK = "czat-tiktok";
 
-const tiktokConn = new WebcastPushConnection(TIKTOK_USER);
+// Twój link do zdjęcia został dodany tutaj
+const LIVE_IMAGE_URL = "https://cdn.discordapp.com/attachments/1532862421729808565/1532865034642919574/1784490427936.png?ex=6a6e674f&is=6a6d15cf&hm=92695ee6d6999e9212a4ff8f86d3fdf6e70ee32a9c9e4cb175e54579f8b44fde&";
 
-// Status zapobiegający wielokrotnemu wysyłaniu powiadomienia o tym samym live na Kicku
+const tiktokConn = new WebcastPushConnection(TIKTOK_USER);
 let isKickLive = false;
 
 const commands = [
@@ -43,6 +44,7 @@ function createOgłoszenieEmbed() {
             { name: '🔗 Kick', value: '[kick.com/LangusPJN](https://kick.com/LangusPJN)', inline: true },
             { name: '💡 Społeczność', value: 'Zostaw po sobie ślad, zaproś znajomych na nasz serwer Discord i buduj z nami najlepszą społeczność w sieci! 🚀' }
         )
+        .setImage(LIVE_IMAGE_URL)
         .setTimestamp()
         .setFooter({ text: 'PJN System Automatyczny' });
 }
@@ -56,6 +58,7 @@ function createLiveEmbed() {
         .addFields(
             { name: '🔗 Oglądaj tutaj', value: '[tiktok.com/@LangusPJN/live](https://www.tiktok.com/@LangusPJN/live)' }
         )
+        .setImage(LIVE_IMAGE_URL)
         .setTimestamp()
         .setFooter({ text: 'PJN Powiadomienia Live' });
 }
@@ -63,12 +66,13 @@ function createLiveEmbed() {
 // Funkcja generująca ramkę powiadomienia o Live - Kick
 function createKickLiveEmbed() {
     return new EmbedBuilder()
-        .setColor(0x53FC18) // Zielony kolor Kicka
+        .setColor(0x53FC18)
         .setTitle('🟢 TRANSMISJA NA ŻYWO (KICK)!')
         .setDescription(`**LangusPJN** właśnie wystartował ze streamem na Kicku! Wbijaj na czat i sprawdź co się dzieje.`)
         .addFields(
             { name: '🔗 Oglądaj tutaj', value: '[kick.com/languspjn](https://kick.com/languspjn)' }
         )
+        .setImage(LIVE_IMAGE_URL)
         .setTimestamp()
         .setFooter({ text: 'PJN Powiadomienia Live Kick' });
 }
@@ -79,12 +83,11 @@ client.once('ready', async () => {
     const rest = new REST({ version: '10' }).setToken(token);
     try {
         await rest.put(Routes.applicationCommands(client.user!.id), { body: commands });
-        console.log('Pomyślnie zarejestroano komendy slash!');
+        console.log('Pomyślnie zarejestrowano komendy slash!');
     } catch (error) {
         console.error('Błąd rejestracji komend:', error);
     }
 
-    // Połączenie z TikTok Live
     tiktokConn.connect().then(state => {
         console.log(`Połączono z transmisją TikTok użytkownika ${TIKTOK_USER} (ID: ${state.roomId})`);
     }).catch(err => {
@@ -125,7 +128,6 @@ client.once('ready', async () => {
                 const livestream = data.livestream;
 
                 if (livestream && !isKickLive) {
-                    // Stream właśnie wystartował!
                     isKickLive = true;
                     const channel = client.channels.cache.find(
                         ch => ch.isTextBased() && 'name' in ch && ch.name === CHANNEL_OGLOSZENIA
@@ -139,7 +141,6 @@ client.once('ready', async () => {
                         console.log('Wykryto live na Kicku! Wysłano powiadomienie.');
                     }
                 } else if (!livestream && isKickLive) {
-                    // Stream się zakończył, resetujemy flagę
                     isKickLive = false;
                     console.log('Stream na Kicku się zakończył.');
                 }
@@ -147,11 +148,9 @@ client.once('ready', async () => {
         } catch (err) {
             console.error('Błąd sprawdzania statusu Kicka:', err);
         }
-    }, 2 * 60 * 1000); // Co 2 minuty
+    }, 2 * 60 * 1000);
 
-    // Automatyczne powiadomienie o rozpoczęciu live'a na TikToku
     tiktokConn.on('liveStart', async () => {
-        console.log('Wykryto start transmisji na żywo na TikToku!');
         const channel = client.channels.cache.find(
             ch => ch.isTextBased() && 'name' in ch && ch.name === CHANNEL_OGLOSZENIA
         ) as TextChannel;
@@ -169,7 +168,6 @@ client.once('ready', async () => {
         }
     });
 
-    // Przekazywanie wiadomości z czatu TikToka
     tiktokConn.on('chat', async data => {
         const channel = client.channels.cache.find(
             ch => ch.isTextBased() && 'name' in ch && ch.name === CHANNEL_CZAT_TIKTOK
@@ -191,7 +189,6 @@ client.once('ready', async () => {
     });
 });
 
-// Automatyczne powitanie nowych osób
 client.on('guildMemberAdd', async member => {
     const channel = member.guild.channels.cache.find(
         ch => ch.isTextBased() && 'name' in ch && ch.name === CHANNEL_POWITANIA
@@ -213,12 +210,10 @@ client.on('guildMemberAdd', async member => {
     }
 });
 
-// Obsługa komend slash
 client.on('interactionCreate', async interaction => {
     if (!interaction.isChatInputCommand()) return;
 
     const { commandName } = interaction;
-
     await interaction.deferReply({ ephemeral: true });
 
     if (commandName === 'testogloszenia') {
@@ -227,13 +222,10 @@ client.on('interactionCreate', async interaction => {
         ) as TextChannel;
 
         if (channel) {
-            await channel.send({
-                content: '@everyone',
-                embeds: [createOgłoszenieEmbed()]
-            });
-            await interaction.editReply({ content: 'Testowe ogłoszenie z @everyone zostało pomyślnie wysłane!' });
+            await channel.send({ content: '@everyone', embeds: [createOgłoszenieEmbed()] });
+            await interaction.editReply({ content: 'Testowe ogłoszenie ze zdjęciem zostało wysłane!' });
         } else {
-            await interaction.editReply({ content: 'Nie znaleziono kanału o nazwie "ogłoszenia"!' });
+            await interaction.editReply({ content: 'Nie znaleziono kanału "ogłoszenia"!' });
         }
     }
     else if (commandName === 'testczattiktok') {
@@ -249,9 +241,9 @@ client.on('interactionCreate', async interaction => {
                 .setTimestamp();
 
             await channel.send({ embeds: [testEmbed] });
-            await interaction.editReply({ content: 'Testowy komunikat czatu został wysłany na kanał czat-tiktok!' });
+            await interaction.editReply({ content: 'Testowy komunikat czatu został wysłany!' });
         } else {
-            await interaction.editReply({ content: 'Nie znaleziono kanału o nazwie "czat-tiktok"!' });
+            await interaction.editReply({ content: 'Nie znaleziono kanału "czat-tiktok"!' });
         }
     }
     else if (commandName === 'testlive') {
@@ -260,13 +252,10 @@ client.on('interactionCreate', async interaction => {
         ) as TextChannel;
 
         if (channel) {
-            await channel.send({
-                content: '@everyone',
-                embeds: [createLiveEmbed()]
-            });
-            await interaction.editReply({ content: 'Testowe powiadomienie o live (TikTok) z @everyone zostało wysłane!' });
+            await channel.send({ content: '@everyone', embeds: [createLiveEmbed()] });
+            await interaction.editReply({ content: 'Testowe powiadomienie o live TikTok ze zdjęciem zostało wysłane!' });
         } else {
-            await interaction.editReply({ content: 'Nie znaleziono kanału o nazwie "ogłoszenia"!' });
+            await interaction.editReply({ content: 'Nie znaleziono kanału "ogłoszenia"!' });
         }
     }
     else if (commandName === 'testlivekick') {
@@ -275,13 +264,10 @@ client.on('interactionCreate', async interaction => {
         ) as TextChannel;
 
         if (channel) {
-            await channel.send({
-                content: '@everyone',
-                embeds: [createKickLiveEmbed()]
-            });
-            await interaction.editReply({ content: 'Testowe powiadomienie o live (Kick) z @everyone zostało wysłane!' });
+            await channel.send({ content: '@everyone', embeds: [createKickLiveEmbed()] });
+            await interaction.editReply({ content: 'Testowe powiadomienie o live Kick ze zdjęciem zostało wysłane!' });
         } else {
-            await interaction.editReply({ content: 'Nie znaleziono kanału o nazwie "ogłoszenia"!' });
+            await interaction.editReply({ content: 'Nie znaleziono kanału "ogłoszenia"!' });
         }
     }
     else if (commandName === 'testwitania') {
@@ -298,9 +284,9 @@ client.on('interactionCreate', async interaction => {
                 .setTimestamp();
 
             await channel.send({ embeds: [testWitanieEmbed] });
-            await interaction.editReply({ content: 'Testowa wiadomość powitalna w ramce została wysłana na kanał witamy!' });
+            await interaction.editReply({ content: 'Testowa wiadomość powitalna została wysłana!' });
         } else {
-            await interaction.editReply({ content: 'Nie znaleziono kanału o nazwie "witamy"!' });
+            await interaction.editReply({ content: 'Nie znaleziono kanału "witamy"!' });
         }
     }
 });
