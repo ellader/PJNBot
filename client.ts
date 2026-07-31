@@ -19,7 +19,7 @@ const CHANNEL_OGLOSZENIA = "ogłoszenia";
 const CHANNEL_POWITANIA = "witamy";
 const CHANNEL_CZAT_TIKTOK = "czat-tiktok";
 
-// Twój link do zdjęcia został dodany tutaj
+// Twój link do zdjęcia
 const LIVE_IMAGE_URL = "https://cdn.discordapp.com/attachments/1532862421729808565/1532865034642919574/1784490427936.png?ex=6a6e674f&is=6a6d15cf&hm=92695ee6d6999e9212a4ff8f86d3fdf6e70ee32a9c9e4cb175e54579f8b44fde&";
 
 const tiktokConn = new WebcastPushConnection(TIKTOK_USER);
@@ -49,7 +49,7 @@ function createOgłoszenieEmbed() {
         .setFooter({ text: 'PJN System Automatyczny' });
 }
 
-// Funkcja generująca ramkę powiadomienia o Live - TikTok
+// Funkcja generująca ramkę powiadomienia o Live - TikTok (ze zdjęciem)
 function createLiveEmbed() {
     return new EmbedBuilder()
         .setColor(0xFE2C55)
