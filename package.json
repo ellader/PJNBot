@@ -8,10 +8,11 @@
   "dependencies": {
     "discord.js": "^14.14.1",
     "node-fetch": "^2.7.0",
-    "tiktok-live-connector": "^1.2.9"
+    "tiktok-live-connector": "latest"
   },
   "devDependencies": {
     "tsx": "^4.7.1",
     "typescript": "^5.3.3"
   }
 }
+
