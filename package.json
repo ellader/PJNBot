@@ -4,14 +4,17 @@
   "license": "MIT",
   "scripts": {
     "build": "npm run typecheck --if-present",
-    "typecheck": "echo 'skip'"
+    "typecheck": "echo 'skip'",
+    "start": "npx tsx src/bot/Client.ts"
   },
   "private": true,
   "dependencies": {
-    "@replit/connectors-sdk": "^0.4.1"
+    "@replit/connectors-sdk": "^0.4.1",
+    "tsx": "^4.0.0"
   },
   "devDependencies": {
     "prettier": "^3.9.6",
     "typescript": "~5.9.3"
   }
 }
+
