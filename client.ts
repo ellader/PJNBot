@@ -1,11 +1,8 @@
 import { Client, GatewayIntentBits, TextChannel, REST, Routes, SlashCommandBuilder, EmbedBuilder } from 'discord.js';
 import { WebcastPushConnection } from 'tiktok-live-connector';
 import { joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerStatus } from '@discordjs/voice';
-import play from 'play-dl';
 import ffmpeg from 'ffmpeg-static';
-import prism from 'prism-media';
 
-// Wymuszenie użycia statycznego ffmpeg dla @discordjs/voice / prism-media
 if (ffmpeg) {
     process.env.FFMPEG_PATH = ffmpeg;
 }
@@ -44,10 +41,10 @@ const commands = [
     new SlashCommandBuilder().setName('testwitania').setDescription('Testuje wiadomość powitalną w ramce'),
     new SlashCommandBuilder()
         .setName('zmiennemuzyke')
-        .setDescription('Zmienia odtwarzaną muzykę / set na stałym kanale')
+        .setDescription('Wybierz stację radiową')
         .addStringOption(option => 
-            option.setName('url')
-                  .setDescription('Wpisz "eska" lub wklej link z YouTube')
+            option.setName('stacja')
+                  .setDescription('Wpisz: eska, rock lub rmf')
                   .setRequired(true)
         ),
 ].map(command => command.toJSON());
@@ -93,24 +90,21 @@ function createKickLiveEmbed() {
         .setFooter({ text: 'PJN Powiadomienia Live Kick' });
 }
 
-async function playStream(url: string, connection: any) {
-    try {
-        let streamUrl = url;
-        if (url.toLowerCase() === 'eska') {
-            streamUrl = 'https://extstream.eskago.pl/eska_warszawa';
-        }
+function getStreamUrl(query: string): string {
+    const q = query.toLowerCase();
+    if (q.includes('rock')) return 'https://extstream.eskago.pl/eska_rock';
+    if (q.includes('rmf')) return 'https://rs6-krk.rmfon.pl/rmf_maxxx';
+    // Domyślnie Eska Warszawa
+    return 'https://extstream.eskago.pl/eska_warszawa';
+}
 
-        if (streamUrl.includes('youtube.com') || streamUrl.includes('youtu.be')) {
-            const fetchedStream = await play.stream(streamUrl);
-            const resource = createAudioResource(fetchedStream.stream, { inputType: fetchedStream.type });
-            audioPlayer.play(resource);
-            connection.subscribe(audioPlayer);
-        } else {
-            const resource = createAudioResource(streamUrl);
-            audioPlayer.play(resource);
-            connection.subscribe(audioPlayer);
-        }
-        console.log('Odtwarzanie muzyki zostało uruchomione pomyślnie.');
+async function playStream(station: string, connection: any) {
+    try {
+        const streamUrl = getStreamUrl(station);
+        const resource = createAudioResource(streamUrl);
+        audioPlayer.play(resource);
+        connection.subscribe(audioPlayer);
+        console.log(`Odtwarzanie stacji (${station}) zostało uruchomione.`);
     } catch (err) {
         console.error('Błąd odtwarzania strumienia:', err);
     }
@@ -129,7 +123,6 @@ client.once('ready', async () => {
 
     tiktokConn.connect().catch(() => {});
 
-    // Automatyczne wejście na kanał muzyczny po wystartowaniu bota
     setTimeout(() => {
         client.guilds.cache.forEach(async guild => {
             const voiceChannel = guild.channels.cache.find(
@@ -145,16 +138,14 @@ client.once('ready', async () => {
                     });
 
                     await playStream('eska', connection);
-                    console.log(`Bot automatycznie dołączył do kanału: ${CHANNEL_GLOSOWY}`);
+                    console.log(`Bot dołączył do kanału i odpalił Eska.`);
 
                     audioPlayer.on(AudioPlayerStatus.Idle, async () => {
                         await playStream('eska', connection);
                     });
                 } catch (err) {
-                    console.error('Błąd automatycznego łączenia z kanałem głosu:', err);
+                    console.error('Błąd łączenia z kanałem głosu:', err);
                 }
-            } else {
-                console.log(`Nie znaleziono kanału głosowego: ${CHANNEL_GLOSOWY}`);
             }
         });
     }, 3000);
@@ -232,7 +223,7 @@ client.on('interactionCreate', async interaction => {
 
     if (commandName === 'zmiennemuzyke') {
         await interaction.deferReply({ ephemeral: true });
-        const query = interaction.options.getString('url', true);
+        const stacja = interaction.options.getString('stacja', true);
         const guild = interaction.guild;
         if (!guild) return;
 
@@ -252,11 +243,11 @@ client.on('interactionCreate', async interaction => {
                 adapterCreator: guild.voiceAdapterCreator,
             });
 
-            await playStream(query, connection);
-            await interaction.editReply({ content: `🎶 Zmieniono odtwarzaną muzykę na kanale **${CHANNEL_GLOSOWY}**!` });
+            await playStream(stacja, connection);
+            await interaction.editReply({ content: `🎶 Zmieniono stację radiową na: **${stacja.toUpperCase()}**!` });
         } catch (error) {
             console.error(error);
-            await interaction.editReply({ content: '❌ Wystąpił błąd podczas zmiany muzyki.' });
+            await interaction.editReply({ content: '❌ Wystąpił błąd podczas zmiany stacji.' });
         }
     }
     else {
@@ -286,3 +277,4 @@ client.on('interactionCreate', async interaction => {
 });
 
 client.login(token);
+        
