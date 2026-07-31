@@ -9,7 +9,7 @@ import fetch from "node-fetch";
 const token = process.env.DISCORD_BOT_TOKEN;
 if (!token) throw new Error("Brak tokena Discord bota!");
 
-constOGLOSZENIA_CHANNEL_ID = "153239901075263799";
+const OGLOSZENIA_CHANNEL_ID = "153239901075263799";
 const POWITANIA_CHANNEL_ID = "153241438504706751";
 
 const KICK_USER = "LangusPJN";
