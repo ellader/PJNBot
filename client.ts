@@ -42,6 +42,7 @@ const LIVE_IMAGE_URL = "https://cdn.discordapp.com/attachments/15328624217298085
 
 const tiktokConn = new WebcastPushConnection(TIKTOK_USER);
 let isKickLive = false;
+let isTikTokLive = false;
 const audioPlayer = createAudioPlayer();
 
 const commands = [
@@ -130,7 +131,57 @@ client.once('ready', async () => {
         console.error('Błąd rejestracji komend:', error);
     }
 
-    tiktokConn.connect().catch(() => {});
+    // Nasłuchiwanie czatu z TikToka
+    tiktokConn.on('chat', async data => {
+        const channel = client.channels.cache.find(ch => ch.isTextBased() && 'name' in ch && ch.name === CHANNEL_CZAT_TIKTOK) as TextChannel;
+        if (channel) {
+            const chatEmbed = new EmbedBuilder()
+                .setColor(0xFE2C55)
+                .setAuthor({ name: `Czat TikTok • ${data.uniqueId}` })
+                .setDescription(data.comment)
+                .setTimestamp();
+            await channel.send({ embeds: [chatEmbed] });
+        }
+    });
+
+    // Sprawdzanie Kicka co 2 minuty
+    setInterval(async () => {
+        try {
+            const response = await fetch(`https://kick.com/api/v2/channels/${KICK_USER}`, {
+                headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json' }
+            });
+            if (response.ok) {
+                const data = await response.json() as any;
+                const livestream = data.livestream;
+                if (livestream && !isKickLive) {
+                    isKickLive = true;
+                    const channel = client.channels.cache.find(ch => ch.isTextBased() && 'name' in ch && ch.name === CHANNEL_OGLOSZENIA) as TextChannel;
+                    if (channel) {
+                        await channel.send({ content: '@everyone', embeds: [createKickLiveEmbed()] });
+                    }
+                } else if (!livestream && isKickLive) {
+                    isKickLive = false;
+                }
+            }
+        } catch (err) {
+            console.error('Błąd Kicka:', err);
+        }
+    }, 2 * 60 * 1000);
+
+    // Sprawdzanie TikToka co 2 minuty
+    setInterval(async () => {
+        tiktokConn.connect().then(() => {
+            if (!isTikTokLive) {
+                isTikTokLive = true;
+                const channel = client.channels.cache.find(ch => ch.isTextBased() && 'name' in ch && ch.name === CHANNEL_OGLOSZENIA) as TextChannel;
+                if (channel) {
+                    channel.send({ content: '@everyone', embeds: [createLiveEmbed()] });
+                }
+            }
+        }).catch(() => {
+            isTikTokLive = false;
+        });
+    }, 2 * 60 * 1000);
 
     setTimeout(() => {
         client.guilds.cache.forEach(async guild => {
@@ -168,53 +219,11 @@ client.once('ready', async () => {
             }
         }
     }, 60 * 60 * 1000);
-
-    setInterval(async () => {
-        try {
-            const response = await fetch(`https://kick.com/api/v2/channels/${KICK_USER}`, {
-                headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json' }
-            });
-            if (response.ok) {
-                const data = await response.json() as any;
-                const livestream = data.livestream;
-                if (livestream && !isKickLive) {
-                    isKickLive = true;
-                    const channel = client.channels.cache.find(ch => ch.isTextBased() && 'name' in ch && ch.name === CHANNEL_OGLOSZENIA) as TextChannel;
-                    if (channel) {
-                        await channel.send({ content: '@everyone', embeds: [createKickLiveEmbed()] });
-                    }
-                } else if (!livestream && isKickLive) {
-                    isKickLive = false;
-                }
-            }
-        } catch (err) {
-            console.error('Błąd Kicka:', err);
-        }
-    }, 2 * 60 * 1000);
-
-    tiktokConn.on('liveStart', async () => {
-        const channel = client.channels.cache.find(ch => ch.isTextBased() && 'name' in ch && ch.name === CHANNEL_OGLOSZENIA) as TextChannel;
-        if (channel) {
-            await channel.send({ content: '@everyone', embeds: [createLiveEmbed()] });
-        }
-    });
-
-    tiktokConn.on('chat', async data => {
-        const channel = client.channels.cache.find(ch => ch.isTextBased() && 'name' in ch && ch.name === CHANNEL_CZAT_TIKTOK) as TextChannel;
-        if (channel) {
-            const chatEmbed = new EmbedBuilder()
-                .setColor(0xFE2C55)
-                .setAuthor({ name: `Czat TikTok • ${data.uniqueId}` })
-                .setDescription(data.comment)
-                .setTimestamp();
-            await channel.send({ embeds: [chatEmbed] });
-        }
-    });
 });
 
 // AUTOMATYCZNA ODPOWIEDŹ BOTA NA KANALE PO JEGO ID
 client.on('messageCreate', async message => {
-    if (message.author.bot) return; // Ignorujemy boty
+    if (message.author.bot) return;
     if (!message.guild) return;
 
     if (message.channelId === ID_KANALU_DUSZKI) {
