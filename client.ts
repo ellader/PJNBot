@@ -27,6 +27,11 @@ const CHANNEL_POWITANIA = "witamy";
 const CHANNEL_CZAT_TIKTOK = "czat-tiktok";
 const CHANNEL_GLOSOWY = "🎧 Muza 24/7 - Wejdź i Słuchaj 🎧"; 
 
+// PODSTAWIONE ID KANAŁÓW Z RANKAMI:
+const ID_KANALU_PLEC = '1532374188634144898';
+const ID_KANALU_RANGES = '1532397673842217010';
+const ID_KANALU_SPRZET = '1532398069524594708';
+
 const LIVE_IMAGE_URL = "https://cdn.discordapp.com/attachments/1532862421729808565/1532865034642919574/1784490427936.png?ex=6a6e674f&is=6a6d15cf&hm=92695ee6d6999e9212a4ff8f86d3fdf6e70ee32a9c9e4cb175e54579f8b44fde&";
 
 const tiktokConn = new WebcastPushConnection(TIKTOK_USER);
@@ -38,7 +43,7 @@ const commands = [
     new SlashCommandBuilder().setName('testczattiktok').setDescription('Testuje ramkę z czatu TikToka na osobnym kanale'),
     new SlashCommandBuilder().setName('testlive').setDescription('Wysyła testowe powiadomienie o live z @everyone na ogłoszenia (TikTok)'),
     new SlashCommandBuilder().setName('testlivekick').setDescription('Wysyła testowe powiadomienie o live z @everyone na ogłoszenia (Kick)'),
-    new SlashCommandBuilder().setName('testwitania').setDescription('Testuje wiadomość powitalną w ramce'),
+    new SlashCommandBuilder().setName('testwitania').setDescription('Testuje wiadomość powitalną z odnośnikami do rang'),
     new SlashCommandBuilder()
         .setName('zmiennemuzyke')
         .setDescription('Wybierz stację radiową')
@@ -94,7 +99,6 @@ function getStreamUrl(query: string): string {
     const q = query.toLowerCase();
     if (q.includes('rock')) return 'https://extstream.eskago.pl/eska_rock';
     if (q.includes('rmf')) return 'https://rs6-krk.rmfon.pl/rmf_maxxx';
-    // Domyślnie Eska Warszawa
     return 'https://extstream.eskago.pl/eska_warszawa';
 }
 
@@ -104,7 +108,6 @@ async function playStream(station: string, connection: any) {
         const resource = createAudioResource(streamUrl);
         audioPlayer.play(resource);
         connection.subscribe(audioPlayer);
-        console.log(`Odtwarzanie stacji (${station}) zostało uruchomione.`);
     } catch (err) {
         console.error('Błąd odtwarzania strumienia:', err);
     }
@@ -138,7 +141,6 @@ client.once('ready', async () => {
                     });
 
                     await playStream('eska', connection);
-                    console.log(`Bot dołączył do kanału i odpalił Eska.`);
 
                     audioPlayer.on(AudioPlayerStatus.Idle, async () => {
                         await playStream('eska', connection);
@@ -150,7 +152,6 @@ client.once('ready', async () => {
         });
     }, 3000);
 
-    // Automatyczne ogłoszenie (bez @everyone)
     setInterval(async () => {
         const channel = client.channels.cache.find(ch => ch.isTextBased() && 'name' in ch && ch.name === CHANNEL_OGLOSZENIA) as TextChannel;
         if (channel) {
@@ -211,7 +212,13 @@ client.on('guildMemberAdd', async member => {
         const embedPowitanie = new EmbedBuilder()
             .setColor(0x57F287)
             .setTitle('👋 Nowy użytkownik na pokładzie!')
-            .setDescription(`Witaj na serwerze PJN, ${member}! Cieszymy się, że jesteś z nami! 🎉`)
+            .setDescription(
+                `Witaj na serwerze PJN, ${member}! Cieszymy się, że jesteś z nami! 🎉\n\n` +
+                `📌 **Skonfiguruj swój profil na serwerze:**\n` +
+                `• Wybierz płeć: <#${ID_KANALU_PLEC}>\n` +
+                `• Dostosuj role: <#${ID_KANALU_RANGES}>\n` +
+                `• Wybierz swój sprzęt: <#${ID_KANALU_SPRZET}>`
+            )
             .setThumbnail(member.user.displayAvatarURL())
             .setTimestamp();
         await channel.send({ embeds: [embedPowitanie] });
@@ -257,7 +264,6 @@ client.on('interactionCreate', async interaction => {
         const powitaniaChannel = interaction.guild?.channels.cache.find(ch => ch.isTextBased() && 'name' in ch && ch.name === CHANNEL_POWITANIA) as TextChannel;
 
         if (commandName === 'testogloszenia' && channel) {
-            // Wysyłanie testowego ogłoszenia bez @everyone
             await channel.send({ embeds: [createOgłoszenieEmbed()] });
             await interaction.editReply({ content: 'Wysłano testowe ogłoszenie (bez @everyone)!' });
         } else if (commandName === 'testlive' && channel) {
@@ -267,9 +273,17 @@ client.on('interactionCreate', async interaction => {
             await channel.send({ content: '@everyone', embeds: [createKickLiveEmbed()] });
             await interaction.editReply({ content: 'Wysłano testowe powiadomienie Kick!' });
         } else if (commandName === 'testwitania' && powitaniaChannel) {
-            const testEmbed = new EmbedBuilder().setColor(0x57F287).setTitle('👋 Test').setDescription(`Witaj ${interaction.user}!`);
+            const testEmbed = new EmbedBuilder()
+                .setColor(0x57F287)
+                .setTitle('👋 Test Powitania z Rangami')
+                .setDescription(
+                    `Witaj ${interaction.user}! Tak będą wyglądać odnośniki:\n\n` +
+                    `• Wybierz płeć: <#${ID_KANALU_PLEC}>\n` +
+                    `• Dostosuj role: <#${ID_KANALU_RANGES}>\n` +
+                    `• Wybierz swój sprzęt: <#${ID_KANALU_SPRZET}>`
+                );
             await powitaniaChannel.send({ embeds: [testEmbed] });
-            await interaction.editReply({ content: 'Wysłano test powitania!' });
+            await interaction.editReply({ content: 'Wysłano test powitania z odnośnikami do kanałów!' });
         } else if (commandName === 'testczattiktok') {
             await interaction.editReply({ content: 'Komenda czatu działa automatycznie!' });
         } else {
