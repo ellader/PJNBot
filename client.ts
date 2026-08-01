@@ -34,7 +34,7 @@ let isKickLive = false;
 const audioPlayer = createAudioPlayer();
 
 const commands = [
-    new SlashCommandBuilder().setName('testogloszenia').setDescription('Wysyła testowe ogłoszenie o profilach z @everyone'),
+    new SlashCommandBuilder().setName('testogloszenia').setDescription('Wysyła testowe ogłoszenie o profilach (bez @everyone)'),
     new SlashCommandBuilder().setName('testczattiktok').setDescription('Testuje ramkę z czatu TikToka na osobnym kanale'),
     new SlashCommandBuilder().setName('testlive').setDescription('Wysyła testowe powiadomienie o live z @everyone na ogłoszenia (TikTok)'),
     new SlashCommandBuilder().setName('testlivekick').setDescription('Wysyła testowe powiadomienie o live z @everyone na ogłoszenia (Kick)'),
@@ -150,11 +150,12 @@ client.once('ready', async () => {
         });
     }, 3000);
 
+    // Automatyczne ogłoszenie (bez @everyone)
     setInterval(async () => {
         const channel = client.channels.cache.find(ch => ch.isTextBased() && 'name' in ch && ch.name === CHANNEL_OGLOSZENIA) as TextChannel;
         if (channel) {
             try {
-                await channel.send({ content: '@everyone', embeds: [createOgłoszenieEmbed()] });
+                await channel.send({ embeds: [createOgłoszenieEmbed()] });
             } catch (err) {
                 console.error('Błąd automatycznego ogłoszenia:', err);
             }
@@ -256,8 +257,9 @@ client.on('interactionCreate', async interaction => {
         const powitaniaChannel = interaction.guild?.channels.cache.find(ch => ch.isTextBased() && 'name' in ch && ch.name === CHANNEL_POWITANIA) as TextChannel;
 
         if (commandName === 'testogloszenia' && channel) {
-            await channel.send({ content: '@everyone', embeds: [createOgłoszenieEmbed()] });
-            await interaction.editReply({ content: 'Wysłano testowe ogłoszenie!' });
+            // Wysyłanie testowego ogłoszenia bez @everyone
+            await channel.send({ embeds: [createOgłoszenieEmbed()] });
+            await interaction.editReply({ content: 'Wysłano testowe ogłoszenie (bez @everyone)!' });
         } else if (commandName === 'testlive' && channel) {
             await channel.send({ content: '@everyone', embeds: [createLiveEmbed()] });
             await interaction.editReply({ content: 'Wysłano testowe powiadomienie TikTok!' });
@@ -277,4 +279,3 @@ client.on('interactionCreate', async interaction => {
 });
 
 client.login(token);
-        
