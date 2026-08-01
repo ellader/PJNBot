@@ -27,10 +27,9 @@ const CHANNEL_POWITANIA = "witamy";
 const CHANNEL_CZAT_TIKTOK = "czat-tiktok";
 const CHANNEL_GLOSOWY = "🎧 Muza 24/7 - Wejdź i Słuchaj 🎧"; 
 
-// NAZWA KANAŁU TEKSTOWEGO, NA KTÓRY KTOŚ PISZE (poprawiono z spacją na myślnik)
-const CHANNEL_SPECJALNY_TEKSTOWY = "darmowe-duszki"; 
+// STAŁE ID KANAŁU ORAZ RÓL
+const ID_KANALU_DUSZKI = "1532977723843285112"; 
 
-// ID RÓL DO POWIADOMIENIA
 const ID_RANGI_DUSZKOWIEC = "1532978703842283551";
 const ID_RANGI_MODERATOR = "1532321767857721344";
 const ID_RANGI_ADMIN = "1532324059470237857";
@@ -213,12 +212,12 @@ client.once('ready', async () => {
     });
 });
 
-// AUTOMATYCZNA ODPOWIEDŹ BOTA NA KANALE "darmowe-duszki"
+// AUTOMATYCZNA ODPOWIEDŹ BOTA NA KANALE PO JEGO ID
 client.on('messageCreate', async message => {
     if (message.author.bot) return; // Ignorujemy boty
     if (!message.guild) return;
 
-    if ('name' in message.channel && message.channel.name === CHANNEL_SPECJALNY_TEKSTOWY) {
+    if (message.channelId === ID_KANALU_DUSZKI) {
         const pings = `<@&${ID_RANGI_DUSZKOWIEC}> <@&${ID_RANGI_MODERATOR}> <@&${ID_RANGI_ADMIN}>`;
         
         const replyText = `Cześć ${message.author}, dziękuję że jesteś, teraz zawołam osoby odpowiedzialne do Ciebie abyście porozmawiali o darmowych duszkach!\n\n${pings}`;
