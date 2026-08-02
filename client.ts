@@ -248,20 +248,23 @@ client.on('messageCreate', async message => {
 client.on('guildMemberAdd', async member => {
     const channel = member.guild.channels.cache.find(ch => ch.isTextBased() && 'name' in ch && ch.name === CHANNEL_POWITANIA) as TextChannel;
     if (channel) {
+        const contentMessage = `👋 Witaj na serwerze PJN, <@${member.id}>! Cieszymy się, że jesteś z nami! 🎉`;
+
         const embedPowitanie = new EmbedBuilder()
             .setColor(0x57F287)
-            .setTitle('👋 Nowy użytkownik na pokładzie!')
+            .setTitle('📌 Skonfiguruj swój profil na serwerze:')
             .setDescription(
-                // POPRAWIONE: Użycie jawnego formatu wzmianki z ID zamiast samego obiektu member
-                `Witaj na serwerze PJN, <@${member.id}>! Cieszymy się, że jesteś z nami! 🎉\n\n` +
-                `📌 **Skonfiguruj swój profil na serwerze:**\n` +
                 `• Wybierz płeć: <#${ID_KANALU_PLEC}>\n` +
                 `• Dostosuj role: <#${ID_KANALU_RANGES}>\n` +
                 `• Wybierz swój sprzęt: <#${ID_KANALU_SPRZET}>`
             )
             .setThumbnail(member.user.displayAvatarURL())
             .setTimestamp();
-        await channel.send({ embeds: [embedPowitanie] });
+
+        await channel.send({ 
+            content: contentMessage, 
+            embeds: [embedPowitanie] 
+        });
     }
 });
 
@@ -313,17 +316,19 @@ client.on('interactionCreate', async interaction => {
             await channel.send({ content: '@everyone', embeds: [createKickLiveEmbed()] });
             await interaction.editReply({ content: 'Wysłano testowe powiadomienie Kick!' });
         } else if (commandName === 'testwitania' && powitaniaChannel) {
+            const testContent = `👋 Witaj <@${interaction.user.id}>! Tak będą wyglądać odnośniki:`;
             const testEmbed = new EmbedBuilder()
                 .setColor(0x57F287)
-                .setTitle('👋 Test Powitania z Rangami')
+                .setTitle('📌 Test Powitania z Rangami')
                 .setDescription(
-                    // POPRAWIONE: Jawne użycie ID dla komendy testowej
-                    `Witaj <@${interaction.user.id}>! Tak będą wyglądać odnośniki:\n\n` +
                     `• Wybierz płeć: <#${ID_KANALU_PLEC}>\n` +
                     `• Dostosuj role: <#${ID_KANALU_RANGES}>\n` +
                     `• Wybierz swój sprzęt: <#${ID_KANALU_SPRZET}>`
                 );
-            await powitaniaChannel.send({ embeds: [testEmbed] });
+            await powitaniaChannel.send({ 
+                content: testContent, 
+                embeds: [testEmbed] 
+            });
             await interaction.editReply({ content: 'Wysłano test powitania z odnośnikami do kanałów!' });
         } else if (commandName === 'testczattiktok') {
             await interaction.editReply({ content: 'Komenda czatu działa automatycznie!' });
