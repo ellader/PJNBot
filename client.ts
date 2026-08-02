@@ -252,7 +252,8 @@ client.on('guildMemberAdd', async member => {
             .setColor(0x57F287)
             .setTitle('👋 Nowy użytkownik na pokładzie!')
             .setDescription(
-                `Witaj na serwerze PJN, ${member}! Cieszymy się, że jesteś z nami! 🎉\n\n` +
+                // POPRAWIONE: Użycie jawnego formatu wzmianki z ID zamiast samego obiektu member
+                `Witaj na serwerze PJN, <@${member.id}>! Cieszymy się, że jesteś z nami! 🎉\n\n` +
                 `📌 **Skonfiguruj swój profil na serwerze:**\n` +
                 `• Wybierz płeć: <#${ID_KANALU_PLEC}>\n` +
                 `• Dostosuj role: <#${ID_KANALU_RANGES}>\n` +
@@ -316,7 +317,8 @@ client.on('interactionCreate', async interaction => {
                 .setColor(0x57F287)
                 .setTitle('👋 Test Powitania z Rangami')
                 .setDescription(
-                    `Witaj ${interaction.user}! Tak będą wyglądać odnośniki:\n\n` +
+                    // POPRAWIONE: Jawne użycie ID dla komendy testowej
+                    `Witaj <@${interaction.user.id}>! Tak będą wyglądać odnośniki:\n\n` +
                     `• Wybierz płeć: <#${ID_KANALU_PLEC}>\n` +
                     `• Dostosuj role: <#${ID_KANALU_RANGES}>\n` +
                     `• Wybierz swój sprzęt: <#${ID_KANALU_SPRZET}>`
