@@ -44,6 +44,7 @@ const tiktokConn = new WebcastPushConnection(TIKTOK_USER);
 let isKickLive = false;
 let isTikTokLive = false;
 let currentViewers = 0;
+let currentKickViewers = 0;
 const audioPlayer = createAudioPlayer();
 
 const commands = [
@@ -91,13 +92,14 @@ function createLiveEmbed(viewerCount: number = 0) {
         .setFooter({ text: 'PJN Powiadomienia Live' });
 }
 
-function createKickLiveEmbed() {
+function createKickLiveEmbed(viewerCount: number = 0) {
     return new EmbedBuilder()
         .setColor(0x53FC18)
         .setTitle('🟢 TRANSMISJA NA ŻYWO (KICK)!')
         .setDescription(`**LangusPJN** właśnie wystartował ze streamem na Kicku! Wbijaj na czat i sprawdź co się dzieje.`)
         .addFields(
-            { name: '🔗 Oglądaj tutaj', value: '[kick.com/languspjn](https://kick.com/languspjn)' }
+            { name: '👥 Widzowie online', value: `${viewerCount}`, inline: true },
+            { name: '🔗 Oglądaj tutaj', value: '[kick.com/languspjn](https://kick.com/languspjn)', inline: true }
         )
         .setImage(LIVE_IMAGE_URL)
         .setTimestamp()
@@ -122,6 +124,33 @@ async function playStream(station: string, connection: any) {
     }
 }
 
+// Funkcja aktualizująca statystyki w nazwach kanałów głosowych
+async function updateServerStats(guild: any) {
+    try {
+        // 1. Licznik członków
+        const memberChannel = guild.channels.cache.find((ch: any) => ch.isVoiceBased() && ch.name.startsWith('👥 • Członkowie:'));
+        if (memberChannel) {
+            await memberChannel.setName(`👥 • Członkowie: ${guild.memberCount}`);
+        }
+
+        // 2. Status TikTok Live
+        const tiktokChannel = guild.channels.cache.find((ch: any) => ch.isVoiceBased() && ch.name.includes('TikTok Live:'));
+        if (tiktokChannel) {
+            const name = isTikTokLive ? `🔴 • TikTok Live: ONLINE (${currentViewers})` : `🔴 • TikTok Live: OFFLINE`;
+            await tiktokChannel.setName(name);
+        }
+
+        // 3. Status Kick Live
+        const kickChannel = guild.channels.cache.find((ch: any) => ch.isVoiceBased() && ch.name.includes('Kick Live:'));
+        if (kickChannel) {
+            const name = isKickLive ? `🟢 • Kick Live: ONLINE (${currentKickViewers})` : `🟢 • Kick Live: OFFLINE`;
+            await kickChannel.setName(name);
+        }
+    } catch (err) {
+        console.error('Błąd aktualizacji nazw statystyk:', err);
+    }
+}
+
 client.once('ready', async () => {
     console.log(`Zalogowano jako ${client.user?.tag}!`);
 
@@ -132,6 +161,11 @@ client.once('ready', async () => {
     } catch (error) {
         console.error('Błąd rejestracji komend:', error);
     }
+
+    // Uruchomienie pętli aktualizującej statystyki na kanałach co 5 minut
+    setInterval(() => {
+        client.guilds.cache.forEach(guild => updateServerStats(guild));
+    }, 5 * 60 * 1000);
 
     // Nasłuchiwanie czatu oraz statystyk widzów z TikToka
     tiktokConn.on('chat', async data => {
@@ -162,15 +196,20 @@ client.once('ready', async () => {
             if (response.ok) {
                 const data = await response.json() as any;
                 const livestream = data.livestream;
-                if (livestream && !isKickLive) {
-                    isKickLive = true;
-                    const channel = client.channels.cache.find(ch => ch.isTextBased() && 'name' in ch && ch.name === CHANNEL_OGLOSZENIA) as TextChannel;
-                    if (channel) {
-                        await channel.send({ content: '@everyone', embeds: [createKickLiveEmbed()] });
+                if (livestream) {
+                    currentKickViewers = livestream.viewer_count || 0;
+                    if (!isKickLive) {
+                        isKickLive = true;
+                        const channel = client.channels.cache.find(ch => ch.isTextBased() && 'name' in ch && ch.name === CHANNEL_OGLOSZENIA) as TextChannel;
+                        if (channel) {
+                            await channel.send({ content: '@everyone', embeds: [createKickLiveEmbed(currentKickViewers)] });
+                        }
                     }
                 } else if (!livestream && isKickLive) {
                     isKickLive = false;
+                    currentKickViewers = 0;
                 }
+                client.guilds.cache.forEach(guild => updateServerStats(guild));
             }
         } catch (err) {
             console.error('Błąd Kicka:', err);
@@ -188,6 +227,7 @@ client.once('ready', async () => {
                         channel.send({ content: '@everyone', embeds: [createLiveEmbed(currentViewers)] });
                     }
                 }
+                client.guilds.cache.forEach(guild => updateServerStats(guild));
             }).catch(() => {
                 isTikTokLive = false;
             });
@@ -198,6 +238,7 @@ client.once('ready', async () => {
 
     setTimeout(() => {
         client.guilds.cache.forEach(async guild => {
+            updateServerStats(guild);
             const voiceChannel = guild.channels.cache.find(
                 ch => ch.isVoiceBased() && ch.name === CHANNEL_GLOSOWY
             );
@@ -259,6 +300,7 @@ client.on('messageCreate', async message => {
 });
 
 client.on('guildMemberAdd', async member => {
+    updateServerStats(member.guild);
     const channel = member.guild.channels.cache.find(ch => ch.isTextBased() && 'name' in ch && ch.name === CHANNEL_POWITANIA) as TextChannel;
     if (channel) {
         const contentMessage = `👋 Witaj na serwerze PJN, <@${member.id}>! Cieszymy się, że jesteś z nami! 🎉`;
@@ -279,6 +321,10 @@ client.on('guildMemberAdd', async member => {
             embeds: [embedPowitanie] 
         });
     }
+});
+
+client.on('guildMemberRemove', member => {
+    updateServerStats(member.guild);
 });
 
 client.on('interactionCreate', async interaction => {
@@ -327,7 +373,7 @@ client.on('interactionCreate', async interaction => {
             await channel.send({ content: '@everyone', embeds: [createLiveEmbed(currentViewers)] });
             await interaction.editReply({ content: 'Wysłano testowe powiadomienie TikTok!' });
         } else if (commandName === 'testlivekick' && channel) {
-            await channel.send({ content: '@everyone', embeds: [createKickLiveEmbed()] });
+            await channel.send({ content: '@everyone', embeds: [createKickLiveEmbed(currentKickViewers)] });
             await interaction.editReply({ content: 'Wysłano testowe powiadomienie Kick!' });
         } else if (commandName === 'testwitania' && powitaniaChannel) {
             const testContent = `👋 Witaj <@${interaction.user.id}>! Tak będą wyglądać odnośniki:`;
