@@ -127,6 +127,30 @@ const commands = [
                   )
         ),
     new SlashCommandBuilder()
+        .setName('odpalstream')
+        .setDescription('Jedno kliknięcie: zmienia status kanału na ONLINE i wysyła ogłoszenie o live!')
+        .addStringOption(option =>
+            option.setName('platforma')
+                  .setDescription('Wybierz platformę streamu')
+                  .setRequired(true)
+                  .addChoices(
+                      { name: 'TikTok', value: 'tiktok' },
+                      { name: 'Kick', value: 'kick' }
+                  )
+        ),
+    new SlashCommandBuilder()
+        .setName('wylaczstream')
+        .setDescription('Zmienia status wybranej platformy na OFFLINE i aktualizuje statystyki')
+        .addStringOption(option =>
+            option.setName('platforma')
+                  .setDescription('Wybierz platformę streamu')
+                  .setRequired(true)
+                  .addChoices(
+                      { name: 'TikTok', value: 'tiktok' },
+                      { name: 'Kick', value: 'kick' }
+                  )
+        ),
+    new SlashCommandBuilder()
         .setName('dodajpunkty')
         .setDescription('Dodaje punkty Tobie lub wybranej osobie (tylko właściciel)')
         .addIntegerOption(option => 
@@ -448,6 +472,58 @@ client.on('interactionCreate', async interaction => {
             await interaction.editReply({ content: '✅ Status TikTok Live zmieniony na **OFFLINE**!' });
         }
         
+        if (interaction.guild) {
+            updateServerStats(interaction.guild);
+        }
+    }
+    else if (commandName === 'odpalstream') {
+        if (interaction.user.id !== MOJE_DISCORD_ID) {
+            await interaction.reply({ content: '❌ Nie masz uprawnień do używania tej komendy!', ephemeral: true });
+            return;
+        }
+
+        await interaction.deferReply({ ephemeral: true });
+        const platforma = interaction.options.getString('platforma', true);
+        const ogloszeniaChannel = interaction.guild?.channels.cache.find(ch => ch.isTextBased() && 'name' in ch && ch.name === CHANNEL_OGLOSZENIA) as TextChannel;
+
+        if (!ogloszeniaChannel) {
+            await interaction.editReply({ content: '❌ Nie znaleziono kanału z ogłoszeniami!' });
+            return;
+        }
+
+        if (platforma === 'tiktok') {
+            isTikTokLive = true;
+            await ogloszeniaChannel.send({ content: '@everyone', embeds: [createLiveEmbed(currentViewers)] });
+            await interaction.editReply({ content: '🚀 Pomyślnie odpalono stream! Zmieniono status kanału na **TikTok Live: ONLINE** oraz wysłano powiadomienie na ogłoszenia.' });
+        } else if (platforma === 'kick') {
+            isKickLive = true;
+            await ogloszeniaChannel.send({ content: '@everyone', embeds: [createKickLiveEmbed(currentKickViewers)] });
+            await interaction.editReply({ content: '🚀 Pomyślnie odpalono stream! Zmieniono status kanału na **Kick Live: ONLINE** oraz wysłano powiadomienie na ogłoszenia.' });
+        }
+
+        if (interaction.guild) {
+            updateServerStats(interaction.guild);
+        }
+    }
+    else if (commandName === 'wylaczstream') {
+        if (interaction.user.id !== MOJE_DISCORD_ID) {
+            await interaction.reply({ content: '❌ Nie masz uprawnień do używania tej komendy!', ephemeral: true });
+            return;
+        }
+
+        await interaction.deferReply({ ephemeral: true });
+        const platforma = interaction.options.getString('platforma', true);
+
+        if (platforma === 'tiktok') {
+            isTikTokLive = false;
+            currentViewers = 0;
+            await interaction.editReply({ content: '🛑 Pomyślnie zmieniono status kanału na **TikTok Live: OFFLINE**.' });
+        } else if (platforma === 'kick') {
+            isKickLive = false;
+            currentKickViewers = 0;
+            await interaction.editReply({ content: '🛑 Pomyślnie zmieniono status kanału na **Kick Live: OFFLINE**.' });
+        }
+
         if (interaction.guild) {
             updateServerStats(interaction.guild);
         }
