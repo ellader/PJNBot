@@ -2,6 +2,8 @@ import { Client, GatewayIntentBits, TextChannel, REST, Routes, SlashCommandBuild
 import { WebcastPushConnection } from 'tiktok-live-connector';
 import { joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerStatus } from '@discordjs/voice';
 import ffmpeg from 'ffmpeg-static';
+import * as fs from 'fs';
+import * as path from 'path';
 
 if (ffmpeg) {
     process.env.FFMPEG_PATH = ffmpeg;
@@ -29,7 +31,6 @@ const CHANNEL_GLOSOWY = "🎧 Muza 24/7 - Wejdź i Słuchaj 🎧";
 
 // STAŁE ID KANAŁU ORAZ RÓL
 const ID_KANALU_DUSZKI = "1532977723843285112"; 
-
 const ID_RANGI_DUSZKOWIEC = "1532978703842283551";
 const ID_RANGI_MODERATOR = "1532321767857721344";
 const ID_RANGI_ADMIN = "1532324059470237857";
@@ -40,6 +41,52 @@ const ID_KANALU_SPRZET = '1532398069524594708';
 
 const LIVE_IMAGE_URL = "https://cdn.discordapp.com/attachments/1532862421729808565/1532865034642919574/1784490427936.png?ex=6a6e674f&is=6a6d15cf&hm=92695ee6d6999e9212a4ff8f86d3fdf6e70ee32a9c9e4cb175e54579f8b44fde&";
 
+// --- PROSTY SYSTEM EKONOMII (ZAPIS DO PLIKU) ---
+interface EconomyData {
+    [userId: string]: {
+        balance: number;
+        lastDaily?: number;
+    };
+}
+
+const ECONOMY_FILE = path.join(__dirname, 'economy.json');
+
+function loadEconomy(): EconomyData {
+    try {
+        if (fs.existsSync(ECONOMY_FILE)) {
+            const data = fs.readFileSync(ECONOMY_FILE, 'utf-8');
+            return JSON.parse(data);
+        }
+    } catch (err) {
+        console.error('Błąd ładowania ekonomii:', err);
+    }
+    return {};
+}
+
+function saveEconomy(data: EconomyData) {
+    try {
+        fs.writeFileSync(ECONOMY_FILE, JSON.stringify(data, null, 2));
+    } catch (err) {
+        console.error('Błąd zapisu ekonomii:', err);
+    }
+}
+
+function addPoints(userId: string, amount: number) {
+    const eco = loadEconomy();
+    if (!eco[userId]) {
+        eco[userId] = { balance: 0 };
+    }
+    eco[userId].balance += amount;
+    saveEconomy(eco);
+    return eco[userId].balance;
+}
+
+function getBalance(userId: string): number {
+    const eco = loadEconomy();
+    return eco[userId] ? eco[userId].balance : 0;
+}
+// ----------------------------------------------
+
 const tiktokConn = new WebcastPushConnection(TIKTOK_USER);
 let isKickLive = false;
 let isTikTokLive = false;
@@ -47,12 +94,50 @@ let currentViewers = 0;
 let currentKickViewers = 0;
 const audioPlayer = createAudioPlayer();
 
+// Baza pytań do quizu
+const quizQuestions = [
+    { question: "Jak nazywa się platforma streamingowa należąca do Stake, na której często streamujesz?", answer: "kick" },
+    { question: "Ile sekund ma jedna minuta?", answer: "60" },
+    { question: "Jaki jest główny kolor logo i motywu TikToka? (czerwony / niebieski / żółty)", answer: "czerwony" },
+    { question: "Która planeta w naszym układzie słonecznym jest najbliżej Słońca?", answer: "merkury" },
+    { question: "W jakim kraju powstała gra Minecraft?", answer: "szwecja" }
+];
+
 const commands = [
     new SlashCommandBuilder().setName('testogloszenia').setDescription('Wysyła testowe ogłoszenie o profilach (bez @everyone)'),
     new SlashCommandBuilder().setName('testczattiktok').setDescription('Testuje ramkę z czatu TikToka na osobnym kanale'),
     new SlashCommandBuilder().setName('testlive').setDescription('Wysyła testowe powiadomienie o live z @everyone na ogłoszenia (TikTok)'),
     new SlashCommandBuilder().setName('testlivekick').setDescription('Wysyła testowe powiadomienie o live z @everyone na ogłoszenia (Kick)'),
     new SlashCommandBuilder().setName('testwitania').setDescription('Testuje wiadomość powitalną z odnośnikami do rang'),
+    new SlashCommandBuilder().setName('balans').setDescription('Sprawdź swoje punkty (PJN-Coins)'),
+    new SlashCommandBuilder().setName('daily').setDescription('Odbierz codzienną dawkę punktów!'),
+    new SlashCommandBuilder().setName('topka').setDescription('Zobacz ranking najbogatszych użytkowników serwera'),
+    new SlashCommandBuilder().setName('quiz').setDescription('Zacznij szybki quiz z wiedzy o nagrodę punktową!'),
+    new SlashCommandBuilder()
+        .setName('kostka')
+        .setDescription('Zagraj w rzut kostką o punkty!')
+        .addIntegerOption(option => 
+            option.setName('stawka')
+                  .setDescription('Ile punktów chcesz postawić?')
+                  .setRequired(true)
+        ),
+    new SlashCommandBuilder()
+        .setName('moneta')
+        .setDescription('Zagraj w orzeł czy reszka!')
+        .addStringOption(option =>
+            option.setName('wybor')
+                  .setDescription('Wybierz: orzel lub reszka')
+                  .setRequired(true)
+                  .addChoices(
+                      { name: 'Orzeł', value: 'orzel' },
+                      { name: 'Reszka', value: 'reszka' }
+                  )
+        )
+        .addIntegerOption(option => 
+            option.setName('stawka')
+                  .setDescription('Ile punktów stawiasz?')
+                  .setRequired(true)
+        ),
     new SlashCommandBuilder()
         .setName('zmiennemuzyke')
         .setDescription('Wybierz stację radiową')
@@ -124,23 +209,19 @@ async function playStream(station: string, connection: any) {
     }
 }
 
-// Funkcja aktualizująca statystyki w nazwach kanałów głosowych
 async function updateServerStats(guild: any) {
     try {
-        // 1. Licznik członków
         const memberChannel = guild.channels.cache.find((ch: any) => ch.isVoiceBased() && ch.name.startsWith('👥 • Członkowie:'));
         if (memberChannel) {
             await memberChannel.setName(`👥 • Członkowie: ${guild.memberCount}`);
         }
 
-        // 2. Status TikTok Live
         const tiktokChannel = guild.channels.cache.find((ch: any) => ch.isVoiceBased() && ch.name.includes('TikTok Live:'));
         if (tiktokChannel) {
             const name = isTikTokLive ? `🔴 • TikTok Live: ONLINE (${currentViewers})` : `🔴 • TikTok Live: OFFLINE`;
             await tiktokChannel.setName(name);
         }
 
-        // 3. Status Kick Live
         const kickChannel = guild.channels.cache.find((ch: any) => ch.isVoiceBased() && ch.name.includes('Kick Live:'));
         if (kickChannel) {
             const name = isKickLive ? `🟢 • Kick Live: ONLINE (${currentKickViewers})` : `🟢 • Kick Live: OFFLINE`;
@@ -162,12 +243,10 @@ client.once('ready', async () => {
         console.error('Błąd rejestracji komend:', error);
     }
 
-    // Uruchomienie pętli aktualizującej statystyki na kanałach co 5 minut
     setInterval(() => {
         client.guilds.cache.forEach(guild => updateServerStats(guild));
     }, 5 * 60 * 1000);
 
-    // Nasłuchiwanie czatu oraz statystyk widzów z TikToka
     tiktokConn.on('chat', async data => {
         const channel = client.channels.cache.find(ch => ch.isTextBased() && 'name' in ch && ch.name === CHANNEL_CZAT_TIKTOK) as TextChannel;
         if (channel) {
@@ -187,7 +266,6 @@ client.once('ready', async () => {
         }
     });
 
-    // Sprawdzanie Kicka co 2 minuty
     setInterval(async () => {
         try {
             const response = await fetch(`https://kick.com/api/v2/channels/${KICK_USER}`, {
@@ -216,7 +294,6 @@ client.once('ready', async () => {
         }
     }, 2 * 60 * 1000);
 
-    // Sprawdzanie TikToka co 2 minuty
     setInterval(async () => {
         try {
             tiktokConn.connect().then(() => {
@@ -275,14 +352,18 @@ client.once('ready', async () => {
     }, 60 * 60 * 1000);
 });
 
-// AUTOMATYCZNA ODPOWIEDŹ BOTA NA KANALE PO JEGO ID (Duszki)
+// OBSŁUGA WIADOMOŚCI (Naliczanie punktów + quizy)
 client.on('messageCreate', async message => {
     if (message.author.bot) return;
     if (!message.guild) return;
 
+    // Naliczanie punktów za pisanie (losowo 1-3)
+    const earned = Math.floor(Math.random() * 3) + 1;
+    addPoints(message.author.id, earned);
+
+    // Automatyczna odpowiedź na kanale Duszki
     if (message.channelId === ID_KANALU_DUSZKI) {
         const pings = `<@&${ID_RANGI_DUSZKOWIEC}> <@&${ID_RANGI_MODERATOR}> <@&${ID_RANGI_ADMIN}>`;
-        
         const replyText = `Cześć ${message.author}, dziękuję że jesteś, teraz zawołam osoby odpowiedzialne do Ciebie abyście porozmawiali o darmowych duszkach!\n\n${pings}`;
 
         try {
@@ -331,78 +412,81 @@ client.on('interactionCreate', async interaction => {
     if (!interaction.isChatInputCommand()) return;
     const { commandName } = interaction;
 
-    if (commandName === 'zmiennemuzyke') {
+    if (commandName === 'balans') {
         await interaction.deferReply({ ephemeral: true });
-        const stacja = interaction.options.getString('stacja', true);
-        const guild = interaction.guild;
-        if (!guild) return;
+        const points = getBalance(interaction.user.id);
+        await interaction.editReply({ content: `💰 Posiadasz aktualnie **${points}** PJN-Coins!` });
+    }
+    else if (commandName === 'daily') {
+        await interaction.deferReply({ ephemeral: true });
+        const eco = loadEconomy();
+        const userId = interaction.user.id;
+        const now = Date.now();
+        const cooldown = 24 * 60 * 60 * 1000;
 
-        const voiceChannel = guild.channels.cache.find(
-            ch => ch.isVoiceBased() && ch.name === CHANNEL_GLOSOWY
-        );
+        if (!eco[userId]) eco[userId] = { balance: 0 };
 
-        if (!voiceChannel) {
-            await interaction.editReply({ content: `❌ Nie znaleziono kanału "${CHANNEL_GLOSOWY}"!` });
+        if (eco[userId].lastDaily && now - eco[userId].lastDaily < cooldown) {
+            const timeLeft = Math.ceil((cooldown - (now - eco[userId].lastDaily)) / (1000 * 60 * 60));
+            await interaction.editReply({ content: `⏳ Odbierałeś już dzisiaj nagrodę! Następna za około **${timeLeft} godz.**` });
             return;
         }
 
-        try {
-            const connection = joinVoiceChannel({
-                channelId: voiceChannel.id,
-                guildId: guild.id,
-                adapterCreator: guild.voiceAdapterCreator,
-            });
+        eco[userId].balance += 100;
+        eco[userId].lastDaily = now;
+        saveEconomy(eco);
 
-            await playStream(stacja, connection);
-            await interaction.editReply({ content: `🎶 Zmieniono stację radiową na: **${stacja.toUpperCase()}**!` });
-        } catch (error) {
-            console.error(error);
-            await interaction.editReply({ content: '❌ Wystąpił błąd podczas zmiany stacji.' });
-        }
+        await interaction.editReply({ content: `🎉 Odebrałeś codzienną nagrodę w wysokości **100 PJN-Coins**!` });
     }
-    else {
-        await interaction.deferReply({ ephemeral: true });
-        const channel = interaction.guild?.channels.cache.find(ch => ch.isTextBased() && 'name' in ch && ch.name === CHANNEL_OGLOSZENIA) as TextChannel;
-        const powitaniaChannel = interaction.guild?.channels.cache.find(ch => ch.isTextBased() && 'name' in ch && ch.name === CHANNEL_POWITANIA) as TextChannel;
-        const czatTikTokChannel = interaction.guild?.channels.cache.find(ch => ch.isTextBased() && 'name' in ch && ch.name === CHANNEL_CZAT_TIKTOK) as TextChannel;
+    else if (commandName === 'topka') {
+        await interaction.deferReply();
+        const eco = loadEconomy();
+        const sorted = Object.entries(eco)
+            .sort((a, b) => b[1].balance - a[1].balance)
+            .slice(0, 10);
 
-        if (commandName === 'testogloszenia' && channel) {
-            await channel.send({ embeds: [createOgłoszenieEmbed()] });
-            await interaction.editReply({ content: 'Wysłano testowe ogłoszenie (bez @everyone)!' });
-        } else if (commandName === 'testlive' && channel) {
-            await channel.send({ content: '@everyone', embeds: [createLiveEmbed(currentViewers)] });
-            await interaction.editReply({ content: 'Wysłano testowe powiadomienie TikTok!' });
-        } else if (commandName === 'testlivekick' && channel) {
-            await channel.send({ content: '@everyone', embeds: [createKickLiveEmbed(currentKickViewers)] });
-            await interaction.editReply({ content: 'Wysłano testowe powiadomienie Kick!' });
-        } else if (commandName === 'testwitania' && powitaniaChannel) {
-            const testContent = `👋 Witaj <@${interaction.user.id}>! Tak będą wyglądać odnośniki:`;
-            const testEmbed = new EmbedBuilder()
-                .setColor(0x57F287)
-                .setTitle('📌 Test Powitania z Rangami')
-                .setDescription(
-                    `• Wybierz płeć: <#${ID_KANALU_PLEC}>\n` +
-                    `• Dostosuj role: <#${ID_KANALU_RANGES}>\n` +
-                    `• Wybierz swój sprzęt: <#${ID_KANALU_SPRZET}>`
-                );
-            await powitaniaChannel.send({ 
-                content: testContent, 
-                embeds: [testEmbed] 
-            });
-            await interaction.editReply({ content: 'Wysłano test powitania z odnośnikami do kanałów!' });
-        } else if (commandName === 'testczattiktok' && czatTikTokChannel) {
-            const testChatEmbed = new EmbedBuilder()
-                .setColor(0xFE2C55)
-                .setAuthor({ name: `Czat TikTok • UżytkownikTestowy` })
-                .setDescription('To jest testowa wiadomość z czatu TikToka!')
-                .setFooter({ text: `Aktywni widzowie: ${currentViewers}` })
-                .setTimestamp();
-            await czatTikTokChannel.send({ embeds: [testChatEmbed] });
-            await interaction.editReply({ content: 'Wysłano testową wiadomość z czatu TikToka!' });
+        const embed = new EmbedBuilder()
+            .setColor(0xFFD700)
+            .setTitle('🏆 Ranking Najbogatszych (PJN-Coins)')
+            .setTimestamp();
+
+        if (sorted.length === 0) {
+            embed.setDescription('Brak danych w rankingu.');
         } else {
-            await interaction.editReply({ content: 'Nie znaleziono odpowiedniego kanału dla tej komendy.' });
+            let desc = '';
+            sorted.forEach(([userId, data], index) => {
+                desc += `**${index + 1}.** <@${userId}> — \`${data.balance} Coins\`\n`;
+            });
+            embed.setDescription(desc);
         }
-    }
-});
 
-client.login(token);
+        await interaction.editReply({ embeds: [embed] });
+    }
+    else if (commandName === 'kostka') {
+        await interaction.deferReply();
+        const stawka = interaction.options.getInteger('stawka', true);
+        const userId = interaction.user.id;
+        const currentBalance = getBalance(userId);
+
+        if (stawka <= 0) {
+            await interaction.editReply({ content: '❌ Stawka musi być większa od 0!' });
+            return;
+        }
+
+        if (currentBalance < stawka) {
+            await interaction.editReply({ content: `❌ Nie masz tylu punktów! Twój balans to: **${currentBalance} Coins**.` });
+            return;
+        }
+
+        const playerRoll = Math.floor(Math.random() * 6) + 1;
+        const botRoll = Math.floor(Math.random() * 6) + 1;
+        const eco = loadEconomy();
+
+        if (playerRoll > botRoll) {
+            eco[userId].balance += stawka;
+            saveEconomy(eco);
+            await interaction.editReply({ content: `🎲 Wyrzuciłeś **${playerRoll}**, a bot **${botRoll}**. **Wygrywasz!** Zyskujesz \`+${stawka}\` Coins. Balans: **${eco[userId].balance}**` });
+        } else if (playerRoll < botRoll) {
+            eco[userId].balance -= stawka;
+            saveEconomy(eco);
+            await interaction.editReply({ content: `🎲 Wyrzuciłeś **${playerRoll}**, a bot **${botRoll}**. **Przegrywasz!** Tracisz \`-${stawka}\` Coi
