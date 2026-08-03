@@ -30,6 +30,7 @@ const CHANNEL_CZAT_TIKTOK = "czat-tiktok";
 const CHANNEL_GLOSOWY = "🎧 Muza 24/7 - Wejdź i Słuchaj 🎧"; 
 
 const MOJE_DISCORD_ID = "1175798371995361343";
+const DRUGI_ADMIN_ID = "1493928957408448563";
 const GUILD_ID = "1532302510671269928";
 
 const ID_KANALU_DUSZKI = "1532977723843285112"; 
@@ -86,6 +87,10 @@ function addPoints(userId: string, amount: number) {
 function getBalance(userId: string): number {
     const eco = loadEconomy();
     return eco[userId] ? eco[userId].balance : 0;
+}
+
+function isAuthorized(userId: string): boolean {
+    return userId === MOJE_DISCORD_ID || userId === DRUGI_ADMIN_ID;
 }
 // -----------------------
 
@@ -452,7 +457,7 @@ client.on('interactionCreate', async interaction => {
     const { commandName } = interaction;
 
     if (commandName === 'set-tiktok-live') {
-        if (interaction.user.id !== MOJE_DISCORD_ID) {
+        if (!isAuthorized(interaction.user.id)) {
             await interaction.reply({ content: '❌ Nie masz uprawnień do używania tej komendy!', ephemeral: true });
             return;
         }
@@ -477,7 +482,7 @@ client.on('interactionCreate', async interaction => {
         }
     }
     else if (commandName === 'odpalstream') {
-        if (interaction.user.id !== MOJE_DISCORD_ID) {
+        if (!isAuthorized(interaction.user.id)) {
             await interaction.reply({ content: '❌ Nie masz uprawnień do używania tej komendy!', ephemeral: true });
             return;
         }
@@ -506,7 +511,7 @@ client.on('interactionCreate', async interaction => {
         }
     }
     else if (commandName === 'wylaczstream') {
-        if (interaction.user.id !== MOJE_DISCORD_ID) {
+        if (!isAuthorized(interaction.user.id)) {
             await interaction.reply({ content: '❌ Nie masz uprawnień do używania tej komendy!', ephemeral: true });
             return;
         }
@@ -579,7 +584,7 @@ client.on('interactionCreate', async interaction => {
         await interaction.editReply({ embeds: [embed] });
     }
     else if (commandName === 'dodajpunkty') {
-        if (interaction.user.id !== MOJE_DISCORD_ID) {
+        if (!isAuthorized(interaction.user.id)) {
             await interaction.reply({ content: '❌ Nie masz uprawnień do używania tej komendy!', ephemeral: true });
             return;
         }
