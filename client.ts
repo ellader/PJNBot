@@ -233,13 +233,17 @@ async function updateServerStats(guild: any) {
         const tiktokChannel = guild.channels.cache.find((ch: any) => ch.isVoiceBased() && ch.name.includes('TikTok Live:'));
         if (tiktokChannel) {
             const name = isTikTokLive ? `🔴 • TikTok Live: ONLINE (${currentViewers})` : `🔴 • TikTok Live: OFFLINE`;
-            await tiktokChannel.setName(name);
+            if (tiktokChannel.name !== name) {
+                await tiktokChannel.setName(name);
+            }
         }
 
         const kickChannel = guild.channels.cache.find((ch: any) => ch.isVoiceBased() && ch.name.includes('Kick Live:'));
         if (kickChannel) {
             const name = isKickLive ? `🟢 • Kick Live: ONLINE (${currentKickViewers})` : `🟢 • Kick Live: OFFLINE`;
-            await kickChannel.setName(name);
+            if (kickChannel.name !== name) {
+                await kickChannel.setName(name);
+            }
         }
     } catch (err) {
         console.error('Błąd aktualizacji nazw statystyk:', err);
@@ -261,6 +265,7 @@ client.once('ready', async () => {
         client.guilds.cache.forEach(guild => updateServerStats(guild));
     }, 5 * 60 * 1000);
 
+    // Opcjonalne nasłuchiwanie czatu TikTok jeśli sesja ruszy
     tiktokConn.on('chat', async data => {
         const channel = client.channels.cache.find(ch => ch.isTextBased() && 'name' in ch && ch.name === CHANNEL_CZAT_TIKTOK) as TextChannel;
         if (channel) {
@@ -274,12 +279,7 @@ client.once('ready', async () => {
         }
     });
 
-    tiktokConn.on('roomUser', data => {
-        if (data.viewerCount !== undefined) {
-            currentViewers = data.viewerCount;
-        }
-    });
-
+    // Sprawdzanie Kicka co 2 minuty
     setInterval(async () => {
         try {
             const response = await fetch(`https://kick.com/api/v2/channels/${KICK_USER}`, {
@@ -297,7 +297,7 @@ client.once('ready', async () => {
                             await channel.send({ content: '@everyone', embeds: [createKickLiveEmbed(currentKickViewers)] });
                         }
                     }
-                } else if (!livestream && isKickLive) {
+                } else {
                     isKickLive = false;
                     currentKickViewers = 0;
                 }
@@ -308,22 +308,32 @@ client.once('ready', async () => {
         }
     }, 2 * 60 * 1000);
 
+    // Stabilne sprawdzanie statusu TikTok co 2 minuty przez fetch
     setInterval(async () => {
         try {
-            tiktokConn.connect().then(() => {
-                if (!isTikTokLive) {
+            const res = await fetch(`https://www.tiktok.com/@${TIKTOK_USER}/live`, {
+                headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }
+            });
+            
+            if (res.ok) {
+                const html = await res.text();
+                const liveActive = html.includes('"isLive":true') || html.includes('room_id');
+
+                if (liveActive && !isTikTokLive) {
                     isTikTokLive = true;
+                    currentViewers = 1; // Domyślna wartość w przypadku braku dokładnego licznika z webview
                     const channel = client.channels.cache.find(ch => ch.isTextBased() && 'name' in ch && ch.name === CHANNEL_OGLOSZENIA) as TextChannel;
                     if (channel) {
-                        channel.send({ content: '@everyone', embeds: [createLiveEmbed(currentViewers)] });
+                        await channel.send({ content: '@everyone', embeds: [createLiveEmbed(currentViewers)] });
                     }
+                } else if (!liveActive && isTikTokLive) {
+                    isTikTokLive = false;
+                    currentViewers = 0;
                 }
-                client.guilds.cache.forEach(guild => updateServerStats(guild));
-            }).catch(() => {
-                isTikTokLive = false;
-            });
+            }
+            client.guilds.cache.forEach(guild => updateServerStats(guild));
         } catch (err) {
-            isTikTokLive = false;
+            console.error('Błąd sprawdzania statusu TikTok:', err);
         }
     }, 2 * 60 * 1000);
 
@@ -492,7 +502,7 @@ client.on('interactionCreate', async interaction => {
         }
     }
     else if (commandName === 'kostka') {
-        await interaction.deferReply(); // Natychmiastowe odroczenie, zapobiega błędowi 3 sekund
+        await interaction.deferReply();
         const stawka = interaction.options.getInteger('stawka', true);
         const userId = interaction.user.id;
         const currentBalance = getBalance(userId);
@@ -524,7 +534,7 @@ client.on('interactionCreate', async interaction => {
         }
     }
     else if (commandName === 'moneta') {
-        await interaction.deferReply(); // Natychmiastowe odroczenie, zapobiega błędowi 3 sekund
+        await interaction.deferReply();
         const wybor = interaction.options.getString('wybor', true);
         const stawka = interaction.options.getInteger('stawka', true);
         const userId = interaction.user.id;
@@ -554,7 +564,7 @@ client.on('interactionCreate', async interaction => {
         }
     }
     else if (commandName === 'quiz') {
-        await interaction.deferReply(); // Poprawka: zapobiega wygaśnięciu interakcji quizu
+        await interaction.deferReply();
         const randomQ = quizQuestions[Math.floor(Math.random() * quizQuestions.length)];
         
         const embed = new EmbedBuilder()
