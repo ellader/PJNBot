@@ -489,5 +489,10 @@ client.on('interactionCreate', async interaction => {
 
         if (docelowyUzytkownik.id === interaction.user.id) {
             await interaction.editReply({ content: `✅ Dodano pomyślnie **${ilosc}** PJN-Coins do Twojego konta! Twój balans: **${nowyBalans}**` });
-        } else {
-            await interaction.e
+                } else {
+            await interaction.editReply({ content: 'Nie znaleziono odpowiedniego kanału dla tej komendy.' });
+        }
+    }
+});
+
+client.login(token);
