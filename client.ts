@@ -29,8 +29,9 @@ const CHANNEL_POWITANIA = "witamy";
 const CHANNEL_CZAT_TIKTOK = "czat-tiktok";
 const CHANNEL_GLOSOWY = "🎧 Muza 24/7 - Wejdź i Słuchaj 🎧"; 
 
-// TWOJE ID DISCORDA DO ZABEZPIECZENIA KOMENDY
+// TWOJE ID DISCORDA ORAZ ID SERWERA
 const MOJE_DISCORD_ID = "1175798371995361343";
+const GUILD_ID = "1532302510671269928"; // Wpisane ID Twojego serwera
 
 // STAŁE ID KANAŁU ORAZ RÓL
 const ID_KANALU_DUSZKI = "1532977723843285112"; 
@@ -97,7 +98,6 @@ let currentViewers = 0;
 let currentKickViewers = 0;
 const audioPlayer = createAudioPlayer();
 
-// Baza pytań do quizu
 const quizQuestions = [
     { question: "Jak nazywa się platforma streamingowa należąca do Stake, na której często streamujesz?", answer: "kick" },
     { question: "Ile sekund ma jedna minuta?", answer: "60" },
@@ -253,8 +253,8 @@ client.once('ready', async () => {
 
     const rest = new REST({ version: '10' }).setToken(token);
     try {
-        await rest.put(Routes.applicationCommands(client.user!.id), { body: commands });
-        console.log('Pomyślnie zarejestrowano komendy slash!');
+        await rest.put(Routes.applicationGuildCommands(client.user!.id, GUILD_ID), { body: commands });
+        console.log('Pomyślnie zarejestrowano komendy natychmiast na serweru!');
     } catch (error) {
         console.error('Błąd rejestracji komend:', error);
     }
@@ -490,4 +490,4 @@ client.on('interactionCreate', async interaction => {
         if (docelowyUzytkownik.id === interaction.user.id) {
             await interaction.editReply({ content: `✅ Dodano pomyślnie **${ilosc}** PJN-Coins do Twojego konta! Twój balans: **${nowyBalans}**` });
         } else {
-            await interaction.editReply({ content: `✅ Dodano pomyślnie
+ 
