@@ -29,11 +29,9 @@ const CHANNEL_POWITANIA = "witamy";
 const CHANNEL_CZAT_TIKTOK = "czat-tiktok";
 const CHANNEL_GLOSOWY = "🎧 Muza 24/7 - Wejdź i Słuchaj 🎧"; 
 
-// TWOJE ID DISCORDA ORAZ ID SERWERA
 const MOJE_DISCORD_ID = "1175798371995361343";
 const GUILD_ID = "1532302510671269928";
 
-// STAŁE ID KANAŁU ORAZ RÓL
 const ID_KANALU_DUSZKI = "1532977723843285112"; 
 const ID_RANGI_DUSZKOWIEC = "1532978703842283551";
 const ID_RANGI_MODERATOR = "1532321767857721344";
@@ -45,7 +43,7 @@ const ID_KANALU_SPRZET = '1532398069524594708';
 
 const LIVE_IMAGE_URL = "https://cdn.discordapp.com/attachments/1532862421729808565/1532865034642919574/1784490427936.png?ex=6a6e674f&is=6a6d15cf&hm=92695ee6d6999e9212a4ff8f86d3fdf6e70ee32a9c9e4cb175e54579f8b44fde&";
 
-// --- PROSTY SYSTEM EKONOMII (ZAPIS DO PLIKU) ---
+// --- SYSTEM EKONOMII ---
 interface EconomyData {
     [userId: string]: {
         balance: number;
@@ -89,7 +87,7 @@ function getBalance(userId: string): number {
     const eco = loadEconomy();
     return eco[userId] ? eco[userId].balance : 0;
 }
-// ----------------------------------------------
+// -----------------------
 
 const tiktokConn = new WebcastPushConnection(TIKTOK_USER);
 let isKickLive = false;
@@ -254,7 +252,7 @@ client.once('ready', async () => {
     const rest = new REST({ version: '10' }).setToken(token);
     try {
         await rest.put(Routes.applicationGuildCommands(client.user!.id, GUILD_ID), { body: commands });
-        console.log('Pomyślnie zarejestrowano komendy natychmiast na serweru!');
+        console.log('Pomyślnie zarejestrowano komendy na serwerze!');
     } catch (error) {
         console.error('Błąd rejestracji komend:', error);
     }
@@ -489,7 +487,171 @@ client.on('interactionCreate', async interaction => {
 
         if (docelowyUzytkownik.id === interaction.user.id) {
             await interaction.editReply({ content: `✅ Dodano pomyślnie **${ilosc}** PJN-Coins do Twojego konta! Twój balans: **${nowyBalans}**` });
-                } else {
+        } else {
+            await interaction.editReply({ content: `✅ Dodano pomyślnie **${ilosc}** PJN-Coins dla użytkownika <@${docelowyUzytkownik.id}>! Nowy balans tej osoby: **${nowyBalans}**` });
+        }
+    }
+    else if (commandName === 'kostka') {
+        await interaction.deferReply(); // Natychmiastowe odroczenie, zapobiega błędowi 3 sekund
+        const stawka = interaction.options.getInteger('stawka', true);
+        const userId = interaction.user.id;
+        const currentBalance = getBalance(userId);
+
+        if (stawka <= 0) {
+            await interaction.editReply({ content: '❌ Stawka musi być większa od 0!' });
+            return;
+        }
+
+        if (currentBalance < stawka) {
+            await interaction.editReply({ content: `❌ Nie masz tylu punktów! Twój balans to: **${currentBalance} Coins**.` });
+            return;
+        }
+
+        const playerRoll = Math.floor(Math.random() * 6) + 1;
+        const botRoll = Math.floor(Math.random() * 6) + 1;
+        const eco = loadEconomy();
+
+        if (playerRoll > botRoll) {
+            eco[userId].balance += stawka;
+            saveEconomy(eco);
+            await interaction.editReply({ content: `🎲 Wyrzuciłeś **${playerRoll}**, a bot **${botRoll}**. **Wygrywasz!** Zyskujesz \`+${stawka}\` Coins. Balans: **${eco[userId].balance}**` });
+        } else if (playerRoll < botRoll) {
+            eco[userId].balance -= stawka;
+            saveEconomy(eco);
+            await interaction.editReply({ content: `🎲 Wyrzuciłeś **${playerRoll}**, a bot **${botRoll}**. **Przegrywasz!** Tracisz \`-${stawka}\` Coins. Balans: **${eco[userId].balance}**` });
+        } else {
+            await interaction.editReply({ content: `🎲 Remis! Wszyscy wyrzucili **${playerRoll}**. Punkty bez zmian.` });
+        }
+    }
+    else if (commandName === 'moneta') {
+        await interaction.deferReply(); // Natychmiastowe odroczenie, zapobiega błędowi 3 sekund
+        const wybor = interaction.options.getString('wybor', true);
+        const stawka = interaction.options.getInteger('stawka', true);
+        const userId = interaction.user.id;
+        const currentBalance = getBalance(userId);
+
+        if (stawka <= 0) {
+            await interaction.editReply({ content: '❌ Stawka musi być większa od 0!' });
+            return;
+        }
+
+        if (currentBalance < stawka) {
+            await interaction.editReply({ content: `❌ Nie masz tylu punktów! Twój balans to: **${currentBalance} Coins**.` });
+            return;
+        }
+
+        const wynikMonety = Math.random() < 0.5 ? 'orzel' : 'reszka';
+        const eco = loadEconomy();
+
+        if (wybor === wynikMonety) {
+            eco[userId].balance += stawka;
+            saveEconomy(eco);
+            await interaction.editReply({ content: `🪙 Wypadł **${wynikMonety.toUpperCase()}**! Trafiłeś! Zyskujesz \`+${stawka}\` Coins. Balans: **${eco[userId].balance}**` });
+        } else {
+            eco[userId].balance -= stawka;
+            saveEconomy(eco);
+            await interaction.editReply({ content: `🪙 Wypadł **${wynikMonety.toUpperCase()}**! Niestety nie trafiłeś. Tracisz \`-${stawka}\` Coins. Balans: **${eco[userId].balance}**` });
+        }
+    }
+    else if (commandName === 'quiz') {
+        await interaction.deferReply(); // Poprawka: zapobiega wygaśnięciu interakcji quizu
+        const randomQ = quizQuestions[Math.floor(Math.random() * quizQuestions.length)];
+        
+        const embed = new EmbedBuilder()
+            .setColor(0x00AE86)
+            .setTitle('🧠 Szybki Quiz PJN!')
+            .setDescription(`**${randomQ.question}**\n\n*Masz 30 sekund! Wpisz poprawną odpowiedź na tym czacie!*`)
+            .setFooter({ text: 'Nagroda: 50 PJN-Coins' });
+
+        await interaction.editReply({ embeds: [embed] });
+
+        const filter = (m: any) => !m.author.bot;
+        const collector = interaction.channel?.createMessageCollector({ filter, time: 30000, max: 1 });
+
+        collector?.on('collect', async m => {
+            if (m.content.toLowerCase().trim() === randomQ.answer.toLowerCase()) {
+                addPoints(m.author.id, 50);
+                await m.reply(`🎉 Brawo <@${m.author.id}>! Odpowiedź **"${randomQ.answer}"** była poprawna! Zyskujesz \`+50\` PJN-Coins!`);
+            } else {
+                await m.channel?.send(`❌ Niestety, <@${m.author.id}> podał złą odpowiedź. Prawidłowa to: **${randomQ.answer}**.`);
+            }
+        });
+
+        collector?.on('end', (_collected, reason) => {
+            if (reason === 'time') {
+                interaction.followUp({ content: `⏰ Czas minął! Nikt nie odpowiedział poprawnie. Prawidłowa odpowiedź to: **${randomQ.answer}**.` }).catch(() => {});
+            }
+        });
+    }
+    else if (commandName === 'zmiennemuzyke') {
+        await interaction.deferReply({ ephemeral: true });
+        const stacja = interaction.options.getString('stacja', true);
+        const guild = interaction.guild;
+        if (!guild) return;
+
+        const voiceChannel = guild.channels.cache.find(
+            ch => ch.isVoiceBased() && ch.name === CHANNEL_GLOSOWY
+        );
+
+        if (!voiceChannel) {
+            await interaction.editReply({ content: `❌ Nie znaleziono kanału "${CHANNEL_GLOSOWY}"!` });
+            return;
+        }
+
+        try {
+            const connection = joinVoiceChannel({
+                channelId: voiceChannel.id,
+                guildId: guild.id,
+                adapterCreator: guild.voiceAdapterCreator,
+            });
+
+            await playStream(stacja, connection);
+            await interaction.editReply({ content: `🎶 Zmieniono stację radiową na: **${stacja.toUpperCase()}**!` });
+        } catch (error) {
+            console.error(error);
+            await interaction.editReply({ content: '❌ Wystąpił błąd podczas zmiany stacji.' });
+        }
+    }
+    else {
+        await interaction.deferReply({ ephemeral: true });
+        const channel = interaction.guild?.channels.cache.find(ch => ch.isTextBased() && 'name' in ch && ch.name === CHANNEL_OGLOSZENIA) as TextChannel;
+        const powitaniaChannel = interaction.guild?.channels.cache.find(ch => ch.isTextBased() && 'name' in ch && ch.name === CHANNEL_POWITANIA) as TextChannel;
+        const czatTikTokChannel = interaction.guild?.channels.cache.find(ch => ch.isTextBased() && 'name' in ch && ch.name === CHANNEL_CZAT_TIKTOK) as TextChannel;
+
+        if (commandName === 'testogloszenia' && channel) {
+            await channel.send({ embeds: [createOgłoszenieEmbed()] });
+            await interaction.editReply({ content: 'Wysłano testowe ogłoszenie (bez @everyone)!' });
+        } else if (commandName === 'testlive' && channel) {
+            await channel.send({ content: '@everyone', embeds: [createLiveEmbed(currentViewers)] });
+            await interaction.editReply({ content: 'Wysłano testowe powiadomienie TikTok!' });
+        } else if (commandName === 'testlivekick' && channel) {
+            await channel.send({ content: '@everyone', embeds: [createKickLiveEmbed(currentKickViewers)] });
+            await interaction.editReply({ content: 'Wysłano testowe powiadomienie Kick!' });
+        } else if (commandName === 'testwitania' && powitaniaChannel) {
+            const testContent = `👋 Witaj <@${interaction.user.id}>! Tak będą wyglądać odnośniki:`;
+            const testEmbed = new EmbedBuilder()
+                .setColor(0x57F287)
+                .setTitle('📌 Test Powitania z Rangami')
+                .setDescription(
+                    `• Wybierz płeć: <#${ID_KANALU_PLEC}>\n` +
+                    `• Dostosuj role: <#${ID_KANALU_RANGES}>\n` +
+                    `• Wybierz swój sprzęt: <#${ID_KANALU_SPRZET}>`
+                );
+            await powitaniaChannel.send({ 
+                content: testContent, 
+                embeds: [testEmbed] 
+            });
+            await interaction.editReply({ content: 'Wysłano test powitania z odnośnikami do kanałów!' });
+        } else if (commandName === 'testczattiktok' && czatTikTokChannel) {
+            const testChatEmbed = new EmbedBuilder()
+                .setColor(0xFE2C55)
+                .setAuthor({ name: `Czat TikTok • UżytkownikTestowy` })
+                .setDescription('To jest testowa wiadomość z czatu TikToka!')
+                .setFooter({ text: `Aktywni widzowie: ${currentViewers}` })
+                .setTimestamp();
+            await czatTikTokChannel.send({ embeds: [testChatEmbed] });
+            await interaction.editReply({ content: 'Wysłano testową wiadomość z czatu TikToka!' });
+        } else {
             await interaction.editReply({ content: 'Nie znaleziono odpowiedniego kanału dla tej komendy.' });
         }
     }
