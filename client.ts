@@ -352,16 +352,13 @@ client.once('ready', async () => {
     }, 60 * 60 * 1000);
 });
 
-// OBSŁUGA WIADOMOŚCI (Naliczanie punktów + quizy)
 client.on('messageCreate', async message => {
     if (message.author.bot) return;
     if (!message.guild) return;
 
-    // Naliczanie punktów za pisanie (losowo 1-3)
     const earned = Math.floor(Math.random() * 3) + 1;
     addPoints(message.author.id, earned);
 
-    // Automatyczna odpowiedź na kanale Duszki
     if (message.channelId === ID_KANALU_DUSZKI) {
         const pings = `<@&${ID_RANGI_DUSZKOWIEC}> <@&${ID_RANGI_MODERATOR}> <@&${ID_RANGI_ADMIN}>`;
         const replyText = `Cześć ${message.author}, dziękuję że jesteś, teraz zawołam osoby odpowiedzialne do Ciebie abyście porozmawiali o darmowych duszkach!\n\n${pings}`;
@@ -489,4 +486,6 @@ client.on('interactionCreate', async interaction => {
         } else if (playerRoll < botRoll) {
             eco[userId].balance -= stawka;
             saveEconomy(eco);
-            await interaction.editReply({ content: `🎲 Wyrzuciłeś **${playerRoll}**, a bot **${botRoll}**. **Przegrywasz!** Tracisz \`-${stawka}\` Coi
+            await interaction.editReply({ content: `🎲 Wyrzuciłeś **${playerRoll}**, a bot **${botRoll}**. **Przegrywasz!** Tracisz \`-${stawka}\` Coins. Balans: **${eco[userId].balance}**` });
+        } else {
+            await interaction.editReply({ content: `🎲 Remis! Wszyscy wyrzucili **${pla
