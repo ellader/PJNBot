@@ -31,7 +31,7 @@ const CHANNEL_GLOSOWY = "🎧 Muza 24/7 - Wejdź i Słuchaj 🎧";
 
 // TWOJE ID DISCORDA ORAZ ID SERWERA
 const MOJE_DISCORD_ID = "1175798371995361343";
-const GUILD_ID = "1532302510671269928"; // Wpisane ID Twojego serwera
+const GUILD_ID = "1532302510671269928";
 
 // STAŁE ID KANAŁU ORAZ RÓL
 const ID_KANALU_DUSZKI = "1532977723843285112"; 
@@ -490,4 +490,4 @@ client.on('interactionCreate', async interaction => {
         if (docelowyUzytkownik.id === interaction.user.id) {
             await interaction.editReply({ content: `✅ Dodano pomyślnie **${ilosc}** PJN-Coins do Twojego konta! Twój balans: **${nowyBalans}**` });
         } else {
- 
+            await interaction.e
