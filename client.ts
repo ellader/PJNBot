@@ -22,7 +22,7 @@ const client = new Client({
     ]
 });
 
-const TIKTOK_USER = "evelinapiekara";
+const TIKTOK_USER = "_amelcia_pozdro_";
 const KICK_USER = "languspjn";
 const CHANNEL_OGLOSZENIA = "ogłoszenia";
 const CHANNEL_POWITANIA = "witamy";
@@ -180,7 +180,7 @@ function createOgłoszenieEmbed() {
         .setTitle('🌟 Witamy na PJN Server!')
         .setDescription('Cieszymy się, że jesteś częścią naszej społeczności! Pamiętaj, aby regularnie wspierać nasze projekty i śledzić oficjalne profile streamingowe:')
         .addFields(
-            { name: '🔗 TikTok', value: '[tiktok.com/@evelinapiekara](https://www.tiktok.com/@evelinapiekara)', inline: true },
+            { name: '🔗 TikTok', value: '[tiktok.com/@_amelcia_pozdro_](https://www.tiktok.com/@_amelcia_pozdro_)', inline: true },
             { name: '🔗 Kick', value: '[kick.com/LangusPJN](https://kick.com/LangusPJN)', inline: true },
             { name: '💡 Społeczność', value: 'Zostaw po sobie ślad, zaproś znajomych na nasz serwer Discord i buduj z nami najlepszą społeczność w sieci! 🚀' }
         )
@@ -193,10 +193,10 @@ function createLiveEmbed(viewerCount: number = 0) {
     return new EmbedBuilder()
         .setColor(0xFE2C55)
         .setTitle('🔴 TRANSMISJA NA ŻYWO (TIKTOK)!')
-        .setDescription(`**@evelinapiekara** właśnie rozpoczął nowy stream na TikToku! Wpadnij, zostaw follow i dołącz do wspólnej zabawy.`)
+        .setDescription(`**@_amelcia_pozdro_** właśnie rozpoczął nowy stream na TikToku! Wpadnij, zostaw follow i dołącz do wspólnej zabawy.`)
         .addFields(
             { name: '👥 Widzowie online', value: `${viewerCount}`, inline: true },
-            { name: '🔗 Oglądaj tutaj', value: '[tiktok.com/@evelinapiekara/live](https://www.tiktok.com/@evelinapiekara/live)', inline: true }
+            { name: '🔗 Oglądaj tutaj', value: '[tiktok.com/@_amelcia_pozdro_/live](https://www.tiktok.com/@_amelcia_pozdro_/live)', inline: true }
         )
         .setImage(LIVE_IMAGE_URL)
         .setTimestamp()
@@ -442,7 +442,7 @@ client.on('interactionCreate', async interaction => {
             if (channel) {
                 await channel.send({ content: '@everyone', embeds: [createLiveEmbed()] });
             }
-            await interaction.editReply({ content: '✅ Status TikTok Live zmieniony na **ONLINE** dla @evelinapiekara! Wysłano powiadomienie na ogłoszenia.' });
+            await interaction.editReply({ content: '✅ Status TikTok Live zmieniony na **ONLINE** dla @_amelcia_pozdro_! Wysłano powiadomienie na ogłoszenia.' });
         } else {
             isTikTokLive = false;
             await interaction.editReply({ content: '✅ Status TikTok Live zmieniony na **OFFLINE**!' });
