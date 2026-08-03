@@ -43,6 +43,7 @@ const LIVE_IMAGE_URL = "https://cdn.discordapp.com/attachments/15328624217298085
 const tiktokConn = new WebcastPushConnection(TIKTOK_USER);
 let isKickLive = false;
 let isTikTokLive = false;
+let currentViewers = 0;
 const audioPlayer = createAudioPlayer();
 
 const commands = [
@@ -76,13 +77,14 @@ function createOgłoszenieEmbed() {
         .setFooter({ text: 'PJN System Automatyczny' });
 }
 
-function createLiveEmbed() {
+function createLiveEmbed(viewerCount: number = 0) {
     return new EmbedBuilder()
         .setColor(0xFE2C55)
         .setTitle('🔴 TRANSMISJA NA ŻYWO (TIKTOK)!')
         .setDescription(`**@LangusPJN** właśnie rozpoczął nowy stream na TikToku! Wpadnij, zostaw follow i dołącz do wspólnej zabawy.`)
         .addFields(
-            { name: '🔗 Oglądaj tutaj', value: '[tiktok.com/@LangusPJN/live](https://www.tiktok.com/@LangusPJN/live)' }
+            { name: '👥 Widzowie online', value: `${viewerCount}`, inline: true },
+            { name: '🔗 Oglądaj tutaj', value: '[tiktok.com/@LangusPJN/live](https://www.tiktok.com/@LangusPJN/live)', inline: true }
         )
         .setImage(LIVE_IMAGE_URL)
         .setTimestamp()
@@ -131,7 +133,7 @@ client.once('ready', async () => {
         console.error('Błąd rejestracji komend:', error);
     }
 
-    // Nasłuchiwanie czatu z TikToka
+    // Nasłuchiwanie czatu oraz statystyk widzów z TikToka
     tiktokConn.on('chat', async data => {
         const channel = client.channels.cache.find(ch => ch.isTextBased() && 'name' in ch && ch.name === CHANNEL_CZAT_TIKTOK) as TextChannel;
         if (channel) {
@@ -139,8 +141,15 @@ client.once('ready', async () => {
                 .setColor(0xFE2C55)
                 .setAuthor({ name: `Czat TikTok • ${data.uniqueId}` })
                 .setDescription(data.comment)
+                .setFooter({ text: `Aktywni widzowie: ${currentViewers}` })
                 .setTimestamp();
             await channel.send({ embeds: [chatEmbed] });
+        }
+    });
+
+    tiktokConn.on('roomUser', data => {
+        if (data.viewerCount !== undefined) {
+            currentViewers = data.viewerCount;
         }
     });
 
@@ -170,17 +179,21 @@ client.once('ready', async () => {
 
     // Sprawdzanie TikToka co 2 minuty
     setInterval(async () => {
-        tiktokConn.connect().then(() => {
-            if (!isTikTokLive) {
-                isTikTokLive = true;
-                const channel = client.channels.cache.find(ch => ch.isTextBased() && 'name' in ch && ch.name === CHANNEL_OGLOSZENIA) as TextChannel;
-                if (channel) {
-                    channel.send({ content: '@everyone', embeds: [createLiveEmbed()] });
+        try {
+            tiktokConn.connect().then(() => {
+                if (!isTikTokLive) {
+                    isTikTokLive = true;
+                    const channel = client.channels.cache.find(ch => ch.isTextBased() && 'name' in ch && ch.name === CHANNEL_OGLOSZENIA) as TextChannel;
+                    if (channel) {
+                        channel.send({ content: '@everyone', embeds: [createLiveEmbed(currentViewers)] });
+                    }
                 }
-            }
-        }).catch(() => {
+            }).catch(() => {
+                isTikTokLive = false;
+            });
+        } catch (err) {
             isTikTokLive = false;
-        });
+        }
     }, 2 * 60 * 1000);
 
     setTimeout(() => {
@@ -221,7 +234,7 @@ client.once('ready', async () => {
     }, 60 * 60 * 1000);
 });
 
-// AUTOMATYCZNA ODPOWIEDŹ BOTA NA KANALE PO JEGO ID
+// AUTOMATYCZNA ODPOWIEDŹ BOTA NA KANALE PO JEGO ID (Duszki)
 client.on('messageCreate', async message => {
     if (message.author.bot) return;
     if (!message.guild) return;
@@ -305,12 +318,13 @@ client.on('interactionCreate', async interaction => {
         await interaction.deferReply({ ephemeral: true });
         const channel = interaction.guild?.channels.cache.find(ch => ch.isTextBased() && 'name' in ch && ch.name === CHANNEL_OGLOSZENIA) as TextChannel;
         const powitaniaChannel = interaction.guild?.channels.cache.find(ch => ch.isTextBased() && 'name' in ch && ch.name === CHANNEL_POWITANIA) as TextChannel;
+        const czatTikTokChannel = interaction.guild?.channels.cache.find(ch => ch.isTextBased() && 'name' in ch && ch.name === CHANNEL_CZAT_TIKTOK) as TextChannel;
 
         if (commandName === 'testogloszenia' && channel) {
             await channel.send({ embeds: [createOgłoszenieEmbed()] });
             await interaction.editReply({ content: 'Wysłano testowe ogłoszenie (bez @everyone)!' });
         } else if (commandName === 'testlive' && channel) {
-            await channel.send({ content: '@everyone', embeds: [createLiveEmbed()] });
+            await channel.send({ content: '@everyone', embeds: [createLiveEmbed(currentViewers)] });
             await interaction.editReply({ content: 'Wysłano testowe powiadomienie TikTok!' });
         } else if (commandName === 'testlivekick' && channel) {
             await channel.send({ content: '@everyone', embeds: [createKickLiveEmbed()] });
@@ -330,8 +344,15 @@ client.on('interactionCreate', async interaction => {
                 embeds: [testEmbed] 
             });
             await interaction.editReply({ content: 'Wysłano test powitania z odnośnikami do kanałów!' });
-        } else if (commandName === 'testczattiktok') {
-            await interaction.editReply({ content: 'Komenda czatu działa automatycznie!' });
+        } else if (commandName === 'testczattiktok' && czatTikTokChannel) {
+            const testChatEmbed = new EmbedBuilder()
+                .setColor(0xFE2C55)
+                .setAuthor({ name: `Czat TikTok • UżytkownikTestowy` })
+                .setDescription('To jest testowa wiadomość z czatu TikToka!')
+                .setFooter({ text: `Aktywni widzowie: ${currentViewers}` })
+                .setTimestamp();
+            await czatTikTokChannel.send({ embeds: [testChatEmbed] });
+            await interaction.editReply({ content: 'Wysłano testową wiadomość z czatu TikToka!' });
         } else {
             await interaction.editReply({ content: 'Nie znaleziono odpowiedniego kanału dla tej komendy.' });
         }
