@@ -22,7 +22,7 @@ const client = new Client({
     ]
 });
 
-const TIKTOK_USER = "Languspjn";
+const TIKTOK_USER = "evelinapiekara";
 const KICK_USER = "languspjn";
 const CHANNEL_OGLOSZENIA = "ogłoszenia";
 const CHANNEL_POWITANIA = "witamy";
@@ -115,6 +115,18 @@ const commands = [
     new SlashCommandBuilder().setName('topka').setDescription('Zobacz ranking najbogatszych użytkowników serwera'),
     new SlashCommandBuilder().setName('quiz').setDescription('Zacznij szybki quiz z wiedzy o nagrodę punktową!'),
     new SlashCommandBuilder()
+        .setName('set-tiktok-live')
+        .setDescription('Ręcznie ustawia status TikTok Live (online/offline)')
+        .addStringOption(option =>
+            option.setName('status')
+                  .setDescription('Wybierz status')
+                  .setRequired(true)
+                  .addChoices(
+                      { name: 'ONLINE', value: 'online' },
+                      { name: 'OFFLINE', value: 'offline' }
+                  )
+        ),
+    new SlashCommandBuilder()
         .setName('dodajpunkty')
         .setDescription('Dodaje punkty Tobie lub wybranej osobie (tylko właściciel)')
         .addIntegerOption(option => 
@@ -168,7 +180,7 @@ function createOgłoszenieEmbed() {
         .setTitle('🌟 Witamy na PJN Server!')
         .setDescription('Cieszymy się, że jesteś częścią naszej społeczności! Pamiętaj, aby regularnie wspierać nasze projekty i śledzić oficjalne profile streamingowe:')
         .addFields(
-            { name: '🔗 TikTok', value: '[tiktok.com/@LangusPJN](https://www.tiktok.com/@LangusPJN)', inline: true },
+            { name: '🔗 TikTok', value: '[tiktok.com/@evelinapiekara](https://www.tiktok.com/@evelinapiekara)', inline: true },
             { name: '🔗 Kick', value: '[kick.com/LangusPJN](https://kick.com/LangusPJN)', inline: true },
             { name: '💡 Społeczność', value: 'Zostaw po sobie ślad, zaproś znajomych na nasz serwer Discord i buduj z nami najlepszą społeczność w sieci! 🚀' }
         )
@@ -181,10 +193,10 @@ function createLiveEmbed(viewerCount: number = 0) {
     return new EmbedBuilder()
         .setColor(0xFE2C55)
         .setTitle('🔴 TRANSMISJA NA ŻYWO (TIKTOK)!')
-        .setDescription(`**@LangusPJN** właśnie rozpoczął nowy stream na TikToku! Wpadnij, zostaw follow i dołącz do wspólnej zabawy.`)
+        .setDescription(`**@evelinapiekara** właśnie rozpoczął nowy stream na TikToku! Wpadnij, zostaw follow i dołącz do wspólnej zabawy.`)
         .addFields(
             { name: '👥 Widzowie online', value: `${viewerCount}`, inline: true },
-            { name: '🔗 Oglądaj tutaj', value: '[tiktok.com/@LangusPJN/live](https://www.tiktok.com/@LangusPJN/live)', inline: true }
+            { name: '🔗 Oglądaj tutaj', value: '[tiktok.com/@evelinapiekara/live](https://www.tiktok.com/@evelinapiekara/live)', inline: true }
         )
         .setImage(LIVE_IMAGE_URL)
         .setTimestamp()
@@ -232,7 +244,7 @@ async function updateServerStats(guild: any) {
 
         const tiktokChannel = guild.channels.cache.find((ch: any) => ch.isVoiceBased() && ch.name.includes('TikTok Live:'));
         if (tiktokChannel) {
-            const name = isTikTokLive ? `🔴 • TikTok Live: ONLINE (${currentViewers})` : `🔴 • TikTok Live: OFFLINE`;
+            const name = isTikTokLive ? `🔴 • TikTok Live: ONLINE` : `🔴 • TikTok Live: OFFLINE`;
             if (tiktokChannel.name !== name) {
                 await tiktokChannel.setName(name);
             }
@@ -265,21 +277,32 @@ client.once('ready', async () => {
         client.guilds.cache.forEach(guild => updateServerStats(guild));
     }, 5 * 60 * 1000);
 
-    // Opcjonalne nasłuchiwanie czatu TikTok jeśli sesja ruszy
-    tiktokConn.on('chat', async data => {
-        const channel = client.channels.cache.find(ch => ch.isTextBased() && 'name' in ch && ch.name === CHANNEL_CZAT_TIKTOK) as TextChannel;
-        if (channel) {
-            const chatEmbed = new EmbedBuilder()
-                .setColor(0xFE2C55)
-                .setAuthor({ name: `Czat TikTok • ${data.uniqueId}` })
-                .setDescription(data.comment)
-                .setFooter({ text: `Aktywni widzowie: ${currentViewers}` })
-                .setTimestamp();
-            await channel.send({ embeds: [chatEmbed] });
+    // Automatyczne sprawdzanie TikToka co 2 minuty
+    setInterval(async () => {
+        try {
+            const roomInfo = await tiktokConn.fetchRoomInfo();
+            if (roomInfo && roomInfo.room_id) {
+                currentViewers = roomInfo.viewer_count || 1;
+                if (!isTikTokLive) {
+                    isTikTokLive = true;
+                    const channel = client.channels.cache.find(ch => ch.isTextBased() && 'name' in ch && ch.name === CHANNEL_OGLOSZENIA) as TextChannel;
+                    if (channel) {
+                        await channel.send({ content: '@everyone', embeds: [createLiveEmbed(currentViewers)] });
+                    }
+                }
+            } else {
+                isTikTokLive = false;
+                currentViewers = 0;
+            }
+            client.guilds.cache.forEach(guild => updateServerStats(guild));
+        } catch (err) {
+            isTikTokLive = false;
+            currentViewers = 0;
+            client.guilds.cache.forEach(guild => updateServerStats(guild));
         }
-    });
+    }, 2 * 60 * 1000);
 
-    // Sprawdzanie Kicka co 2 minuty
+    // Automatyczne sprawdzanie Kicka co 2 minuty
     setInterval(async () => {
         try {
             const response = await fetch(`https://kick.com/api/v2/channels/${KICK_USER}`, {
@@ -305,35 +328,6 @@ client.once('ready', async () => {
             }
         } catch (err) {
             console.error('Błąd Kicka:', err);
-        }
-    }, 2 * 60 * 1000);
-
-    // Stabilne sprawdzanie statusu TikTok co 2 minuty przez fetch
-    setInterval(async () => {
-        try {
-            const res = await fetch(`https://www.tiktok.com/@${TIKTOK_USER}/live`, {
-                headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }
-            });
-            
-            if (res.ok) {
-                const html = await res.text();
-                const liveActive = html.includes('"isLive":true') || html.includes('room_id');
-
-                if (liveActive && !isTikTokLive) {
-                    isTikTokLive = true;
-                    currentViewers = 1; // Domyślna wartość w przypadku braku dokładnego licznika z webview
-                    const channel = client.channels.cache.find(ch => ch.isTextBased() && 'name' in ch && ch.name === CHANNEL_OGLOSZENIA) as TextChannel;
-                    if (channel) {
-                        await channel.send({ content: '@everyone', embeds: [createLiveEmbed(currentViewers)] });
-                    }
-                } else if (!liveActive && isTikTokLive) {
-                    isTikTokLive = false;
-                    currentViewers = 0;
-                }
-            }
-            client.guilds.cache.forEach(guild => updateServerStats(guild));
-        } catch (err) {
-            console.error('Błąd sprawdzania statusu TikTok:', err);
         }
     }, 2 * 60 * 1000);
 
@@ -433,7 +427,32 @@ client.on('interactionCreate', async interaction => {
     if (!interaction.isChatInputCommand()) return;
     const { commandName } = interaction;
 
-    if (commandName === 'balans') {
+    if (commandName === 'set-tiktok-live') {
+        if (interaction.user.id !== MOJE_DISCORD_ID) {
+            await interaction.reply({ content: '❌ Nie masz uprawnień do używania tej komendy!', ephemeral: true });
+            return;
+        }
+
+        await interaction.deferReply({ ephemeral: true });
+        const status = interaction.options.getString('status', true);
+        
+        if (status === 'online') {
+            isTikTokLive = true;
+            const channel = interaction.guild?.channels.cache.find(ch => ch.isTextBased() && 'name' in ch && ch.name === CHANNEL_OGLOSZENIA) as TextChannel;
+            if (channel) {
+                await channel.send({ content: '@everyone', embeds: [createLiveEmbed()] });
+            }
+            await interaction.editReply({ content: '✅ Status TikTok Live zmieniony na **ONLINE** dla @evelinapiekara! Wysłano powiadomienie na ogłoszenia.' });
+        } else {
+            isTikTokLive = false;
+            await interaction.editReply({ content: '✅ Status TikTok Live zmieniony na **OFFLINE**!' });
+        }
+        
+        if (interaction.guild) {
+            updateServerStats(interaction.guild);
+        }
+    }
+    else if (commandName === 'balans') {
         await interaction.deferReply({ ephemeral: true });
         const points = getBalance(interaction.user.id);
         await interaction.editReply({ content: `💰 Posiadasz aktualnie **${points}** PJN-Coins!` });
