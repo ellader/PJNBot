@@ -39,7 +39,7 @@ const TOP_CHANNEL_ID = '1534049518377631826';
 const STATUS_CHANNEL_ID = '1533839197666807838'; // Kanał głosowy zmieniający nazwę na Online/Offline dla Kicka
 const BADGE_CHANNEL_ID = '1532858772089999606'; 
 const NEWS_CHANNEL_ID = '1534228079914913922'; 
-const STREAM_ANNOUNCE_CHANNEL_ID = '1532399010785263799'; // Kanał tekstowy na powiadomienia o streamie LangusPJN
+const STREAM_ANNOUNCE_CHANNEL_ID = '1532399010785263799'; // Kanał tekstowy na powiadomienia o streamie LangusPJN oraz ogłoszenia co godzinę
 
 // Zmienna do śledzenia stanu streama na Kickie, żeby nie spamować powiadomieniami
 let wasLiveOnKick = false; 
@@ -254,6 +254,33 @@ client.once('ready', async () => {
     } catch (error) {
         console.error('Błąd rejestracji komend:', error);
     }
+
+    // === AUTOMATYCZNE OGŁOSZENIA CO GODZINĘ ===
+    setInterval(async () => {
+        try {
+            const channel = await client.channels.fetch(STREAM_ANNOUNCE_CHANNEL_ID);
+            if (channel && channel.isTextBased()) {
+                await channel.send({
+                    embeds: [{
+                        color: 0x5865F2,
+                        title: '☀️ Witamy na PJN Server!',
+                        description: 
+                            'Cieszymy się, że jesteś częścią naszej społeczności! Pamiętaj, aby regularnie wspierać nasze projekty i śledzić oficjalne profile streamingowe:\n\n' +
+                            '🔗 **TikTok**\n' +
+                            'tiktok.com/@languspjn\n\n' +
+                            '🔗 **Kick**\n' +
+                            'kick.com/LangusPJN\n\n' +
+                            '💡 **Społeczność**\n' +
+                            'Zostaw po sobie ślad, zaproś znajomych na nasz serwer Discord i buduj z nami najlepszą społeczność w sieci! 🚀\n\n' +
+                            '_Życzymy aby Twoja obecność na naszym serwerze przebiegła jak najlepiej - LangusPJN i ellader_',
+                        image: { url: 'https://cdn.discordapp.com/attachments/1532862421729808565/1532865034642919574/1784490427936.png?ex=6a73048f&is=6a71b30f&hm=31f87fb4075d466294e06678a4b5798c1155648d55c5be4a8cca17afae3b56eb&' },
+                        footer: { text: 'PJN System Automatyczny' },
+                        timestamp: new Date().toISOString()
+                    }]
+                });
+            }
+        } catch (err) {}
+    }, 60 * 60 * 1000);
 
     // === AUTOMATYCZNY MONITOR KICK.COM (SPRAWDZANIE CO 1 MINUTĘ) ===
     setInterval(async () => {
