@@ -47,8 +47,8 @@ function isAuthorized(userId: string): boolean {
     return adminIds.includes(userId);
 }
 
-// Funkcja generująca treść rankingu TOP 10
-async function getTopEmbedData() {
+// Funkcja generująca treść rankingu TOP 10 z bezpiecznym pobieraniem nazw użytkowników
+async function getTopEmbedData(guild: any) {
     const topUsers = await UserModel.find().sort({ balance: -1 }).limit(10);
     
     if (topUsers.length === 0) {
@@ -60,10 +60,28 @@ async function getTopEmbedData() {
     }
 
     let desc = 'Ranking jest automatycznie aktualizowany co 5 minut na podstawie aktywności w bazie danych.\n\n**Najbogatsi użytkownicy**\n';
-    topUsers.forEach((u, index) => {
+    
+    for (let index = 0; index < topUsers.length; index++) {
+        const u = topUsers[index];
         const medal = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `**${index + 1}.**`;
-        desc += `${medal} <@${u.userId}> — **${u.balance} Coins**\n`;
-    });
+        
+        let displayName = `<@${u.userId}>`; // Awaryjnie, gdyby nie pobrało użytkownika
+        try {
+            if (guild) {
+                const member = await guild.members.fetch(u.userId).catch(() => null);
+                if (member) {
+                    displayName = `**${member.displayName}**`;
+                } else {
+                    const fetchedUser = await client.users.fetch(u.userId).catch(() => null);
+                    if (fetchedUser) {
+                        displayName = `**${fetchedUser.username}**`;
+                    }
+                }
+            }
+        } catch (e) {}
+
+        desc += `${medal} ${displayName} — **${u.balance} Coins**\n`;
+    }
 
     return {
         color: 0xFFD700,
@@ -183,7 +201,7 @@ client.once('ready', async () => {
             const channel = await client.channels.fetch(TOP_CHANNEL_ID);
             if (!channel || !channel.isTextBased()) return;
 
-            const embedData = await getTopEmbedData();
+            const embedData = await getTopEmbedData(channel.guild);
             const messages = await channel.messages.fetch({ limit: 5 });
             const botMessage = messages.find(m => m.author.id === client.user?.id);
 
@@ -218,7 +236,7 @@ client.on('interactionCreate', async interaction => {
 
         // 2. /topka
         else if (commandName === 'topka') {
-            const embedData = await getTopEmbedData();
+            const embedData = await getTopEmbedData(interaction.guild);
             await interaction.reply({ embeds: [embedData] });
             return;
         }
