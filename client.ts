@@ -3,7 +3,8 @@ import {
     GatewayIntentBits, 
     REST, 
     Routes, 
-    SlashCommandBuilder, 
+    SlashCommandBuilder,
+    TextChannel,
     PermissionFlagsBits 
 } from 'discord.js';
 import mongoose from 'mongoose';
@@ -30,6 +31,14 @@ const userSchema = new mongoose.Schema({
 });
 
 const UserModel = mongoose.model('User', userSchema);
+
+// Schemat do zapamiętywania kanału i ID ostatniej wiadomości rankingu w bazie
+const configSchema = new mongoose.Schema({
+    key: { type: String, required: true, unique: true },
+    channelId: { type: String, required: true },
+    messageId: { type: String, required: true }
+});
+const ConfigModel = mongoose.model('Config', configSchema);
 
 // === KONFIGURACJA BOTA DISCORD ===
 const token = process.env.DISCORD_BOT_TOKEN;
@@ -109,11 +118,11 @@ async function getTopEmbedData(guild: any) {
         return {
             color: 0xFFD700,
             title: '🏆 TOP 10 - Ranking PJN-Coins',
-            description: 'Ranking jest automatycznie aktualizowany co 5 minut.\n\nBrak danych w rankingu.'
+            description: 'Ranking jest automatycznie aktualizowany co 5 minut.\n\nNajbogatsi użytkownicy\n\nBrak danych w rankingu.'
         };
     }
 
-    let desc = 'Ranking jest automatycznie aktualizowany co 5 minut.\n\n**Najbogatsi użytkownicy**\n';
+    let desc = 'Ranking jest automatycznie aktualizowany co 5 minut.\n\nNajbogatsi użytkownicy\n';
     
     for (let index = 0; index < topUsers.length; index++) {
         const u = topUsers[index];
@@ -135,7 +144,7 @@ async function getTopEmbedData(guild: any) {
             }
         } catch (e) {}
 
-        desc += `${medal} **${userName}** — **${u.balance} PJN-Coins**\n`;
+        desc += `${medal} ${userName} — **${u.balance} PJN-Coins**\n`;
     }
 
     return {
@@ -145,9 +154,81 @@ async function getTopEmbedData(guild: any) {
     };
 }
 
+// Funkcja odpowiedzialna za kasowanie starej wiadomości i wysyłanie nowej co 5 minut
+async function startTopUpdater() {
+    setInterval(async () => {
+        try {
+            const config = await ConfigModel.findOne({ key: 'topka_msg' });
+            if (!config) return;
+
+            const channel = await client.channels.fetch(config.channelId).catch(() => null) as TextChannel;
+            if (!channel) return;
+
+            // 1. Próba znalezienia i usunięcia starej wiadomości
+            const oldMessage = await channel.messages.fetch(config.messageId).catch(() => null);
+            if (oldMessage) {
+                await oldMessage.delete().catch(() => {});
+            }
+
+            // 2. Wygenerowanie i wysłanie nowej wiadomości z rankingiem
+            const embedData = await getTopEmbedData(channel.guild);
+            const newMessage = await channel.send({ embeds: [embedData] });
+
+            // 3. Zapisanie nowego ID wiadomości w bazie danych
+            config.messageId = newMessage.id;
+            await config.save();
+
+            console.log('Skasowano starą i wysłano nową topkę PJN-Coins.');
+        } catch (err) {
+            console.error('Błąd podczas automatycznej aktualizacji (usuwania/wysyłania) topki:', err);
+        }
+    }, 5 * 60 * 1000); // Co 5 minut
+}
+
+// Funkcja odpowiedzialna za wysyłanie ogłoszenia co godzinę z grafiką
+function startHourlyAnnouncements() {
+    setInterval(async () => {
+        try {
+            const channelId = '1532399010785263799'; // Kanał ogłoszeń
+            const channel = await client.channels.fetch(channelId).catch(() => null) as TextChannel;
+            
+            if (!channel) return;
+
+            await channel.send({
+                embeds: [{
+                    color: 0x3498DB,
+                    title: '☀️ Witamy na PJN Server!',
+                    description: 
+                        'Cieszymy się, że jesteś częścią naszej społeczności! Pamiętaj, aby regularnie wspierać nasze projekty i śledzić oficjalne profile streamingowe:\n\n' +
+                        '🔗 **TikTok**\n[tiktok.com/@languspjn](https://tiktok.com/@languspjn)\n\n' +
+                        '🔗 **Kick**\n[kick.com/LangusPJN](https://kick.com/LangusPJN)\n\n' +
+                        '💡 **Społeczność**\n' +
+                        'Zostaw po sobie ślad, zaproś znajomych na nasz serwer Discord i buduj z nami najlepszą społeczność w sieci! 🚀\n\n' +
+                        '*Życzymy aby Twoja obecność na naszym serwerze przebiegła jak najlepiej - LangusPJN i ellader*',
+                    image: {
+                        url: 'https://cdn.discordapp.com/attachments/1532862421729808565/1532865034642919574/1784490427936.png'
+                    },
+                    footer: {
+                        text: 'PJN System Ogłoszeń'
+                    },
+                    timestamp: new Date().toISOString()
+                }]
+            });
+            
+            console.log('Wysłano automatyczne ogłoszenie godzinowe.');
+        } catch (err) {
+            console.error('Błąd podczas wysyłania godzinnego ogłoszenia:', err);
+        }
+    }, 60 * 60 * 1000); // Co 1 godzinę
+}
+
 const commands = [
     new SlashCommandBuilder().setName('portfel').setDescription('Sprawdź stan swoich PJN-Coins w portfelu'),
     new SlashCommandBuilder().setName('topka').setDescription('Zobacz ranking najbogatszych graczy'),
+    new SlashCommandBuilder()
+        .setName('ustaw-topke')
+        .setDescription('Ustaw ten kanał jako automatyczny ranking top 10 (Admin)')
+        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
     new SlashCommandBuilder().setName('daily').setDescription('Odbieraj codzienne 100 PJN-Coins (co 24h)'),
     new SlashCommandBuilder()
         .setName('kostka')
@@ -253,14 +334,11 @@ client.once('ready', async () => {
         console.error('Błąd rejestracji komend:', error);
     }
 
-    // === AUTOMATYCZNE ZADANIA W TLE (np. sprawdzanie streamów / automatyzacje) ===
-    setInterval(async () => {
-        try {
-            // Tutaj możesz umieścić cykliczną logikę (np. sprawdzanie Kick API co kilka minut)
-        } catch (err) {
-            console.error('Błąd w pętli automatycznej:', err);
-        }
-    }, 5 * 60 * 1000); // co 5 minut
+    // Uruchomienie automatycznego cyklu usuwania i wysyłania nowej topki (co 5 min)
+    startTopUpdater();
+
+    // Uruchomienie automatycznego wysyłania ogłoszenia co godzinę z grafiką
+    startHourlyAnnouncements();
 });
 
 client.on('messageCreate', async message => {
@@ -291,6 +369,42 @@ client.on('interactionCreate', async interaction => {
     const { commandName } = interaction;
 
     try {
+        if (commandName === 'ustaw-topke') {
+            if (!isAuthorized(interaction.user.id)) {
+                await interaction.reply({ content: '❌ Nie masz uprawnień!', ephemeral: true });
+                return;
+            }
+
+            await interaction.deferReply({ ephemeral: true });
+            
+            // Opcjonalnie: skasuj poprzednią globalną topkę, jeśli była w bazie, żeby nie dublować
+            const oldConfig = await ConfigModel.findOne({ key: 'topka_msg' });
+            if (oldConfig) {
+                try {
+                    const oldChan = await client.channels.fetch(oldConfig.channelId).catch(() => null) as TextChannel;
+                    if (oldChan) {
+                        const oldMsg = await oldChan.messages.fetch(oldConfig.messageId).catch(() => null);
+                        if (oldMsg) await oldMsg.delete().catch(() => {});
+                    }
+                } catch (e) {}
+            }
+
+            const embedData = await getTopEmbedData(interaction.guild);
+            const sentMessage = await interaction.channel?.send({ embeds: [embedData] });
+
+            if (sentMessage) {
+                await ConfigModel.findOneAndUpdate(
+                    { key: 'topka_msg' },
+                    { channelId: interaction.channelId, messageId: sentMessage.id },
+                    { upsert: true, new: true }
+                );
+                await interaction.editReply({ content: `✅ Pomyślnie ustawiono ten kanał jako automatyczny ranking! Co 5 minut stara wiadomość będzie kasowana, a w jej miejsce wskoczy nowa.` });
+            } else {
+                await interaction.editReply({ content: `❌ Nie udało się wysłać wiadomości na tym kanale.` });
+            }
+            return;
+        }
+
         if (commandName === 'odznaki') {
             await interaction.deferReply({ ephemeral: true });
 
@@ -355,9 +469,243 @@ client.on('interactionCreate', async interaction => {
             return;
         }
 
+        // === GIERKI KASYNOWE ===
+        if (commandName === 'kostka') {
+            await interaction.deferReply();
+            const stawka = interaction.options.getInteger('stawka', true);
+            let user = await UserModel.findOne({ userId: interaction.user.id });
+            if (!user) user = await UserModel.create({ userId: interaction.user.id });
+
+            if (user.balance < stawka || stawka <= 0) {
+                await interaction.editReply({ content: `❌ Nie masz tylu PJN-Coins w portfelu lub stawka jest nieprawidłowa!` });
+                return;
+            }
+
+            user.casinoPlays = (user.casinoPlays || 0) + 1;
+            const rzutGracza = Math.floor(Math.random() * 6) + 1;
+            const rzutBota = Math.floor(Math.random() * 6) + 1;
+
+            if (rzutGracza > rzutBota) {
+                user.balance += stawka;
+                user.consecutiveWins = (user.consecutiveWins || 0) + 1;
+                await user.save();
+                await checkAndAwardBadges(user, interaction.member);
+                await interaction.editReply({ content: `🎲 Wyrzuciłeś **${rzutGracza}**, a bot **${rzutBota}**.\n🎉 **Wygrywasz!** Zyskujesz **${stawka} PJN-Coins**. Stan: **${user.balance}**` });
+            } else if (rzutGracza < rzutBota) {
+                user.balance -= stawka;
+                user.consecutiveWins = 0;
+                await user.save();
+                await interaction.editReply({ content: `🎲 Wyrzuciłeś **${rzutGracza}**, a bot **${rzutBota}**.\n😢 **Przegrywasz** **${stawka} PJN-Coins**. Stan: **${user.balance}**` });
+            } else {
+                await interaction.editReply({ content: `🎲 Wyrzuciłeś **${rzutGracza}**, a bot **${rzutBota}**.\n🤝 **Remis!** Nic nie tracisz ani nie zyskujesz.` });
+            }
+            return;
+        }
+
+        if (commandName === 'moneta') {
+            await interaction.deferReply();
+            const wybor = interaction.options.getString('wybor', true);
+            const stawka = interaction.options.getInteger('stawka', true);
+            let user = await UserModel.findOne({ userId: interaction.user.id });
+            if (!user) user = await UserModel.create({ userId: interaction.user.id });
+
+            if (user.balance < stawka || stawka <= 0) {
+                await interaction.editReply({ content: `❌ Nie masz tylu PJN-Coins w portfelu lub stawka jest nieprawidłowa!` });
+                return;
+            }
+
+            user.casinoPlays = (user.casinoPlays || 0) + 1;
+            const wynik = Math.random() < 0.5 ? 'orzel' : 'reszka';
+
+            if (wybor === wynik) {
+                user.balance += stawka;
+                user.consecutiveWins = (user.consecutiveWins || 0) + 1;
+                await user.save();
+                await checkAndAwardBadges(user, interaction.member);
+                await interaction.editReply({ content: `🪙 Wypadło: **${wynik === 'orzel' ? 'Orzeł' : 'Reszka'}**.\n🎉 Trafiłeś! Wygrywasz **${stawka} PJN-Coins**. Stan: **${user.balance}**` });
+            } else {
+                user.balance -= stawka;
+                user.consecutiveWins = 0;
+                await user.save();
+                await interaction.editReply({ content: `🪙 Wypadło: **${wynik === 'orzel' ? 'Orzeł' : 'Reszka'}**.\n😢 Niestety, przegrywasz **${stawka} PJN-Coins**. Stan: **${user.balance}**` });
+            }
+            return;
+        }
+
+        if (commandName === 'slot') {
+            await interaction.deferReply();
+            const stawka = interaction.options.getInteger('stawka', true);
+            let user = await UserModel.findOne({ userId: interaction.user.id });
+            if (!user) user = await UserModel.create({ userId: interaction.user.id });
+
+            if (user.balance < stawka || stawka <= 0) {
+                await interaction.editReply({ content: `❌ Nie masz tylu PJN-Coins w portfelu lub stawka jest nieprawidłowa!` });
+                return;
+            }
+
+            user.casinoPlays = (user.casinoPlays || 0) + 1;
+            const owoce = ['🍒', '🍋', '🔔', '💎', '7️⃣'];
+            const s1 = owoce[Math.floor(Math.random() * owoce.length)];
+            const s2 = owoce[Math.floor(Math.random() * owoce.length)];
+            const s3 = owoce[Math.floor(Math.random() * owoce.length)];
+
+            if (s1 === s2 && s2 === s3) {
+                const wygrana = stawka * 5;
+                user.balance += wygrana;
+                user.consecutiveWins = (user.consecutiveWins || 0) + 1;
+                await user.save();
+                await checkAndAwardBadges(user, interaction.member);
+                await interaction.editReply({ content: `🎰 [ ${s1} | ${s2} | ${s3} ]\n🏆 **JACKPOT!** Wszystkie symbole takie same! Wygrywasz **${wygrana} PJN-Coins**!` });
+            } else if (s1 === s2 || s2 === s3 || s1 === s3) {
+                const wygrana = stawka * 2;
+                user.balance += wygrana;
+                user.consecutiveWins = (user.consecutiveWins || 0) + 1;
+                await user.save();
+                await checkAndAwardBadges(user, interaction.member);
+                await interaction.editReply({ content: `🎰 [ ${s1} | ${s2} | ${s3} ]\n✨ Dwa symbole takie same! Wygrywasz **${wygrana} PJN-Coins**!` });
+            } else {
+                user.balance -= stawka;
+                user.consecutiveWins = 0;
+                await user.save();
+                await interaction.editReply({ content: `🎰 [ ${s1} | ${s2} | ${s3} ]\n😢 Nic z tego. Przegrywasz **${stawka} PJN-Coins**.` });
+            }
+            return;
+        }
+
+        if (commandName === 'poker') {
+            await interaction.deferReply();
+            const tryb = interaction.options.getString('tryb', true);
+            const stawka = interaction.options.getInteger('stawka', true);
+            let user = await UserModel.findOne({ userId: interaction.user.id });
+            if (!user) user = await UserModel.create({ userId: interaction.user.id });
+
+            if (user.balance < stawka || stawka <= 0) {
+                await interaction.editReply({ content: `❌ Nie masz tylu PJN-Coins w portfelu lub stawka jest nieprawidłowa!` });
+                return;
+            }
+
+            user.casinoPlays = (user.casinoPlays || 0) + 1;
+            const wygrana = Math.random() > 0.5;
+
+            if (wygrana) {
+                user.balance += stawka;
+                user.consecutiveWins = (user.consecutiveWins || 0) + 1;
+                await user.save();
+                await checkAndAwardBadges(user, interaction.member);
+                await interaction.editReply({ content: `🃏 Rozgrywka w pokera (${tryb === 'bot' ? 'z botem' : 'z ludźmi'}): **Wygrywasz** i zyskujesz **${stawka} PJN-Coins**! Stan: **${user.balance}**` });
+            } else {
+                user.balance -= stawka;
+                user.consecutiveWins = 0;
+                await user.save();
+                await interaction.editReply({ content: `🃏 Rozgrywka w pokera (${tryb === 'bot' ? 'z botem' : 'z ludźmi'}): **Przegrywasz** wpisowe **${stawka} PJN-Coins**. Stan: **${user.balance}**` });
+            }
+            return;
+        }
+
+        // === ZARZĄDZANIE ODZNAKAMI (ADMIN) ===
+        if (commandName === 'daj-odznake') {
+            if (!isAuthorized(interaction.user.id)) {
+                await interaction.reply({ content: '❌ Nie masz uprawnień!', ephemeral: true });
+                return;
+            }
+
+            await interaction.deferReply({ ephemeral: true });
+            const targetUser = interaction.options.getUser('uzytkownik', true);
+            const odznaka = interaction.options.getString('odznaka', true);
+
+            let user = await UserModel.findOne({ userId: targetUser.id });
+            if (!user) user = await UserModel.create({ userId: targetUser.id });
+
+            if (!user.badges.includes(odznaka)) {
+                user.badges.push(odznaka);
+                await user.save();
+                await interaction.editReply({ content: `✅ Pomyślnie przyznano odznakę ${odznaka} użytkownikowi <@${targetUser.id}>!` });
+            } else {
+                await interaction.editReply({ content: `⚠️ Użytkownik <@${targetUser.id}> ma już tę odznakę.` });
+            }
+            return;
+        }
+
+        if (commandName === 'zabierz-odznake') {
+            if (!isAuthorized(interaction.user.id)) {
+                await interaction.reply({ content: '❌ Nie masz uprawnień!', ephemeral: true });
+                return;
+            }
+
+            await interaction.deferReply({ ephemeral: true });
+            const targetUser = interaction.options.getUser('uzytkownik', true);
+            const odznaka = interaction.options.getString('odznaka', true);
+
+            let user = await UserModel.findOne({ userId: targetUser.id });
+            if (!user) user = await UserModel.create({ userId: targetUser.id });
+
+            const index = user.badges.indexOf(odznaka);
+            if (index > -1) {
+                user.badges.splice(index, 1);
+                await user.save();
+                await interaction.editReply({ content: `✅ Pomyślnie odebrano odznakę użytkownikowi <@${targetUser.id}>.` });
+            } else {
+                await interaction.editReply({ content: `⚠️ Użytkownik nie posiada takiej odznaki.` });
+            }
+            return;
+        }
+
+        // === STREAMY I OGŁOSZENIA ===
+        if (commandName === 'odpalstream') {
+            await interaction.reply({ content: '🔴 Wymuszono ręczne powiadomienie o streamie LangusPJN!', ephemeral: true });
+            
+            const targetChannel = await client.channels.fetch('1532399010785263799').catch(() => null) || interaction.channel;
+            if (targetChannel && typeof targetChannel.send === 'function') {
+                await targetChannel.send({
+                    content: '@everyone LangusPJN właśnie odpalił stream! Wbijajcie na Kicka!',
+                    embeds: [{
+                        color: 0x00FF00,
+                        title: '🔴 LANGUSPJN JEST NA ŻYWO NA KICKU!',
+                        description: 'Kliknij poniższy link, aby dołączyć do transmisji i wspierać streamera!',
+                        url: 'https://kick.com/languspjn',
+                        timestamp: new Date().toISOString()
+                    }]
+                });
+            }
+            return;
+        }
+
+        if (commandName === 'zakonczstream') {
+            await interaction.reply({ content: '⏹️ Wymuszono zakończenie streama i przywrócenie statusu Offline.', ephemeral: true });
+            return;
+        }
+
+        if (commandName === 'nowosc') {
+            if (!isAuthorized(interaction.user.id)) {
+                await interaction.reply({ content: '❌ Nie masz uprawnień!', ephemeral: true });
+                return;
+            }
+
+            await interaction.deferReply({ ephemeral: true });
+            const tytul = interaction.options.getString('tytul', true);
+            const opis = interaction.options.getString('opis', true);
+
+            const targetChannel = await client.channels.fetch('1532399010785263799').catch(() => null) || interaction.channel;
+            if (targetChannel && typeof targetChannel.send === 'function') {
+                await targetChannel.send({
+                    embeds: [{
+                        color: 0x9B59B6,
+                        title: `🚀 NOWOŚĆ: ${tytul}`,
+                        description: opis,
+                        footer: { text: `Opublikował ${interaction.user.tag}` },
+                        timestamp: new Date().toISOString()
+                    }]
+                });
+                await interaction.editReply({ content: `✅ Nowość została opublikowana pomyślnie!` });
+            } else {
+                await interaction.editReply({ content: `❌ Nie znaleziono kanału do publikacji.` });
+            }
+            return;
+        }
+
         if (commandName === 'dajpunkty') {
             if (!isAuthorized(interaction.user.id)) {
-                await interaction.reply({ content: '❌ Nie masz uprawnień do używania tej komendy!', ephemeral: true });
+                await interaction.reply({ content: '❌ Nie masz uprawnień!', ephemeral: true });
                 return;
             }
 
@@ -382,7 +730,7 @@ client.on('interactionCreate', async interaction => {
 
         if (commandName === 'zabierzpunkty') {
             if (!isAuthorized(interaction.user.id)) {
-                await interaction.reply({ content: '❌ Nie masz uprawnień do używania tej komendy!', ephemeral: true });
+                await interaction.reply({ content: '❌ Nie masz uprawnień!', ephemeral: true });
                 return;
             }
 
@@ -402,7 +750,7 @@ client.on('interactionCreate', async interaction => {
 
         if (commandName === 'rozdaj-wszystkim') {
             if (!isAuthorized(interaction.user.id)) {
-                await interaction.reply({ content: '❌ Nie masz uprawnień do używania tej komendy!', ephemeral: true });
+                await interaction.reply({ content: '❌ Nie masz uprawnień!', ephemeral: true });
                 return;
             }
 
@@ -418,14 +766,13 @@ client.on('interactionCreate', async interaction => {
 
         if (commandName === 'testogloszenia') {
             if (!isAuthorized(interaction.user.id)) {
-                await interaction.reply({ content: '❌ Nie masz uprawnień do używania tej komendy!', ephemeral: true });
+                await interaction.reply({ content: '❌ Nie masz uprawnień!', ephemeral: true });
                 return;
             }
 
             await interaction.reply({ content: 'wysyłanie testowego ogłoszenia...', ephemeral: true });
             
             const tresc = interaction.options.getString('tresc') || 'To jest domyślna treść testowego ogłoszenia.';
-            
             const customChannelOpt = interaction.options.getChannel('kanal');
             let targetChannel: any = customChannelOpt;
 
@@ -452,10 +799,6 @@ client.on('interactionCreate', async interaction => {
                 await interaction.editReply({ content: `❌ Nie udało się znaleźć docelowego kanału.` });
             }
             return;
-        }
-
-        if (!interaction.replied && !interaction.deferred) {
-            await interaction.reply({ content: `Komenda /${commandName} została wykonana.`, ephemeral: true });
         }
 
     } catch (error) {
