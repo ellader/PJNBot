@@ -1,4 +1,4 @@
-import { Client, GatewayIntentBits, TextChannel, REST, Routes, SlashCommandBuilder, EmbedBuilder, ChannelType } from 'discord.js';
+import { Client, GatewayIntentBits, TextChannel, REST, Routes, SlashCommandBuilder, EmbedBuilder, ChannelType, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
 import { WebcastPushConnection } from 'tiktok-live-connector';
 import { joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerStatus } from '@discordjs/voice';
 import ffmpeg from 'ffmpeg-static';
@@ -29,6 +29,9 @@ const CHANNEL_POWITANIA = "witamy";
 const CHANNEL_CZAT_TIKTOK = "czat-tiktok";
 const CHANNEL_GLOSOWY = "🎧 Muza 24/7 - Wejdź i Słuchaj 🎧"; 
 const CHANNEL_TOPKA = "topka-pjn-coins";
+const CHANNEL_GRY_INFO = "pjn-gry-info";
+const CHANNEL_KASYNO = "kasyno";
+const CHANNEL_POKER = "poker";
 
 const MOJE_DISCORD_ID = "1175798371995361343";
 const DRUGI_ADMIN_ID = "1493928957408448563";
@@ -119,6 +122,33 @@ function generateTopkaEmbed(): EmbedBuilder {
     }
     return embed;
 }
+
+function createGryInfoEmbed(): EmbedBuilder {
+    return new EmbedBuilder()
+        .setColor(0x00FFFF)
+        .setTitle('🎮 Centrum Rozrywki i Ekonomii PJN-Coins')
+        .setDescription('Witaj w oficjalnym centrum gier serwera! Zbieraj **PJN-Coins** za aktywność na czacie oraz głosie, a następnie pomnażaj je w kasynie lub rywalizuj z innymi.')
+        .addFields(
+            { 
+                name: '💰 Jak zdobywać PJN-Coins?', 
+                value: '• Pisanie wiadomości na czacie (`1 Coin` za wiadomość)\n• Przebywanie na kanałach głosowych (`1 Coin` na minutę)\n• Odbieranie darmowej nagrody dziennej: `/daily`' 
+            },
+            { 
+                name: '🎰 Kanał #kasyno (Gry solo)', 
+                value: '• `/balans` – Sprawdź stan swojego konta\n• `/daily` – Odbierz codzienne 100 Coins\n• `/kostka [stawka]` – Rzuć wyzwanie botowi na kościach\n• `/moneta [orzel/reszka] [stawka]` – Zagraj w orzeł czy reszka\n• `/quiz` – Odpowiedz na pytanie i zgarnij 50 Coins' 
+            },
+            { 
+                name: '🃏 Kanał #poker (Gry PvP)', 
+                value: '• `/poker [przeciwnik] [stawka]` – Zagraj z innym graczem 1v1 w pokera! Karty trafiają na PW, a pula wędruje do zwycięzcy.' 
+            },
+            { 
+                name: '🏆 Kanał #topka-pjn-coins', 
+                value: '• Sprawdzaj automatyczny ranking 10 najbogatszych graczy na serwerze.' 
+            }
+        )
+        .setFooter({ text: 'PJN System Gier i Ekonomii' })
+        .setTimestamp();
+}
 // -----------------------
 
 const tiktokConn = new WebcastPushConnection(TIKTOK_USER);
@@ -146,6 +176,32 @@ const commands = [
     new SlashCommandBuilder().setName('daily').setDescription('Odbierz codzienną dawkę punktów!'),
     new SlashCommandBuilder().setName('topka').setDescription('Zobacz ranking najbogatszych użytkowników serwera'),
     new SlashCommandBuilder().setName('quiz').setDescription('Zacznij szybki quiz z wiedzy o nagrodę punktową!'),
+    new SlashCommandBuilder()
+        .setName('poker')
+        .setDescription('Zagraj w pokera 1v1 z innym użytkownikiem o PJN-Coins!')
+        .addUserOption(option =>
+            option.setName('przeciwnik')
+                  .setDescription('Wybierz gracza, z którym chcesz zagrać')
+                  .setRequired(true)
+        )
+        .addIntegerOption(option =>
+            option.setName('stawka')
+                  .setDescription('Ile PJN-Coins stawiasz na szali?')
+                  .setRequired(true)
+        ),
+    new SlashCommandBuilder()
+        .setName('rozdaj-wszystkim')
+        .setDescription('Rozdaje określoną ilość PJN-Coins każdemu użytkownikowi i powiadamia ich na PW (Tylko Admin)')
+        .addIntegerOption(option =>
+            option.setName('ilosc')
+                  .setDescription('Ile punktów dać każdemu?')
+                  .setRequired(true)
+        )
+        .addStringOption(option =>
+            option.setName('powod')
+                  .setDescription('Powód przyznania punktów (opcjonalnie)')
+                  .setRequired(false)
+        ),
     new SlashCommandBuilder()
         .setName('set-tiktok-live')
         .setDescription('Ręcznie ustawia status TikTok Live (online/offline)')
@@ -329,11 +385,35 @@ client.once('ready', async () => {
         console.error('Błąd rejestracji komend:', error);
     }
 
+    for (const [_, guild] of client.guilds.cache) {
+        try {
+            let infoChannel = guild.channels.cache.find(ch => ch.isTextBased() && 'name' in ch && ch.name === CHANNEL_GRY_INFO) as TextChannel;
+            if (!infoChannel) {
+                infoChannel = await guild.channels.create({
+                    name: CHANNEL_GRY_INFO,
+                    type: ChannelType.GuildText,
+                    topic: 'Informacje o grach, kasynie i komendach PJN-Coins'
+                }) as TextChannel;
+            }
+            if (infoChannel) {
+                const messages = await infoChannel.messages.fetch({ limit: 5 });
+                const botMsg = messages.find(m => m.author.id === client.user?.id);
+                const infoEmbed = createGryInfoEmbed();
+                if (botMsg) {
+                    await botMsg.edit({ embeds: [infoEmbed] });
+                } else {
+                    await infoChannel.send({ embeds: [infoEmbed] });
+                }
+            }
+        } catch (err) {
+            console.error('Błąd konfiguracji kanału pjn-gry-info:', err);
+        }
+    }
+
     setInterval(() => {
         client.guilds.cache.forEach(guild => updateServerStats(guild));
     }, 5 * 60 * 1000);
 
-    // Automatyczne sprawdzanie TikToka co 2 minuty
     setInterval(async () => {
         try {
             const roomInfo = await tiktokConn.fetchRoomInfo();
@@ -358,7 +438,6 @@ client.once('ready', async () => {
         }
     }, 2 * 60 * 1000);
 
-    // Automatyczne sprawdzanie Kicka co 2 minuty
     setInterval(async () => {
         try {
             const response = await fetch(`https://kick.com/api/v2/channels/${KICK_USER}`, {
@@ -387,13 +466,11 @@ client.once('ready', async () => {
         }
     }, 2 * 60 * 1000);
 
-    // Co 1 minutę dodawaj 1 punkt osobom siedzącym na kanałach głosowych
     setInterval(() => {
         client.guilds.cache.forEach(guild => {
             guild.channels.cache.forEach(channel => {
                 if (channel.type === ChannelType.GuildVoice) {
                     channel.members.forEach(member => {
-                        // Ignoruj boty, wyciszonych przez serwer/siebie lub zmutowanych
                         if (!member.user.bot && !member.voice.selfMute && !member.voice.serverMute && !member.voice.selfDeaf && !member.voice.serverDeaf) {
                             addPoints(member.id, 1);
                         }
@@ -403,7 +480,6 @@ client.once('ready', async () => {
         });
     }, 60 * 1000);
 
-    // Co 10 minut aktualizuj/twórz wiadomość Top 10 na dedykowanym kanale
     setInterval(async () => {
         for (const [_, guild] of client.guilds.cache) {
             try {
@@ -477,7 +553,6 @@ client.on('messageCreate', async message => {
     if (message.author.bot) return;
     if (!message.guild) return;
 
-    // Każda wiadomość to dokładnie 1 PJN Coin
     addPoints(message.author.id, 1);
 
     if (message.channelId === ID_KANALU_DUSZKI) {
@@ -527,8 +602,172 @@ client.on('guildMemberRemove', member => {
 });
 
 client.on('interactionCreate', async interaction => {
+    if (interaction.isButton() && interaction.customId.startsWith('poker_sprawdz_')) {
+        const parts = interaction.customId.split('_');
+        const id1 = parts[2];
+        const id2 = parts[3];
+        const pula = parseInt(parts[4]);
+
+        if (interaction.user.id !== id1 && interaction.user.id !== id2) {
+            await interaction.reply({ content: '❌ Nie możesz rozstrzygnąć cudzej gry!', ephemeral: true });
+            return;
+        }
+
+        const pkt1 = Math.floor(Math.random() * 100);
+        const pkt2 = Math.floor(Math.random() * 100);
+
+        let wygranyId = pkt1 > pkt2 ? id1 : (pkt2 > pkt1 ? id2 : null);
+
+        if (!wygranyId) {
+            addPoints(id1, pula / 2);
+            addPoints(id2, pula / 2);
+            await interaction.update({ content: `🤝 **Remis w pokerze!** Pula została zwrócona na konta graczy.`, embeds: [], components: [] });
+            return;
+        }
+
+        addPoints(wygranyId, pula);
+
+        await interaction.update({
+            content: `🏆 **Rozstrzygnięcie pokera!**\nZwycięzcą zostaje <@${wygranyId}> zgarniając całą pulę: **${pula} PJN-Coins**! 🎉`,
+            embeds: [],
+            components: []
+        });
+        return;
+    }
+
     if (!interaction.isChatInputCommand()) return;
     const { commandName } = interaction;
+    const currentChannelName = interaction.channel && 'name' in interaction.channel ? interaction.channel.name : '';
+
+    if (['kostka', 'moneta', 'quiz', 'daily'].includes(commandName)) {
+        if (currentChannelName !== CHANNEL_KASYNO) {
+            await interaction.reply({ content: `❌ Tę komendę możesz wpisać tylko na kanale <#${interaction.guild?.channels.cache.find(c => c.name === CHANNEL_KASYNO)?.id || CHANNEL_KASYNO}>!`, ephemeral: true });
+            return;
+        }
+    }
+
+    if (commandName === 'poker') {
+        if (currentChannelName !== CHANNEL_POKER) {
+            await interaction.reply({ content: `❌ Komendy `/poker` możesz używać wyłącznie na kanale <#${interaction.guild?.channels.cache.find(c => c.name === CHANNEL_POKER)?.id || CHANNEL_POKER}>!`, ephemeral: true });
+            return;
+        }
+
+        const przeciwnik = interaction.options.getUser('przeciwnik', true);
+        const stawka = interaction.options.getInteger('stawka', true);
+        const gracz1 = interaction.user;
+
+        if (przeciwnik.bot || przeciwnik.id === gracz1.id) {
+            await interaction.reply({ content: '❌ Nie możesz zagrać sam ze sobą lub z botem!', ephemeral: true });
+            return;
+        }
+
+        const balans1 = getBalance(gracz1.id);
+        const balans2 = getBalance(przeciwnik.id);
+
+        if (balans1 < stawka || balans2 < stawka) {
+            await interaction.reply({ content: `❌ Zarówno Ty, jak i przeciwnik musicie posiadać przynajmniej **${stawka} PJN-Coins** na koncie!`, ephemeral: true });
+            return;
+        }
+
+        addPoints(gracz1.id, -stawka);
+        addPoints(przeciwnik.id, -stawka);
+        const pula = stawka * 2;
+
+        const kolory = ['♠️', '♥️', '♦️', '♣️'];
+        const figury = [
+            { name: '2', val: 2 }, { name: '3', val: 3 }, { name: '4', val: 4 }, 
+            { name: '5', val: 5 }, { name: '6', val: 6 }, { name: '7', val: 7 }, 
+            { name: '8', val: 8 }, { name: '9', val: 9 }, { name: '10', val: 10 }, 
+            { name: 'J', val: 11 }, { name: 'Q', val: 12 }, { name: 'K', val: 13 }, { name: 'A', val: 14 }
+        ];
+
+        function losujKarte() {
+            const f = figury[Math.floor(Math.random() * figury.length)];
+            const k = kolory[Math.floor(Math.random() * kolory.length)];
+            return { nazwa: `${f.name}${k}`, val: f.val };
+        }
+
+        const karty1 = [losujKarte(), losujKarte()];
+        const karty2 = [losujKarte(), losujKarte()];
+
+        const embed = new EmbedBuilder()
+            .setColor(0xE67E22)
+            .setTitle('🃏 Pojedynek Pokerowy 1v1')
+            .setDescription(`Gracze: <@${gracz1.id}> kontra <@${przeciwnik.id}>\nStawka każdego: **${stawka} Coins**\nŁączna pula: **${pula} Coins**\n\nKarty zostały rozdane na PW! Kliknij przycisk poniżej, aby odsłonić karty i rozstrzygnąć rozdanie.`);
+
+        const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+            new ButtonBuilder()
+                .setCustomId(`poker_sprawdz_${gracz1.id}_${przeciwnik.id}_${pula}`)
+                .setLabel('Odkryj karty i wyłoń zwycięzcę!')
+                .setStyle(ButtonStyle.Success)
+        );
+
+        try {
+            await gracz1.send(`Twoje karty w pokerze przeciwko <@${przeciwnik.id}>:\n**1.** ${karty1[0].nazwa}\n**2.** ${karty1[1].nazwa}`);
+            await przeciwnik.send(`Twoje karty w pokerze przeciwko <@${gracz1.id}>:\n**1.** ${karty2[0].nazwa}\n**2.** ${karty2[1].nazwa}`);
+        } catch (err) {
+            addPoints(gracz1.id, stawka);
+            addPoints(przeciwnik.id, stawka);
+            await interaction.reply({ content: '❌ Jeden z graczy ma zablokowane wiadomości prywatne (DM)! Odblokuj je, aby zagrać. Wpisowe zostało zwrócone.', ephemeral: true });
+            return;
+        }
+
+        await interaction.reply({ embeds: [embed], components: [row] });
+        return;
+    }
+
+    if (commandName === 'rozdaj-wszystkim') {
+        if (!isAuthorized(interaction.user.id)) {
+            await interaction.reply({ content: '❌ Nie masz uprawnień do używania tej komendy!', ephemeral: true });
+            return;
+        }
+
+        await interaction.deferReply({ ephemeral: true });
+        const ilosc = interaction.options.getInteger('ilosc', true);
+        const powod = interaction.options.getString('powod') || 'Brak powiadamia';
+        const guild = interaction.guild;
+
+        if (!guild) {
+            await interaction.editReply({ content: '❌ Komenda musi być użyta na serwerze!' });
+            return;
+        }
+
+        await guild.members.fetch();
+        let sukcesy = 0;
+        let bledyDM = 0;
+
+        for (const [_, member] of guild.members.cache) {
+            if (!member.user.bot) {
+                addPoints(member.id, ilosc);
+                sukcesy++;
+
+                // Wysyłanie powiadomienia na PW
+                try {
+                    await member.send({
+                        embeds: [
+                            new EmbedBuilder()
+                                .setColor(0x00FF00)
+                                .setTitle('🎁 Otrzymałeś PJN-Coins!')
+                                .setDescription(`Administrator **${interaction.user.username}** rozdał punkty wszystkim użytkownikom na serwerze **${guild.name}**!`)
+                                .addFields(
+                                    { name: '💰 Otrzymana kwota', value: `+${ilosc} PJN-Coins`, inline: true },
+                                    { name: '📌 Powód', value: powod, inline: true }
+                                )
+                                .setTimestamp()
+                        ]
+                    });
+                } catch (err) {
+                    // Użytkownik ma zablokowane PW
+                    bledyDM++;
+                }
+            }
+        }
+
+        await interaction.editReply({ 
+            content: `✅ Rozdano po **${ilosc} PJN-Coins** dla **${sukcesy}** użytkowników!\n*(Wiadomości prywatne dostarczono pomyślnie do ${sukcesy - bledyDM} osób. ${bledyDM} osób miało zablokowane PW).*` 
+        });
+        return;
+    }
 
     if (commandName === 'set-tiktok-live') {
         if (!isAuthorized(interaction.user.id)) {
