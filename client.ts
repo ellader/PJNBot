@@ -211,13 +211,11 @@ const commands = [
         .addUserOption(o => o.setName('uzytkownik').setDescription('Komu').setRequired(true))
         .addStringOption(o => o.setName('odznaka').setDescription('Nazwa odznaki').setRequired(true)),
 
-    // Komenda do ręcznego wywołania ogłoszenia ze zdjęciem i podpisem (Admin)
     new SlashCommandBuilder()
         .setName('ogloszenie')
         .setDescription('Wyślij ogłoszenie ze zdjęciem i podpisem (Admin)')
         .addChannelOption(o => o.setName('kanal').setDescription('Kanał docelowy (opcjonalnie)').setRequired(false)),
 
-    // Komendy Stream Kick LangusPJN
     new SlashCommandBuilder()
         .setName('odpalstream')
         .setDescription('Wymuś ręczne ogłoszenie streama LangusPJN z Kicka'),
@@ -261,7 +259,7 @@ client.once('ready', async () => {
         console.error('Błąd rejestracji komend:', error);
     }
 
-    // === AUTOMATYCZNE OGŁOSZENIA CO GODZINĘ (Z KLIKALNYMI LINKAMI) ===
+    // === AUTOMATYCZNE OGŁOSZENIA CO GODZINĘ ===
     setInterval(async () => {
         try {
             const channel = await client.channels.fetch(STREAM_ANNOUNCE_CHANNEL_ID);
@@ -288,7 +286,7 @@ client.once('ready', async () => {
         } catch (err) {}
     }, 60 * 60 * 1000);
 
-    // === AUTOMATYCZNY MONITOR KICK.COM (SPRAWDZANIE CO 1 MINUTĘ) ===
+    // === AUTOMATYCZNY MONITOR KICK.COM ===
     setInterval(async () => {
         try {
             const response = await fetch('https://kick.com/api/v2/channels/LangusPJN');
@@ -303,7 +301,6 @@ client.once('ready', async () => {
             const kickLink = 'https://kick.com/LangusPJN';
 
             for (const [_, guild] of client.guilds.cache) {
-                // 1. Obsługa kanału statusu (głosowego)
                 if (STATUS_CHANNEL_ID) {
                     const voiceChannel = await guild.channels.fetch(STATUS_CHANNEL_ID).catch(() => null);
                     if (voiceChannel && voiceChannel.isVoiceBased()) {
@@ -314,7 +311,6 @@ client.once('ready', async () => {
                     }
                 }
 
-                // 2. Obsługa powiadomienia o starcie/końcu transmisji
                 if (isLive && !wasLiveOnKick) {
                     wasLiveOnKick = true;
                     if (STREAM_ANNOUNCE_CHANNEL_ID) {
@@ -454,18 +450,30 @@ client.once('ready', async () => {
     } catch (err) {}
 });
 
+// === BEZPIECZNE NALICZANIE WIADOMOŚCI I EMOTEK ===
 client.on('messageCreate', async message => {
     if (message.author.bot || !message.guild) return;
 
-    let user = await UserModel.findOne({ userId: message.author.id });
-    if (!user) user = await UserModel.create({ userId: message.author.id });
+    try {
+        let user = await UserModel.findOne({ userId: message.author.id });
+        if (!user) {
+            user = await UserModel.create({ userId: message.author.id });
+        }
 
-    user.messageCount += 1;
-    const customEmojis = message.content.match(/<a?:\w+:\d+>/g);
-    if (customEmojis) user.emojiCount += customEmojis.length;
+        // Zabezpieczenie przed wartościami undefined/null w starej bazie danych
+        user.messageCount = (user.messageCount || 0) + 1;
 
-    await user.save();
-    await checkAndAwardBadges(user, message.member);
+        // Wykrywanie niestandardowych emotek Discorda (format <:nazwa:id> lub <a:nazwa:id>)
+        const customEmojis = message.content.match(/<a?:\w+:\d+>/g);
+        if (customEmojis) {
+            user.emojiCount = (user.emojiCount || 0) + customEmojis.length;
+        }
+
+        await user.save();
+        await checkAndAwardBadges(user, message.member);
+    } catch (error) {
+        console.error('Błąd podczas naliczania wiadomości:', error);
+    }
 });
 
 client.on('interactionCreate', async interaction => {
@@ -674,7 +682,7 @@ client.on('interactionCreate', async interaction => {
                     thumbnail: { url: targetUser.displayAvatarURL() },
                     fields: [
                         { name: '🏅 Zdobyte Odznaki', value: badgeText, inline: false },
-                        { name: '📊 Statystyki Aktywności', value: `💬 Wiadomości: **${user.messageCount}**\n😂 Użyte emotki: **${user.emojiCount}**\n💰 Portfel: **${user.balance} PJN-Coins**`, inline: false }
+                        { name: '📊 Statystyki Aktywności', value: `💬 Wiadomości: **${user.messageCount || 0}**\n😂 Użyte emotki: **${user.emojiCount || 0}**\n💰 Portfel: **${user.balance} PJN-Coins**`, inline: false }
                     ],
                     footer: { text: 'System Odznak PJN-Coins' }
                 }],
