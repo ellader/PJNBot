@@ -261,7 +261,7 @@ client.once('ready', async () => {
         console.error('Błąd rejestracji komend:', error);
     }
 
-    // === AUTOMATYCZNE OGŁOSZENIA CO GODZINĘ ===
+    // === AUTOMATYCZNE OGŁOSZENIA CO GODZINĘ (Z KLIKALNYMI LINKAMI) ===
     setInterval(async () => {
         try {
             const channel = await client.channels.fetch(STREAM_ANNOUNCE_CHANNEL_ID);
@@ -273,9 +273,9 @@ client.once('ready', async () => {
                         description: 
                             'Cieszymy się, że jesteś częścią naszej społeczności! Pamiętaj, aby regularnie wspierać nasze projekty i śledzić oficjalne profile streamingowe:\n\n' +
                             '🔗 **TikTok**\n' +
-                            'tiktok.com/@languspjn\n\n' +
+                            '[tiktok.com/@languspjn](https://tiktok.com/@languspjn)\n\n' +
                             '🔗 **Kick**\n' +
-                            'kick.com/LangusPJN\n\n' +
+                            '[kick.com/LangusPJN](https://kick.com/LangusPJN)\n\n' +
                             '💡 **Społeczność**\n' +
                             'Zostaw po sobie ślad, zaproś znajomych na nasz serwer Discord i buduj z nami najlepszą społeczność w sieci! 🚀\n\n' +
                             '_Życzymy aby Twoja obecność na naszym serwerze przebiegła jak najlepiej - LangusPJN i ellader_',
@@ -746,9 +746,9 @@ client.on('interactionCreate', async interaction => {
                     description: 
                         'Cieszymy się, że jesteś częścią naszej społeczności! Pamiętaj, aby regularnie wspierać nasze projekty i śledzić oficjalne profile streamingowe:\n\n' +
                         '🔗 **TikTok**\n' +
-                        'tiktok.com/@languspjn\n\n' +
+                        '[tiktok.com/@languspjn](https://tiktok.com/@languspjn)\n\n' +
                         '🔗 **Kick**\n' +
-                        'kick.com/LangusPJN\n\n' +
+                        '[kick.com/LangusPJN](https://kick.com/LangusPJN)\n\n' +
                         '💡 **Społeczność**\n' +
                         'Zostaw po sobie ślad, zaproś znajomych na nasz serwer Discord i buduj z nami najlepszą społeczność w sieci! 🚀\n\n' +
                         '_Życzymy aby Twoja obecność na naszym serwerze przebiegła jak najlepiej - LangusPJN i ellader_',
