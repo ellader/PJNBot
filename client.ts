@@ -36,10 +36,10 @@ const token = process.env.DISCORD_BOT_TOKEN;
 if (!token) throw new Error("Brak tokena Discord bota!");
 
 const TOP_CHANNEL_ID = '1534049518377631826'; 
-const STATUS_CHANNEL_ID = '1532336632982798417'; // Kanał głosowy zmieniający nazwę na Online/Offline
+const STATUS_CHANNEL_ID = '1533839105962676254'; // Kanał głosowy zmieniający nazwę na Online/Offline
 const BADGE_CHANNEL_ID = '1532858772089999606'; 
 const NEWS_CHANNEL_ID = '1534228079914913922'; 
-const STREAM_ANNOUNCE_CHANNEL_ID = '1533839105962676254'; // Dedykowany kanał na powiadomienia o streamie
+const STREAM_ANNOUNCE_CHANNEL_ID = '1532399010785263799'; // Kanał tekstowy na powiadomienia o streamie LangusPJN
 
 const client = new Client({
     intents: [
@@ -628,7 +628,7 @@ client.on('interactionCreate', async interaction => {
             const tiktokLink = 'https://www.tiktok.com/@LangusPJN/live';
 
             try {
-                // 1. Zmiana nazwy kanału statusu na Online
+                // 1. Zmiana nazwy kanału głosowego statusu na Online
                 if (STATUS_CHANNEL_ID) {
                     const voiceChannel = await interaction.guild?.channels.fetch(STATUS_CHANNEL_ID);
                     if (voiceChannel && voiceChannel.isVoiceBased()) {
@@ -636,7 +636,7 @@ client.on('interactionCreate', async interaction => {
                     }
                 }
 
-                // 2. Wysłanie ogłoszenia w ramce na dedykowany kanał z @everyone
+                // 2. Wysłanie ogłoszenia z @everyone na dedykowany kanał tekstowy dla LangusPJN
                 const channel = await interaction.guild?.channels.fetch(STREAM_ANNOUNCE_CHANNEL_ID);
                 if (channel && channel.isTextBased()) {
                     await channel.send({
@@ -644,7 +644,7 @@ client.on('interactionCreate', async interaction => {
                         embeds: [{
                             color: 0xFE2C55, // Kolor motywu TikToka
                             title: `📱 LangusPJN Live na TikTok!`,
-                            description: `**Streamer:** <@${interaction.user.id}>\n\nDołącz do transmisji i zostaw obserwację!`,
+                            description: `**Streamer:** LangusPJN\n\nDołącz do transmisji i zostaw obserwację!`,
                             fields: [
                                 { name: '🔗 Link do transmisji', value: `[Kliknij tutaj, aby oglądać TikTok Live](${tiktokLink})`, inline: false }
                             ],
@@ -664,7 +664,7 @@ client.on('interactionCreate', async interaction => {
 
         else if (commandName === 'zakonczstream') {
             try {
-                // Przywrócenie nazwy kanału statusu na Offline
+                // Przywrócenie nazwy kanału głosowego statusu na Offline
                 if (STATUS_CHANNEL_ID) {
                     const voiceChannel = await interaction.guild?.channels.fetch(STATUS_CHANNEL_ID);
                     if (voiceChannel && voiceChannel.isVoiceBased()) {
