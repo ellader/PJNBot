@@ -460,10 +460,8 @@ client.on('messageCreate', async message => {
             user = await UserModel.create({ userId: message.author.id });
         }
 
-        // Zabezpieczenie przed wartościami undefined/null w starej bazie danych
         user.messageCount = (user.messageCount || 0) + 1;
 
-        // Wykrywanie niestandardowych emotek Discorda (format <:nazwa:id> lub <a:nazwa:id>)
         const customEmojis = message.content.match(/<a?:\w+:\d+>/g);
         if (customEmojis) {
             user.emojiCount = (user.emojiCount || 0) + customEmojis.length;
@@ -668,13 +666,15 @@ client.on('interactionCreate', async interaction => {
         }
 
         else if (commandName === 'odznaki') {
+            await interaction.deferReply({ ephemeral: true });
+
             const targetUser = interaction.options.getUser('uzytkownik') || interaction.user;
             let user = await UserModel.findOne({ userId: targetUser.id });
             if (!user) user = await UserModel.create({ userId: targetUser.id });
 
-            const badgeText = user.badges.length > 0 ? user.badges.join('\n') : 'Brak odznaki.';
+            const badgeText = user.badges && user.badges.length > 0 ? user.badges.join('\n') : 'Brak odznak.';
 
-            await interaction.reply({
+            await interaction.editReply({
                 embeds: [{
                     color: 0x9B59B6,
                     title: `🛡️ Profil Odznak i Osiągnięć`,
@@ -682,11 +682,10 @@ client.on('interactionCreate', async interaction => {
                     thumbnail: { url: targetUser.displayAvatarURL() },
                     fields: [
                         { name: '🏅 Zdobyte Odznaki', value: badgeText, inline: false },
-                        { name: '📊 Statystyki Aktywności', value: `💬 Wiadomości: **${user.messageCount || 0}**\n😂 Użyte emotki: **${user.emojiCount || 0}**\n💰 Portfel: **${user.balance} PJN-Coins**`, inline: false }
+                        { name: '📊 Statystyki Aktywności', value: `💬 Wiadomości: **${user.messageCount || 0}**\n😂 Użyte emotki: **${user.emojiCount || 0}**\n💰 Portfel: **${user.balance || 0} PJN-Coins**`, inline: false }
                     ],
                     footer: { text: 'System Odznak PJN-Coins' }
-                }],
-                ephemeral: true
+                }]
             });
             return;
         }
@@ -909,6 +908,8 @@ client.on('interactionCreate', async interaction => {
     } catch (error) {
         if (!interaction.replied && !interaction.deferred) {
             await interaction.reply({ content: 'Wystąpił błąd.', ephemeral: true }).catch(() => {});
+        } else if (interaction.deferred) {
+            await interaction.editReply({ content: 'Wystąpił błąd podczas wykonywania tej komendy.' }).catch(() => {});
         }
     }
 });
