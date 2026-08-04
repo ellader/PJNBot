@@ -361,7 +361,7 @@ client.on('interactionCreate', async interaction => {
             return;
         }
 
-        // 8. /rozdaj-wszystkim (z wysyłaniem PW do każdego gracza)
+        // 8. /rozdaj-wszystkim (wysyłanie w ładnej ramce embed)
         else if (commandName === 'rozdaj-wszystkim') {
             if (!isAuthorized(interaction.user.id) && !interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) {
                 await interaction.reply({ content: '❌ Brak uprawnień!', ephemeral: true });
@@ -371,7 +371,7 @@ client.on('interactionCreate', async interaction => {
             await interaction.deferReply({ ephemeral: true });
             
             const ilosc = interaction.options.getInteger('ilosc', true);
-            const powod = interaction.options.getString('powod') || 'Brak powodu';
+            const powod = interaction.options.getString('powod') || 'Brak powiadomienia';
 
             await interaction.guild?.members.fetch();
             const members = interaction.guild?.members.cache.filter(m => !m.user.bot);
@@ -393,16 +393,31 @@ client.on('interactionCreate', async interaction => {
                 await user.save();
                 zaktualizowano++;
 
-                // Wysyłanie wiadomości prywatnej (PW)
                 try {
-                    await member.send(`🎁 **Otrzymałeś prezent!**\nOd administratora: **${interaction.user.username}**\nIlość: **${ilosc} PJN-Coins**\nPowód: *${powod}*`);
+                    await member.send({
+                        embeds: [{
+                            color: 0x00FF00,
+                            title: '🎁 Otrzymałeś PJN-Coins!',
+                            description: `Administrator **${interaction.user.username}** rozdał punkty wszystkim użytkownikom na serwerze **${interaction.guild?.name}**!`,
+                            fields: [
+                                {
+                                    name: '💰 Otrzymana kwota',
+                                    value: `+${ilosc} PJN-Coins`,
+                                    inline: false
+                                },
+                                {
+                                    name: '📌 Powód',
+                                    value: powod,
+                                    inline: false
+                                }
+                            ]
+                        }]
+                    });
                     wyslanePW++;
-                } catch (err) {
-                    // Ignorujemy błąd, jeśli użytkownik ma zablokowane PW
-                }
+                } catch (err) {}
             }
 
-            await interaction.editReply({ content: `✅ Rozdano **${ilosc} PJN-Coins** dla **${zaktualizowano}** użytkowników!\n📩 Wysłano powiadomienia PW do **${wyslanePW}** osób.\n📌 Powód: *${powod}*` });
+            await interaction.editReply({ content: `✅ Rozdano **${ilosc} PJN-Coins** dla **${zaktualizowano}** użytkowników!\n📩 Wysłano powiadomienia PW do **${wyslanePW}** osób.` });
             return;
         }
 
@@ -429,10 +444,27 @@ client.on('interactionCreate', async interaction => {
             user.balance += ilosc;
             await user.save();
 
-            // Próba wysłania PW
             try {
                 const member = await interaction.guild?.members.fetch(targetUser.id);
-                await member?.send(`🎁 **Otrzymałeś prezent!**\nOd administratora: **${interaction.user.username}**\nIlość: **${ilosc} PJN-Coins**`);
+                await member?.send({
+                    embeds: [{
+                        color: 0x00FF00,
+                        title: '🎁 Otrzymałeś PJN-Coins!',
+                        description: `Administrator **${interaction.user.username}** przekazał Ci punkty na serwerze **${interaction.guild?.name}**!`,
+                        fields: [
+                            {
+                                name: '💰 Otrzymana kwota',
+                                value: `+${ilosc} PJN-Coins`,
+                                inline: false
+                            },
+                            {
+                                name: '📌 Powód',
+                                value: 'Przekazanie indywidualne',
+                                inline: false
+                            }
+                        ]
+                    }]
+                });
             } catch (err) {}
 
             await interaction.reply({ content: `✅ Dodano **${ilosc} PJN-Coins** dla użytkownika <@${targetUser.id}>. Nowy stan: **${user.balance}**`, ephemeral: true });
