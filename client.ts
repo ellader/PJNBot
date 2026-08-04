@@ -38,6 +38,7 @@ if (!token) throw new Error("Brak tokena Discord bota!");
 const TOP_CHANNEL_ID = '1534049518377631826'; 
 const CLOCK_CHANNEL_ID = '1532336632982798417'; 
 const BADGE_CHANNEL_ID = '1532858772089999606'; 
+const NEWS_CHANNEL_ID = '1534228079914913922'; // Kanał nowości
 
 const client = new Client({
     intents: [
@@ -164,7 +165,6 @@ const commands = [
         .addStringOption(o => o.setName('tryb').setDescription('Tryb gry').setRequired(true).addChoices({name: 'Z ludźmi', value: 'ludzie'}, {name: 'Z botem', value: 'bot'}))
         .addIntegerOption(o => o.setName('stawka').setDescription('Wpisowe').setRequired(true)),
     
-    // System odznak z ograniczeniem do listy wyboru (choices)
     new SlashCommandBuilder()
         .setName('odznaki')
         .setDescription('Wyświetla profil z odznakami i statystykami')
@@ -196,6 +196,12 @@ const commands = [
         .setDescription('Odbierz odznakę (Admin)')
         .addUserOption(o => o.setName('uzytkownik').setDescription('Komu').setRequired(true))
         .addStringOption(o => o.setName('odznaka').setDescription('Nazwa odznaki').setRequired(true)),
+
+    new SlashCommandBuilder()
+        .setName('nowosc')
+        .setDescription('Opublikuj nową funkcję lub aktualizację na kanale nowości (Admin)')
+        .addStringOption(o => o.setName('tytul').setDescription('Tytuł nowości').setRequired(true))
+        .addStringOption(o => o.setName('opis').setDescription('Szczegółowy opis zmiany').setRequired(true)),
 
     new SlashCommandBuilder()
         .setName('rozdaj-wszystkim')
@@ -267,6 +273,49 @@ client.once('ready', async () => {
         } catch (err) {}
     }, 5 * 60 * 1000);
 
+    // Inicjalizacja spisu nowości na kanale nowości (jeśli jest pusty)
+    try {
+        if (NEWS_CHANNEL_ID) {
+            const channel = await client.channels.fetch(NEWS_CHANNEL_ID);
+            if (channel && channel.isTextBased()) {
+                const messages = await channel.messages.fetch({ limit: 5 });
+                if (messages.size === 0) {
+                    const features = [
+                        {
+                            title: '🛡️ Zaawansowany System Odznak i Osiągnięć',
+                            desc: 'Wprowadzono automatyczne nagradzanie aktywności. Zdobywaj unikalne odznaki za pisanie wiadomości, aktywność głosową, handel i gry kasynowe!'
+                        },
+                        {
+                            title: '💰 Oficjalna waluta PJN-Coins i Ekonomia',
+                            desc: 'Rozbudowany system portfela, codzienne nagrody (`/daily`), ranking najbogatszych (`/topka`) oraz gry hazardowe (kostka, moneta, sloty, poker).'
+                        },
+                        {
+                            title: '🎉 Powiadomienia prywatne (DM)',
+                            desc: 'Bot od teraz automatycznie informuje Cię w wiadomości prywatnej za każdym razem, gdy odblokujesz nową odznakę.'
+                        }
+                    ];
+
+                    await channel.send({ content: '@everyone 📢 **Oficjalne podsumowanie funkcji oraz nowości dostępnych na serwerze:**' });
+
+                    for (const f of features) {
+                        await channel.send({
+                            embeds: [{
+                                color: 0x5865F2,
+                                title: f.title,
+                                description: f.desc,
+                                footer: { text: 'System Informacji PJN • Nowości' },
+                                timestamp: new Date().toISOString()
+                            }]
+                        });
+                    }
+                    console.log('Wysłano początkową listę nowości na kanał!');
+                }
+            }
+        }
+    } catch (err) {
+        console.error('Błąd podczas inicjalizacji nowości:', err);
+    }
+
     try {
         const channel = await client.channels.fetch(BADGE_CHANNEL_ID);
         if (channel && channel.isTextBased()) {
@@ -296,7 +345,7 @@ client.once('ready', async () => {
                     },
                     {
                         name: '🎲 Kasyno i Gry',
-                        value: '• 🎲 **Nałogowy Graczyk** — Rozegranie 20 gier w kasynie\n• 🎰 **Szczęściarz z Kasyna** — Wygranie w slocie (3 takie same symbole)\n• 🃏 **Szuler z Las Vegas** — Wygranie w pokerze\n• 🍀 **Ulubieniec Fortuna** — Wygranie 3 gier z rzędu w kasynie',
+                        value: '• 🎲 **Nałogowy Graczyk** — Rozegranie 20 gier w kasynie\n• 🎰 **Szczęściarz z Kasyna** — Wygranie w slocie\n• 🃏 **Szuler z Las Vegas** — Wygranie w pokerze\n• 🍀 **Ulubieniec Fortuna** — Wygranie 3 gier z rzędu w kasynie',
                         inline: false
                     },
                     {
@@ -306,7 +355,7 @@ client.once('ready', async () => {
                     },
                     {
                         name: '⚙️ Jak to działa?',
-                        value: 'System działa w pełni **automatycznie w tle**. Gdy tylko spełnisz wymaganie któregoś zadania, bot sam przypisze Ci odznakę, zapisze ją w chmurze i wyśle powiadomienie na Twoje wiadomości prywatne!',
+                        value: 'System działa w pełni **automatycznie w tle**. Gdy tylko spełnisz wymaganie, bot sam przypisze Ci odznakę i wyśle powiadomienie na Twoje wiadomości prywatne!',
                         inline: false
                     }
                 ],
@@ -534,7 +583,6 @@ client.on('interactionCreate', async interaction => {
             return;
         }
 
-        // === /odznaki ===
         else if (commandName === 'odznaki') {
             const targetUser = interaction.options.getUser('uzytkownik') || interaction.user;
             let user = await UserModel.findOne({ userId: targetUser.id });
@@ -598,6 +646,43 @@ client.on('interactionCreate', async interaction => {
             user.badges = user.badges.filter((b: string) => b !== odznaka);
             await user.save();
             await interaction.reply({ content: `⚠️ Usunięto odznakę **${odznaka}** użytkownikowi <@${targetUser.id}>.`, ephemeral: true });
+            return;
+        }
+
+        else if (commandName === 'nowosc') {
+            if (!isAuthorized(interaction.user.id) && !interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) {
+                await interaction.reply({ content: '❌ Brak uprawnień!', ephemeral: true });
+                return;
+            }
+            const tytul = interaction.options.getString('tytul', true);
+            const opis = interaction.options.getString('opis', true);
+
+            try {
+                const channel = await client.channels.fetch(NEWS_CHANNEL_ID);
+                if (!channel || !channel.isTextBased()) {
+                    await interaction.reply({ content: '❌ Nie znaleziono kanału nowości!', ephemeral: true });
+                    return;
+                }
+
+                await channel.send({
+                    content: '@everyone 🚀 **Pojawiła się nowość na serwerze!**',
+                    embeds: [{
+                        color: 0x00FF7F,
+                        title: `✨ ${tytul}`,
+                        description: opis,
+                        fields: [
+                            { name: '👤 Opublikował', value: `<@${interaction.user.id}>`, inline: true }
+                        ],
+                        footer: { text: 'System Informacji PJN • Aktualizacja na bieżąco' },
+                        timestamp: new Date().toISOString()
+                    }]
+                });
+
+                await interaction.reply({ content: `✅ Pomyślnie dodano nowość na kanał <#${NEWS_CHANNEL_ID}>!`, ephemeral: true });
+            } catch (err) {
+                console.error(err);
+                await interaction.reply({ content: '❌ Wystąpił błąd podczas publikowania nowości.', ephemeral: true });
+            }
             return;
         }
 
