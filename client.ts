@@ -1,4 +1,4 @@
-import { Client, GatewayIntentBits, TextChannel, REST, Routes, SlashCommandBuilder, EmbedBuilder } from 'discord.js';
+import { Client, GatewayIntentBits, TextChannel, REST, Routes, SlashCommandBuilder, EmbedBuilder, ChannelType } from 'discord.js';
 import { WebcastPushConnection } from 'tiktok-live-connector';
 import { joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerStatus } from '@discordjs/voice';
 import ffmpeg from 'ffmpeg-static';
@@ -28,6 +28,7 @@ const CHANNEL_OGLOSZENIA = "ogłoszenia";
 const CHANNEL_POWITANIA = "witamy";
 const CHANNEL_CZAT_TIKTOK = "czat-tiktok";
 const CHANNEL_GLOSOWY = "🎧 Muza 24/7 - Wejdź i Słuchaj 🎧"; 
+const CHANNEL_TOPKA = "topka-pjn-coins";
 
 const MOJE_DISCORD_ID = "1175798371995361343";
 const DRUGI_ADMIN_ID = "1493928957408448563";
@@ -91,6 +92,32 @@ function getBalance(userId: string): number {
 
 function isAuthorized(userId: string): boolean {
     return userId === MOJE_DISCORD_ID || userId === DRUGI_ADMIN_ID;
+}
+
+function generateTopkaEmbed(): EmbedBuilder {
+    const eco = loadEconomy();
+    const sorted = Object.entries(eco)
+        .sort((a, b) => b[1].balance - a[1].balance)
+        .slice(0, 10);
+
+    const embed = new EmbedBuilder()
+        .setColor(0xFFD700)
+        .setTitle('🏆 TOP 10 - Ranking PJN-Coins')
+        .setDescription('Ranking jest automatycznie aktualizowany co 10 minut na podstawie aktywności (pisanie oraz czas na kanałach głosowych).')
+        .setTimestamp();
+
+    if (sorted.length === 0) {
+        embed.addFields({ name: 'Status', value: 'Brak danych w rankingu.' });
+    } else {
+        let desc = '';
+        sorted.forEach(([userId, data], index) => {
+            const medals = ['🥇', '🥈', '🥉'];
+            const prefix = medals[index] || `**${index + 1}.**`;
+            desc += `${prefix} <@${userId}> — \`${data.balance} Coins\`\n`;
+        });
+        embed.addFields({ name: 'Najbogatsi użytkownicy', value: desc });
+    }
+    return embed;
 }
 // -----------------------
 
@@ -360,6 +387,53 @@ client.once('ready', async () => {
         }
     }, 2 * 60 * 1000);
 
+    // Co 1 minutę dodawaj 1 punkt osobom siedzącym na kanałach głosowych
+    setInterval(() => {
+        client.guilds.cache.forEach(guild => {
+            guild.channels.cache.forEach(channel => {
+                if (channel.type === ChannelType.GuildVoice) {
+                    channel.members.forEach(member => {
+                        // Ignoruj boty, wyciszonych przez serwer/siebie lub zmutowanych
+                        if (!member.user.bot && !member.voice.selfMute && !member.voice.serverMute && !member.voice.selfDeaf && !member.voice.serverDeaf) {
+                            addPoints(member.id, 1);
+                        }
+                    });
+                }
+            });
+        });
+    }, 60 * 1000);
+
+    // Co 10 minut aktualizuj/twórz wiadomość Top 10 na dedykowanym kanale
+    setInterval(async () => {
+        for (const [_, guild] of client.guilds.cache) {
+            try {
+                let topChannel = guild.channels.cache.find(ch => ch.isTextBased() && 'name' in ch && ch.name === CHANNEL_TOPKA) as TextChannel;
+                
+                if (!topChannel) {
+                    topChannel = await guild.channels.create({
+                        name: CHANNEL_TOPKA,
+                        type: ChannelType.GuildText,
+                        topic: 'Automatyczny ranking najbogatszych użytkowników PJN Server'
+                    }) as TextChannel;
+                }
+
+                if (topChannel) {
+                    const messages = await topChannel.messages.fetch({ limit: 5 });
+                    const botMessage = messages.find(m => m.author.id === client.user?.id);
+                    const embed = generateTopkaEmbed();
+
+                    if (botMessage) {
+                        await botMessage.edit({ embeds: [embed] });
+                    } else {
+                        await topChannel.send({ embeds: [embed] });
+                    }
+                }
+            } catch (err) {
+                console.error('Błąd aktualizacji automatycznej topki:', err);
+            }
+        }
+    }, 10 * 60 * 1000);
+
     setTimeout(() => {
         client.guilds.cache.forEach(async guild => {
             updateServerStats(guild);
@@ -403,8 +477,8 @@ client.on('messageCreate', async message => {
     if (message.author.bot) return;
     if (!message.guild) return;
 
-    const earned = Math.floor(Math.random() * 3) + 1;
-    addPoints(message.author.id, earned);
+    // Każda wiadomość to dokładnie 1 PJN Coin
+    addPoints(message.author.id, 1);
 
     if (message.channelId === ID_KANALU_DUSZKI) {
         const pings = `<@&${ID_RANGI_DUSZKOWIEC}> <@&${ID_RANGI_MODERATOR}> <@&${ID_RANGI_ADMIN}>`;
@@ -561,27 +635,7 @@ client.on('interactionCreate', async interaction => {
     }
     else if (commandName === 'topka') {
         await interaction.deferReply();
-        const eco = loadEconomy();
-        const sorted = Object.entries(eco)
-            .sort((a, b) => b[1].balance - a[1].balance)
-            .slice(0, 10);
-
-        const embed = new EmbedBuilder()
-            .setColor(0xFFD700)
-            .setTitle('🏆 Ranking Najbogatszych (PJN-Coins)')
-            .setTimestamp();
-
-        if (sorted.length === 0) {
-            embed.setDescription('Brak danych w rankingu.');
-        } else {
-            let desc = '';
-            sorted.forEach(([userId, data], index) => {
-                desc += `**${index + 1}.** <@${userId}> — \`${data.balance} Coins\`\n`;
-            });
-            embed.setDescription(desc);
-        }
-
-        await interaction.editReply({ embeds: [embed] });
+        await interaction.editReply({ embeds: [generateTopkaEmbed()] });
     }
     else if (commandName === 'dodajpunkty') {
         if (!isAuthorized(interaction.user.id)) {
