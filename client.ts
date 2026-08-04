@@ -25,13 +25,9 @@ const userSchema = new mongoose.Schema({
 
 const UserModel = mongoose.model('User', userSchema);
 
-// === KONFIGURACJA BOTA DISCORD ===
-const TOKEN = process.env.DISCORD_TOKEN;
-const CLIENT_ID = process.env.CLIENT_ID;
-
-if (!TOKEN || !CLIENT_ID) {
-    throw new Error("Brak zmiennej środowiskowej DISCORD_TOKEN lub CLIENT_ID!");
-}
+// === KONFIGURACJA BOTA DISCORD (poprawiona nazwa zmiennej na DISCORD_BOT_TOKEN) ===
+const token = process.env.DISCORD_BOT_TOKEN;
+if (!token) throw new Error("Brak tokena Discord bota!");
 
 const client = new Client({
     intents: [
@@ -43,9 +39,9 @@ const client = new Client({
     ]
 });
 
-// Pomocnicza funkcja sprawdzająca czy użytkownik to administrator (lub główny właściciel)
+// Pomocnicza funkcja sprawdzająca czy użytkownik to administrator
 function isAuthorized(userId: string): boolean {
-    const adminIds = ['1179427181515284562']; // ID głównego właściciela lub administratorów
+    const adminIds = ['1175798371995361343', '1493928957408448563']; // Twoje ID oraz drugiego admina
     return adminIds.includes(userId);
 }
 
@@ -96,20 +92,18 @@ const commands = [
                 .setRequired(true))
 ].map(command => command.toJSON());
 
-const rest = new REST({ version: '10' }).setToken(TOKEN);
-
-client.on('ready', async () => {
+client.once('ready', async () => {
     console.log(`Zalogowano jako ${client.user?.tag}!`);
 
+    const rest = new REST({ version: '10' }).setToken(token);
     try {
-        console.log('Rejestrowanie komend (/) ...');
-        await rest.put(
-            Routes.applicationCommands(CLIENT_ID),
-            { body: commands },
-        );
+        // Automatyczne pobranie ID pierwszej gildii, na której jest bot, do rejestracji komend
+        for (const [_, guild] of client.guilds.cache) {
+            await rest.put(Routes.applicationGuildCommands(client.user!.id, guild.id), { body: commands });
+        }
         console.log('Zarejestrowano komendy!');
     } catch (error) {
-        console.error(error);
+        console.error('Błąd rejestracji komend:', error);
     }
 });
 
@@ -139,13 +133,13 @@ client.on('interactionCreate', async interaction => {
                 return;
             }
 
-            let desc = 'Najbogatszy użytkownicy:\n\n';
+            let desc = '';
             topUsers.forEach((u, index) => {
                 const medal = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `**${index + 1}.**`;
                 desc += `${medal} <@${u.userId}> — **${u.balance} Coins**\n`;
             });
 
-            await interaction.reply({ content: `🏆 **TOP 10 - Ranking PJN-Coins**\n\n${desc}` });
+            await interaction.reply({ embeds: [{ color: 0xFFD700, title: '🏆 TOP 10 - Ranking PJN-Coins', description: desc }] });
             return;
         }
 
@@ -244,4 +238,4 @@ client.on('interactionCreate', async interaction => {
     }
 });
 
-client.login(TOKEN);
+client.login(token);
