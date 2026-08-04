@@ -280,7 +280,7 @@ client.on('interactionCreate', async interaction => {
             return;
         }
 
-        // 6. /slot (automaty)
+        // 6. /slot
         else if (commandName === 'slot') {
             const stawka = interaction.options.getInteger('stawka', true);
             if (stawka <= 0) {
@@ -305,12 +305,12 @@ client.on('interactionCreate', async interaction => {
 
             let wygrana = 0;
             if (s1 === s2 && s2 === s3) {
-                wygrana = stawka * 5; // Trzy takie same = 5x wygrana
+                wygrana = stawka * 5;
                 user.balance += wygrana;
                 await user.save();
                 await interaction.reply({ content: `🎰 [ ${s1} | ${s2} | ${s3} ]\n🎉 **JACKPOT!** Wszystkie symbole takie same! Wygrywasz **${wygrana} PJN-Coins**! Nowy balans: **${user.balance}**` });
             } else if (s1 === s2 || s2 === s3 || s1 === s3) {
-                wygrana = Math.floor(stawka * 1.5); // Dwa takie same = 1.5x wygrana
+                wygrana = Math.floor(stawka * 1.5);
                 user.balance += (wygrana - stawka);
                 await user.save();
                 await interaction.reply({ content: `🎰 [ ${s1} | ${s2} | ${s3} ]\n✨ **Wygrana!** Dwa symbole są takie same. Zyskujesz **${wygrana - stawka} PJN-Coins**. Nowy balans: **${user.balance}**` });
@@ -322,7 +322,7 @@ client.on('interactionCreate', async interaction => {
             return;
         }
 
-        // 7. /poker (szybki poker z botem)
+        // 7. /poker
         else if (commandName === 'poker') {
             const stawka = interaction.options.getInteger('stawka', true);
             if (stawka <= 0) {
@@ -361,7 +361,7 @@ client.on('interactionCreate', async interaction => {
             return;
         }
 
-        // 8. /rozdaj-wszystkim
+        // 8. /rozdaj-wszystkim (z wysyłaniem PW do każdego gracza)
         else if (commandName === 'rozdaj-wszystkim') {
             if (!isAuthorized(interaction.user.id) && !interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) {
                 await interaction.reply({ content: '❌ Brak uprawnień!', ephemeral: true });
@@ -382,6 +382,8 @@ client.on('interactionCreate', async interaction => {
             }
 
             let zaktualizowano = 0;
+            let wyslanePW = 0;
+
             for (const [_, member] of members) {
                 let user = await UserModel.findOne({ userId: member.id });
                 if (!user) {
@@ -390,9 +392,17 @@ client.on('interactionCreate', async interaction => {
                 user.balance += ilosc;
                 await user.save();
                 zaktualizowano++;
+
+                // Wysyłanie wiadomości prywatnej (PW)
+                try {
+                    await member.send(`🎁 **Otrzymałeś prezent!**\nOd administratora: **${interaction.user.username}**\nIlość: **${ilosc} PJN-Coins**\nPowód: *${powod}*`);
+                    wyslanePW++;
+                } catch (err) {
+                    // Ignorujemy błąd, jeśli użytkownik ma zablokowane PW
+                }
             }
 
-            await interaction.editReply({ content: `✅ Rozdano **${ilosc} PJN-Coins** dla **${zaktualizowano}** użytkowników!\n📌 Powód: *${powod}*` });
+            await interaction.editReply({ content: `✅ Rozdano **${ilosc} PJN-Coins** dla **${zaktualizowano}** użytkowników!\n📩 Wysłano powiadomienia PW do **${wyslanePW}** osób.\n📌 Powód: *${powod}*` });
             return;
         }
 
@@ -418,6 +428,12 @@ client.on('interactionCreate', async interaction => {
 
             user.balance += ilosc;
             await user.save();
+
+            // Próba wysłania PW
+            try {
+                const member = await interaction.guild?.members.fetch(targetUser.id);
+                await member?.send(`🎁 **Otrzymałeś prezent!**\nOd administratora: **${interaction.user.username}**\nIlość: **${ilosc} PJN-Coins**`);
+            } catch (err) {}
 
             await interaction.reply({ content: `✅ Dodano **${ilosc} PJN-Coins** dla użytkownika <@${targetUser.id}>. Nowy stan: **${user.balance}**`, ephemeral: true });
             return;
