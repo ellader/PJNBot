@@ -282,14 +282,6 @@ client.on('interactionCreate', async interaction => {
     if (!interaction.isChatInputCommand()) return;
     const { commandName } = interaction;
 
-    const safetyTimeout = setTimeout(async () => {
-        if (!interaction.replied && !interaction.deferred) {
-            try {
-                await interaction.reply({ content: '⚠️ Komenda wykonała się zbyt długo.', ephemeral: true });
-            } catch (e) {}
-        }
-    }, 2000);
-
     try {
         if (commandName === 'odznaki') {
             await interaction.deferReply({ ephemeral: true });
@@ -300,7 +292,6 @@ client.on('interactionCreate', async interaction => {
 
             const badgeText = user.badges && user.badges.length > 0 ? user.badges.join('\n') : 'Brak odznak.';
 
-            clearTimeout(safetyTimeout);
             await interaction.editReply({
                 embeds: [{
                     color: 0x9B59B6,
@@ -322,7 +313,6 @@ client.on('interactionCreate', async interaction => {
             let user = await UserModel.findOne({ userId: interaction.user.id });
             if (!user) user = await UserModel.create({ userId: interaction.user.id });
             
-            clearTimeout(safetyTimeout);
             await interaction.editReply({ content: `💰 W swoim portfelu posiadasz aktualnie **${user.balance} PJN-Coins!**` });
             return;
         }
@@ -330,8 +320,6 @@ client.on('interactionCreate', async interaction => {
         if (commandName === 'topka') {
             await interaction.deferReply();
             const embedData = await getTopEmbedData(interaction.guild);
-            
-            clearTimeout(safetyTimeout);
             await interaction.editReply({ embeds: [embedData] });
             return;
         }
@@ -345,7 +333,6 @@ client.on('interactionCreate', async interaction => {
             if (user.lastDaily) {
                 const diffHours = (now.getTime() - new Date(user.lastDaily).getTime()) / (1000 * 60 * 60);
                 if (diffHours < 24) {
-                    clearTimeout(safetyTimeout);
                     await interaction.editReply({ content: `⏳ Odbierałeś już nagrodę dzisiaj! Spróbuj za **${Math.ceil(24 - diffHours)}h**.` });
                     return;
                 }
@@ -356,33 +343,35 @@ client.on('interactionCreate', async interaction => {
             await user.save();
             await checkAndAwardBadges(user, interaction.member);
 
-            clearTimeout(safetyTimeout);
             await interaction.editReply({ content: `🎁 Otrzymałeś codzienne **100 PJN-Coins**! Stan portfela: **${user.balance} PJN-Coins**` });
             return;
         }
 
         if (commandName === 'testogloszenia') {
             if (!isAuthorized(interaction.user.id)) {
-                clearTimeout(safetyTimeout);
                 await interaction.reply({ content: '❌ Nie masz uprawnień do używania tej komendy!', ephemeral: true });
                 return;
             }
 
-            await interaction.deferReply({ ephemeral: true });
+            // Natychmiastowa odpowiedź ephemeral, żeby Discord nie zawiesił komendy
+            await interaction.reply({ content: 'wysyłanie testowego ogłoszenia...', ephemeral: true });
             
             const tresc = interaction.options.getString('tresc') || 'To jest domyślna treść testowego ogłoszenia.';
             
-            // Pobranie kanału z opcji lub użycie domyślnego ID 1532399010785263799
-            let channel = interaction.options.getChannel('kanal');
-            if (!channel) {
-                channel = await interaction.guild?.channels.fetch('1532399010785263799').catch(() => null) || interaction.channel;
+            // Pobranie kanału bezpieczną metodą z klienta
+            const customChannelOpt = interaction.options.getChannel('kanal');
+            let targetChannel: any = customChannelOpt;
+
+            if (!targetChannel) {
+                targetChannel = await client.channels.fetch('1532399010785263799').catch(() => null);
             }
 
-            clearTimeout(safetyTimeout);
-            await interaction.editReply({ content: `✅ Test ogłoszenia przebiegł pomyślnie! Wyślę wiadomość na kanał <#${channel?.id}>.` });
-            
-            if (channel && typeof channel.send === 'function') {
-                await channel.send({
+            if (!targetChannel) {
+                targetChannel = interaction.channel;
+            }
+
+            if (targetChannel && typeof targetChannel.send === 'function') {
+                await targetChannel.send({
                     embeds: [{
                         color: 0x3498DB,
                         title: '📢 Test Ogłoszenia',
@@ -390,24 +379,27 @@ client.on('interactionCreate', async interaction => {
                         footer: { text: `Wysłane przez ${interaction.user.tag}` },
                         timestamp: new Date().toISOString()
                     }]
-                }).catch(() => {});
+                });
+                await interaction.editReply({ content: `✅ Test ogłoszenia wysłany pomyślnie na kanał <#${targetChannel.id}>!` });
+            } else {
+                await interaction.editReply({ content: `❌ Nie udało się znaleźć docelowego kanału.` });
             }
             return;
         }
 
-        clearTimeout(safetyTimeout);
         if (!interaction.replied && !interaction.deferred) {
             await interaction.reply({ content: `Komenda /${commandName} została wykonana.`, ephemeral: true });
         }
 
     } catch (error) {
-        clearTimeout(safetyTimeout);
         console.error(`Błąd w komendzie ${commandName}:`, error);
-        if (interaction.deferred) {
-            await interaction.editReply({ content: 'Wystąpił błąd podczas wykonywania tej komendy.' }).catch(() => {});
-        } else if (!interaction.replied) {
-            await interaction.reply({ content: 'Wystąpił błąd.', ephemeral: true }).catch(() => {});
-        }
+        try {
+            if (interaction.deferred || interaction.replied) {
+                await interaction.editReply({ content: 'Wystąpił błąd podczas wykonywania tej komendy.' }).catch(() => {});
+            } else {
+                await interaction.reply({ content: 'Wystąpił błąd.', ephemeral: true }).catch(() => {});
+            }
+        } catch (e) {}
     }
 });
 
