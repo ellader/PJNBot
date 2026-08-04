@@ -47,7 +47,7 @@ function isAuthorized(userId: string): boolean {
     return adminIds.includes(userId);
 }
 
-// Funkcja generująca treść rankingu TOP 10 z klikalnymi wzmiankami użytkowników
+// Funkcja generująca treść rankingu TOP 10 z bezpiecznym pobieraniem danych użytkowników
 async function getTopEmbedData(guild: any) {
     const topUsers = await UserModel.find().sort({ balance: -1 }).limit(10);
     
@@ -59,13 +59,20 @@ async function getTopEmbedData(guild: any) {
         };
     }
 
+    // Pobieramy członków serwera, aby uniknąć problemu z wyświetlaniem samych ID
+    if (guild) {
+        try {
+            await guild.members.fetch();
+        } catch (e) {}
+    }
+
     let desc = 'Ranking jest automatycznie aktualizowany co 5 minut na podstawie aktywności w bazie danych.\n\n**Najbogatsi użytkownicy**\n';
     
     for (let index = 0; index < topUsers.length; index++) {
         const u = topUsers[index];
         const medal = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `**${index + 1}.**`;
         
-        // Używamy formatu wzmianki Discorda <@ID>, co przywraca klikalność i podgląd profilu
+        // Używamy wzmianki <@ID>, która na Discordzie wyświetla się jako nazwa użytkownika i jest w pełni klikalna
         desc += `${medal} <@${u.userId}> — **${u.balance} Coins**\n`;
     }
 
