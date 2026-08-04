@@ -33,6 +33,7 @@ const token = process.env.DISCORD_BOT_TOKEN;
 if (!token) throw new Error("Brak tokena Discord bota!");
 
 const TOP_CHANNEL_ID = '1534049518377631826'; 
+const CLOCK_CHANNEL_ID = '1532336632982798417'; // Kanał głosowy zegara
 
 const client = new Client({
     intents: [
@@ -196,6 +197,38 @@ client.once('ready', async () => {
         console.error('Błąd rejestracji komend:', error);
     }
 
+    // === AUTOMATYCZNY ZEGAR (POLSKI CZAS) ===
+    const updateClock = async () => {
+        try {
+            if (!CLOCK_CHANNEL_ID) return;
+            const channel = await client.channels.fetch(CLOCK_CHANNEL_ID);
+            if (!channel || !channel.isVoiceBased()) return;
+
+            const now = new Date();
+            const formatter = new Intl.DateTimeFormat('pl-PL', {
+                timeZone: 'Europe/Warsaw',
+                hour: '2-digit',
+                minute: '2-digit',
+                hour12: false
+            });
+
+            const polishTime = formatter.format(now);
+            const newChannelName = `🇵🇱 Czas: ${polishTime}`;
+
+            if (channel.name !== newChannelName) {
+                await channel.setName(newChannelName);
+                console.log(`Zaktualizowano zegar na kanale: ${polishTime}`);
+            }
+        } catch (err) {
+            console.error('Błąd podczas aktualizacji zegara:', err);
+        }
+    };
+
+    // Wywołaj od razu po starcie i potem co 10 minut
+    updateClock();
+    setInterval(updateClock, 10 * 60 * 1000);
+
+    // === AUTOMATYCZNY RANKING TOPKA ===
     setInterval(async () => {
         try {
             if (!TOP_CHANNEL_ID) return;
@@ -374,7 +407,7 @@ client.on('interactionCreate', async interaction => {
             return;
         }
 
-        // === 7. /poker (Z wyborem trybu: z ludźmi lub od razu z botem) ===
+        // === /poker ===
         else if (commandName === 'poker') {
             const tryb = interaction.options.getString('tryb', true);
             const stawka = interaction.options.getInteger('stawka', true);
@@ -396,7 +429,6 @@ client.on('interactionCreate', async interaction => {
 
             const karty = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A'];
 
-            // === TRYB: GRA Z BOTEM ===
             if (tryb === 'bot') {
                 userCheck.balance -= stawka;
                 await userCheck.save();
@@ -418,7 +450,7 @@ client.on('interactionCreate', async interaction => {
                 } else if (userIndex < botIndex) {
                     wynikTekst += `💀 **Bot ma mocniejszą kartę!** Przegrywasz **${stawka} PJN-Coins**. Nowy balans: **${userCheck.balance}**`;
                 } else {
-                    userCheck.balance += stawka; // zwrot stawki
+                    userCheck.balance += stawka;
                     await userCheck.save();
                     wynikTekst += `🤝 **Remis!** Otrzymujesz zwrot stawki. Nowy balans: **${userCheck.balance}**`;
                 }
@@ -427,7 +459,6 @@ client.on('interactionCreate', async interaction => {
                 return;
             }
 
-            // === TRYB: GRA Z LUDŹMI (Do 4 osób) ===
             const players: string[] = [interaction.user.id];
 
             const getPokerEmbed = (statusMsg: string) => ({
@@ -456,7 +487,7 @@ client.on('interactionCreate', async interaction => {
 
             const collector = response.createMessageComponentCollector({
                 componentType: ComponentType.Button,
-                time: 45000 // 45 sekund na zebranie graczy
+                time: 45000
             });
 
             let gameStarted = false;
@@ -521,11 +552,10 @@ client.on('interactionCreate', async interaction => {
 
                 if (finalPlayers.length < 2) {
                     await interaction.editReply({
-                        content: '⏰ Czas minął – brak innych graczy do rozegrania partii wieloosobowej. Gra została anulowana (środki zostały zwrócone lub nikt nie dołączył).',
+                        content: '⏰ Czas minął – brak innych graczy do rozegrania partii wieloosobowej. Gra została anulowana.',
                         embeds: [],
                         components: []
                     }).catch(() => {});
-                    // Zwrot środków hostowi, jeśli został sam
                     if (finalPlayers.length === 1) {
                         let hostU = await UserModel.findOne({ userId: finalPlayers[0] });
                         if (hostU) {
