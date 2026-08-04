@@ -28,6 +28,9 @@ const UserModel = mongoose.model('User', userSchema);
 const token = process.env.DISCORD_BOT_TOKEN;
 if (!token) throw new Error("Brak tokena Discord bota!");
 
+// ID kanału #topka-pjn-coins
+const TOP_CHANNEL_ID = '1534049518377631826'; 
+
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
@@ -40,8 +43,33 @@ const client = new Client({
 
 // Pomocnicza funkcja sprawdzająca czy użytkownik to administrator
 function isAuthorized(userId: string): boolean {
-    const adminIds = ['1175798371995361343', '1493928957408448563']; // Twoje ID oraz drugiego admina
+    const adminIds = ['1175798371995361343', '1493928957408448563'];
     return adminIds.includes(userId);
+}
+
+// Funkcja generująca treść rankingu TOP 10
+async function getTopEmbedData() {
+    const topUsers = await UserModel.find().sort({ balance: -1 }).limit(10);
+    
+    if (topUsers.length === 0) {
+        return {
+            color: 0xFFD700,
+            title: '🏆 TOP 10 - Ranking PJN-Coins',
+            description: 'Ranking jest automatycznie aktualizowany co 5 minut na podstawie aktywności w bazie danych.\n\nBrak danych w rankingu.'
+        };
+    }
+
+    let desc = 'Ranking jest automatycznie aktualizowany co 5 minut na podstawie aktywności w bazie danych.\n\n**Najbogatsi użytkownicy**\n';
+    topUsers.forEach((u, index) => {
+        const medal = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `**${index + 1}.**`;
+        desc += `${medal} <@${u.userId}> — **${u.balance} Coins**\n`;
+    });
+
+    return {
+        color: 0xFFD700,
+        title: '🏆 TOP 10 - Ranking PJN-Coins',
+        description: desc
+    };
 }
 
 // === REJESTRACJA KOMEND SLASH ===
@@ -147,6 +175,28 @@ client.once('ready', async () => {
     } catch (error) {
         console.error('Błąd rejestracji komend:', error);
     }
+
+    // === AUTOMATYCZNE AKTUALIZOWANIE RANKINGU CO 5 MINUT ===
+    setInterval(async () => {
+        try {
+            if (!TOP_CHANNEL_ID) return;
+            const channel = await client.channels.fetch(TOP_CHANNEL_ID);
+            if (!channel || !channel.isTextBased()) return;
+
+            const embedData = await getTopEmbedData();
+            const messages = await channel.messages.fetch({ limit: 5 });
+            const botMessage = messages.find(m => m.author.id === client.user?.id);
+
+            if (botMessage) {
+                await botMessage.edit({ embeds: [embedData] });
+            } else {
+                await channel.send({ embeds: [embedData] });
+            }
+            console.log('Zaktualizowano automatyczny ranking.');
+        } catch (err) {
+            console.error('Błąd automatycznego odświeżania rankingu:', err);
+        }
+    }, 5 * 60 * 1000); // 5 minut w milisekundach
 });
 
 // === OBSŁUGA INTERAKCJI (KOMEND) ===
@@ -168,20 +218,8 @@ client.on('interactionCreate', async interaction => {
 
         // 2. /topka
         else if (commandName === 'topka') {
-            const topUsers = await UserModel.find().sort({ balance: -1 }).limit(10);
-            
-            if (topUsers.length === 0) {
-                await interaction.reply({ content: 'Brak danych w rankingu.', ephemeral: true });
-                return;
-            }
-
-            let desc = '';
-            topUsers.forEach((u, index) => {
-                const medal = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `**${index + 1}.**`;
-                desc += `${medal} <@${u.userId}> — **${u.balance} Coins**\n`;
-            });
-
-            await interaction.reply({ embeds: [{ color: 0xFFD700, title: '🏆 TOP 10 - Ranking PJN-Coins', description: desc }] });
+            const embedData = await getTopEmbedData();
+            await interaction.reply({ embeds: [embedData] });
             return;
         }
 
@@ -361,7 +399,7 @@ client.on('interactionCreate', async interaction => {
             return;
         }
 
-        // 8. /rozdaj-wszystkim (wysyłanie w ładnej ramce embed)
+        // 8. /rozdaj-wszystkim
         else if (commandName === 'rozdaj-wszystkim') {
             if (!isAuthorized(interaction.user.id) && !interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) {
                 await interaction.reply({ content: '❌ Brak uprawnień!', ephemeral: true });
