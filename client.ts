@@ -155,6 +155,19 @@ function createGryInfoEmbed(): EmbedBuilder {
         .setTimestamp();
 }
 
+function createKasynoInfoEmbed(): EmbedBuilder {
+    return new EmbedBuilder()
+        .setColor(0xFFD700)
+        .setTitle('🎰 Instrukcja i Zasady: Kasyno Solo')
+        .setDescription('Witaj na głównym kanale kasyna! Tutaj możesz sprawdzić swój stan konta, zgarnąć darmowe monety oraz zagrać w szybkie gry solo z botem.')
+        .addFields(
+            { name: '💰 Dostępne komendy i zasady:', value: '• `/balans` – Sprawdź aktualny stan swojego konta.\n• `/daily` – Odbieraj codzienne 100 PJN-Coins (odnawia się co 24h).\n• `/kostka [stawka]` – Rzuć kością przeciwko botowi. Kto wyrzuci wyższą liczbę, wygrywa podwojoną stawkę!\n• `/moneta [orzel/reszka] [stawka]` – Zgadnij, co wypadnie i pomnóż swoje PJN-Coins.\n• `/quiz` – Odpowiedz na losowe pytanie na czacie jako pierwszy i zgarnij 50 Coins.' },
+            { name: '⚠️ Ważne:', value: 'Pamiętaj, że wszystkie gry kasynowe na tym kanale odbywają się wyłącznie z użyciem komend. Graj odpowiedzialnie!' }
+        )
+        .setFooter({ text: 'PJN Kasyno - Strefa Solo' })
+        .setTimestamp();
+}
+
 function createSlotInfoEmbed(): EmbedBuilder {
     return new EmbedBuilder()
         .setColor(0xFF4500)
@@ -448,7 +461,20 @@ client.once('ready', async () => {
                 }
             }
 
-            // 2. Kanał #slot
+            // 2. Kanał #kasyno
+            let kasynoChannel = guild.channels.cache.find(ch => ch.isTextBased() && 'name' in ch && ch.name === CHANNEL_KASYNO) as TextChannel;
+            if (kasynoChannel) {
+                const kasynoMessages = await kasynoChannel.messages.fetch({ limit: 5 });
+                const kasynoBotMsg = kasynoMessages.find(m => m.author.id === client.user?.id);
+                const kasynoEmbed = createKasynoInfoEmbed();
+                if (kasynoBotMsg) {
+                    await kasynoBotMsg.edit({ embeds: [kasynoEmbed] });
+                } else {
+                    await kasynoChannel.send({ embeds: [kasynoEmbed] });
+                }
+            }
+
+            // 3. Kanał #slot
             let slotChannel = guild.channels.cache.find(ch => ch.isTextBased() && 'name' in ch && ch.name === CHANNEL_SLOT) as TextChannel;
             if (!slotChannel) {
                 slotChannel = await guild.channels.create({
@@ -468,7 +494,7 @@ client.once('ready', async () => {
                 }
             }
 
-            // 3. Kanał #poker
+            // 4. Kanał #poker
             let pokerChannel = guild.channels.cache.find(ch => ch.isTextBased() && 'name' in ch && ch.name === CHANNEL_POKER) as TextChannel;
             if (pokerChannel) {
                 const pokerMessages = await pokerChannel.messages.fetch({ limit: 5 });
@@ -806,7 +832,7 @@ client.on('interactionCreate', async interaction => {
 
         await interaction.deferReply({ ephemeral: true });
         const ilosc = interaction.options.getInteger('ilosc', true);
-        const powod = interaction.options.getString('powod') || 'Brak powiadamia';
+        const powod = interaction.options.getString('powod') || 'Brak powiadomienia';
         const guild = interaction.guild;
 
         if (!guild) {
