@@ -47,7 +47,7 @@ function isAuthorized(userId: string): boolean {
     return adminIds.includes(userId);
 }
 
-// Funkcja generująca treść rankingu TOP 10 z bezpiecznym pobieraniem nazw użytkowników
+// Funkcja generująca treść rankingu TOP 10 z klikalnymi wzmiankami użytkowników
 async function getTopEmbedData(guild: any) {
     const topUsers = await UserModel.find().sort({ balance: -1 }).limit(10);
     
@@ -65,22 +65,8 @@ async function getTopEmbedData(guild: any) {
         const u = topUsers[index];
         const medal = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `**${index + 1}.**`;
         
-        let displayName = `<@${u.userId}>`; // Awaryjnie, gdyby nie pobrało użytkownika
-        try {
-            if (guild) {
-                const member = await guild.members.fetch(u.userId).catch(() => null);
-                if (member) {
-                    displayName = `**${member.displayName}**`;
-                } else {
-                    const fetchedUser = await client.users.fetch(u.userId).catch(() => null);
-                    if (fetchedUser) {
-                        displayName = `**${fetchedUser.username}**`;
-                    }
-                }
-            }
-        } catch (e) {}
-
-        desc += `${medal} ${displayName} — **${u.balance} Coins**\n`;
+        // Używamy formatu wzmianki Discorda <@ID>, co przywraca klikalność i podgląd profilu
+        desc += `${medal} <@${u.userId}> — **${u.balance} Coins**\n`;
     }
 
     return {
@@ -202,15 +188,17 @@ client.once('ready', async () => {
             if (!channel || !channel.isTextBased()) return;
 
             const embedData = await getTopEmbedData(channel.guild);
-            const messages = await channel.messages.fetch({ limit: 5 });
-            const botMessage = messages.find(m => m.author.id === client.user?.id);
+            
+            const messages = await channel.messages.fetch({ limit: 10 });
+            const botMessages = messages.filter(m => m.author.id === client.user?.id);
+            
+            await channel.send({ embeds: [embedData] });
 
-            if (botMessage) {
-                await botMessage.edit({ embeds: [embedData] });
-            } else {
-                await channel.send({ embeds: [embedData] });
+            for (const [_, msg] of botMessages) {
+                await msg.delete().catch(() => {});
             }
-            console.log('Zaktualizowano automatyczny ranking.');
+
+            console.log('Zaktualizowano automatyczny ranking (wysłano nową wiadomość).');
         } catch (err) {
             console.error('Błąd automatycznego odświeżania rankingu:', err);
         }
