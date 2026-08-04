@@ -252,6 +252,15 @@ client.once('ready', async () => {
     } catch (error) {
         console.error('Błąd rejestracji komend:', error);
     }
+
+    // === AUTOMATYCZNE ZADANIA W TLE (np. sprawdzanie streamów / automatyzacje) ===
+    setInterval(async () => {
+        try {
+            // Tutaj możesz umieścić cykliczną logikę (np. sprawdzanie Kick API co kilka minut)
+        } catch (err) {
+            console.error('Błąd w pętli automatycznej:', err);
+        }
+    }, 5 * 60 * 1000); // co 5 minut
 });
 
 client.on('messageCreate', async message => {
