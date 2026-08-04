@@ -211,6 +211,13 @@ const commands = [
         .addUserOption(o => o.setName('uzytkownik').setDescription('Komu').setRequired(true))
         .addStringOption(o => o.setName('odznaka').setDescription('Nazwa odznaki').setRequired(true)),
 
+    // Komenda do ręcznego wysyłania ogłoszenia ze zdjęciem i podpisem (Admin)
+    new SlashCommandBuilder()
+        .setName('ogloszenie')
+        .setDescription('Wyślij ogłoszenie z Twoim zdjęciem i podpisem (Admin)')
+        .addStringOption(o => o.setName('tresc').setDescription('Treść ogłoszenia').setRequired(true))
+        .addChannelOption(o => o.setName('kanal').setDescription('Kanał docelowy (opcjonalnie, domyślnie główny)').setRequired(false)),
+
     // Komendy Stream Kick LangusPJN
     new SlashCommandBuilder()
         .setName('odpalstream')
@@ -716,6 +723,36 @@ client.on('interactionCreate', async interaction => {
             user.badges = user.badges.filter((b: string) => b !== odznaka);
             await user.save();
             await interaction.reply({ content: `⚠️ Usunięto odznakę **${odznaka}** użytkownikowi <@${targetUser.id}>.`, ephemeral: true });
+            return;
+        }
+
+        else if (commandName === 'ogloszenie') {
+            if (!isAuthorized(interaction.user.id) && !interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) {
+                await interaction.reply({ content: '❌ Brak uprawnień!', ephemeral: true });
+                return;
+            }
+            
+            const tresc = interaction.options.getString('tresc', true);
+            const channelOption = interaction.options.getChannel('kanal');
+            const targetChannel = (channelOption || await interaction.guild?.channels.fetch(STREAM_ANNOUNCE_CHANNEL_ID)) as any;
+
+            if (!targetChannel || !targetChannel.isTextBased()) {
+                await interaction.reply({ content: '❌ Nie wybrano poprawnego kanału tekstowego!', ephemeral: true });
+                return;
+            }
+
+            await targetChannel.send({
+                embeds: [{
+                    color: 0x5865F2,
+                    title: '☀️ Ogłoszenie Serwisowe PJN',
+                    description: `${tresc}\n\n_Życzymy aby Twoja obecność na naszym serwerze przebiegła jak najlepiej - LangusPJN i ellader_`,
+                    image: { url: 'https://cdn.discordapp.com/attachments/1532862421729808565/1532865034642919574/1784490427936.png?ex=6a73048f&is=6a71b30f&hm=31f87fb4075d466294e06678a4b5798c1155648d55c5be4a8cca17afae3b56eb&' },
+                    footer: { text: `Ogłoszenie od: ${interaction.user.tag}` },
+                    timestamp: new Date().toISOString()
+                }]
+            });
+
+            await interaction.reply({ content: `✅ Pomyślnie wysłano ogłoszenie na kanał <#${targetChannel.id}>!`, ephemeral: true });
             return;
         }
 
