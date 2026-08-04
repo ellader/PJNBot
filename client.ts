@@ -39,6 +39,7 @@ const DRUGI_ADMIN_ID = "1493928957408448563";
 const GUILD_ID = "1532302510671269928";
 
 const ID_KANALU_DUSZKI = "1532977723843285112"; 
+const ID_KANALU_GRY_INFO = "1534060343473475644";
 const ID_RANGI_DUSZKOWIEC = "1532978703842283551";
 const ID_RANGI_MODERATOR = "1532321767857721344";
 const ID_RANGI_ADMIN = "1532324059470237857";
@@ -195,7 +196,6 @@ function createPokerInfoEmbed(): EmbedBuilder {
         .setFooter({ text: 'PJN Kasyno - Poker' })
         .setTimestamp();
 }
-// -----------------------
 
 const tiktokConn = new WebcastPushConnection(TIKTOK_USER);
 let isKickLive = false;
@@ -441,7 +441,6 @@ client.once('ready', async () => {
 
     for (const [_, guild] of client.guilds.cache) {
         try {
-            // 1. Kanał pjn-gry-info
             let infoChannel = guild.channels.cache.find(ch => ch.isTextBased() && 'name' in ch && ch.name === CHANNEL_GRY_INFO) as TextChannel;
             if (!infoChannel) {
                 infoChannel = await guild.channels.create({
@@ -461,7 +460,6 @@ client.once('ready', async () => {
                 }
             }
 
-            // 2. Kanał #kasyno
             let kasynoChannel = guild.channels.cache.find(ch => ch.isTextBased() && 'name' in ch && ch.name === CHANNEL_KASYNO) as TextChannel;
             if (kasynoChannel) {
                 const kasynoMessages = await kasynoChannel.messages.fetch({ limit: 5 });
@@ -474,7 +472,6 @@ client.once('ready', async () => {
                 }
             }
 
-            // 3. Kanał #slot
             let slotChannel = guild.channels.cache.find(ch => ch.isTextBased() && 'name' in ch && ch.name === CHANNEL_SLOT) as TextChannel;
             if (!slotChannel) {
                 slotChannel = await guild.channels.create({
@@ -494,7 +491,6 @@ client.once('ready', async () => {
                 }
             }
 
-            // 4. Kanał #poker
             let pokerChannel = guild.channels.cache.find(ch => ch.isTextBased() && 'name' in ch && ch.name === CHANNEL_POKER) as TextChannel;
             if (pokerChannel) {
                 const pokerMessages = await pokerChannel.messages.fetch({ limit: 5 });
@@ -674,19 +670,26 @@ client.on('messageCreate', async message => {
     }
 });
 
+// ZMODYFIKOWane: Automatyczne przyznawanie 200 punktów i powitanie z nowymi kanałami
 client.on('guildMemberAdd', async member => {
     updateServerStats(member.guild);
+
+    // Przyznanie 200 PJN-Coins na start
+    addPoints(member.id, 200);
+
     const channel = member.guild.channels.cache.find(ch => ch.isTextBased() && 'name' in ch && ch.name === CHANNEL_POWITANIA) as TextChannel;
     if (channel) {
-        const contentMessage = `👋 Witaj na serwerze PJN, <@${member.id}>! Cieszymy się, że jesteś z nami! 🎉`;
+        const contentMessage = `👋 Witaj na serwerze PJN, <@${member.id}>! Cieszymy się, że jesteś z nami! 🎉\n🎁 Na start otrzymujesz w prezencie **200 PJN-Coins**!`;
 
         const embedPowitanie = new EmbedBuilder()
             .setColor(0x57F287)
-            .setTitle('📌 Skonfiguruj swój profil na serwerze:')
+            .setTitle('📌 Skonfiguruj swój profil i sprawdź najważniejsze miejsca:')
             .setDescription(
                 `• Wybierz płeć: <#${ID_KANALU_PLEC}>\n` +
                 `• Dostosuj role: <#${ID_KANALU_RANGES}>\n` +
-                `• Wybierz swój sprzęt: <#${ID_KANALU_SPRZET}>`
+                `• Wybierz swój sprzęt: <#${ID_KANALU_SPRZET}>\n\n` +
+                `🎮 Informacje o grach: <#${ID_KANALU_GRY_INFO}>\n` +
+                `👻 Darmowe duszki: <#${ID_KANALU_DUSZKI}>`
             )
             .setThumbnail(member.user.displayAvatarURL())
             .setTimestamp();
@@ -1182,14 +1185,16 @@ client.on('interactionCreate', async interaction => {
             await channel.send({ content: '@everyone', embeds: [createKickLiveEmbed(currentKickViewers)] });
             await interaction.editReply({ content: 'Wysłano testowe powiadomienie Kick!' });
         } else if (commandName === 'testwitania' && powitaniaChannel) {
-            const testContent = `👋 Witaj <@${interaction.user.id}>! Tak będą wyglądać odnośniki:`;
+            const testContent = `👋 Witaj <@${interaction.user.id}>! Tak będą wyglądać odnośniki:\n🎁 Na start otrzymujesz w prezencie **200 PJN-Coins**!`;
             const testEmbed = new EmbedBuilder()
                 .setColor(0x57F287)
                 .setTitle('📌 Test Powitania z Rangami')
                 .setDescription(
                     `• Wybierz płeć: <#${ID_KANALU_PLEC}>\n` +
                     `• Dostosuj role: <#${ID_KANALU_RANGES}>\n` +
-                    `• Wybierz swój sprzęt: <#${ID_KANALU_SPRZET}>`
+                    `• Wybierz swój sprzęt: <#${ID_KANALU_SPRZET}>\n\n` +
+                    `🎮 Informacje o grach: <#${ID_KANALU_GRY_INFO}>\n` +
+                    `👻 Darmowe duszki: <#${ID_KANALU_DUSZKI}>`
                 );
             await powitaniaChannel.send({ 
                 content: testContent, 
