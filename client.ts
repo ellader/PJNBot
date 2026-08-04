@@ -35,14 +35,6 @@ const UserModel = mongoose.model('User', userSchema);
 const token = process.env.DISCORD_BOT_TOKEN;
 if (!token) throw new Error("Brak tokena Discord bota!");
 
-const TOP_CHANNEL_ID = '1534049518377631826'; 
-const STATUS_CHANNEL_ID = '1533839197666807838'; 
-const BADGE_CHANNEL_ID = '1532858772089999606'; 
-const NEWS_CHANNEL_ID = '1534228079914913922'; 
-const STREAM_ANNOUNCE_CHANNEL_ID = '1532399010785263799'; 
-
-let wasLiveOnKick = false; 
-
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
@@ -208,9 +200,11 @@ const commands = [
         .addUserOption(o => o.setName('uzytkownik').setDescription('Komu').setRequired(true))
         .addStringOption(o => o.setName('odznaka').setDescription('Nazwa odznaki').setRequired(true)),
 
+    // ZASTĄPIONE: /ogloszenie zmienione na /testogloszenia
     new SlashCommandBuilder()
-        .setName('ogloszenie')
-        .setDescription('Wyślij ogłoszenie ze zdjęciem i podpisem (Admin)')
+        .setName('testogloszenia')
+        .setDescription('Przetestuj wysyłanie ogłoszenia (Admin)')
+        .addStringOption(o => o.setName('tresc').setDescription('Treść testowego ogłoszenia').setRequired(true))
         .addChannelOption(o => o.setName('kanal').setDescription('Kanał docelowy (opcjonalnie)').setRequired(false)),
 
     new SlashCommandBuilder()
@@ -248,10 +242,14 @@ client.once('ready', async () => {
 
     const rest = new REST({ version: '10' }).setToken(token);
     try {
+        console.log('Czyszczenie starych komend i rejestracja nowych...');
+        await rest.put(Routes.applicationCommands(client.user!.id), { body: [] });
+
         for (const [_, guild] of client.guilds.cache) {
+            await rest.put(Routes.applicationGuildCommands(client.user!.id, guild.id), { body: [] });
             await rest.put(Routes.applicationGuildCommands(client.user!.id, guild.id), { body: commands });
         }
-        console.log('Zarejestrowano komendy!');
+        console.log('Zarejestrowano świeże komendy pomyślnie!');
     } catch (error) {
         console.error('Błąd rejestracji komend:', error);
     }
@@ -360,6 +358,36 @@ client.on('interactionCreate', async interaction => {
 
             clearTimeout(safetyTimeout);
             await interaction.editReply({ content: `🎁 Otrzymałeś codzienne **100 PJN-Coins**! Stan portfela: **${user.balance} PJN-Coins**` });
+            return;
+        }
+
+        // Obsługa nowej komendy /testogloszenia
+        if (commandName === 'testogloszenia') {
+            if (!isAuthorized(interaction.user.id)) {
+                clearTimeout(safetyTimeout);
+                await interaction.reply({ content: '❌ Nie masz uprawnień do używania tej komendy!', ephemeral: true });
+                return;
+            }
+
+            await interaction.deferReply({ ephemeral: true });
+            const tresc = interaction.options.getString('tresc', true);
+            const channel = interaction.options.getChannel('kanal') || interaction.channel;
+
+            clearTimeout(safetyTimeout);
+            await interaction.editReply({ content: `✅ Test ogłoszenia przebiegł pomyślnie! Wyślę wiadomość na kanał <#${channel.id}>.` });
+            
+            // Opcjonalne wysłanie wiadomości na kanał docelowy:
+            if (channel && typeof channel.send === 'function') {
+                await channel.send({
+                    embeds: [{
+                        color: 0x3498DB,
+                        title: '📢 Test Ogłoszenia',
+                        description: tresc,
+                        footer: { text: `Wysłane przez ${interaction.user.tag}` },
+                        timestamp: new Date().toISOString()
+                    }]
+                }).catch(() => {});
+            }
             return;
         }
 
