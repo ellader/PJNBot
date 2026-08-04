@@ -200,7 +200,6 @@ const commands = [
         .addUserOption(o => o.setName('uzytkownik').setDescription('Komu').setRequired(true))
         .addStringOption(o => o.setName('odznaka').setDescription('Nazwa odznaki').setRequired(true)),
 
-    // Komenda /testogloszenia (treść opcjonalna)
     new SlashCommandBuilder()
         .setName('testogloszenia')
         .setDescription('Przetestuj wysyłanie ogłoszenia (Admin)')
@@ -347,18 +346,77 @@ client.on('interactionCreate', async interaction => {
             return;
         }
 
+        if (commandName === 'dajpunkty') {
+            if (!isAuthorized(interaction.user.id)) {
+                await interaction.reply({ content: '❌ Nie masz uprawnień do używania tej komendy!', ephemeral: true });
+                return;
+            }
+
+            await interaction.deferReply({ ephemeral: true });
+            const targetUser = interaction.options.getUser('uzytkownik', true);
+            const ilosc = interaction.options.getInteger('ilosc', true);
+
+            let user = await UserModel.findOne({ userId: targetUser.id });
+            if (!user) user = await UserModel.create({ userId: targetUser.id });
+
+            user.balance += ilosc;
+            await user.save();
+
+            const member = await interaction.guild?.members.fetch(targetUser.id).catch(() => null);
+            if (member) {
+                await checkAndAwardBadges(user, member);
+            }
+
+            await interaction.editReply({ content: `✅ Pomyślnie dodano **${ilosc} PJN-Coins** dla użytkownika <@${targetUser.id}>. Nowy stan: **${user.balance} PJN-Coins**` });
+            return;
+        }
+
+        if (commandName === 'zabierzpunkty') {
+            if (!isAuthorized(interaction.user.id)) {
+                await interaction.reply({ content: '❌ Nie masz uprawnień do używania tej komendy!', ephemeral: true });
+                return;
+            }
+
+            await interaction.deferReply({ ephemeral: true });
+            const targetUser = interaction.options.getUser('uzytkownik', true);
+            const ilosc = interaction.options.getInteger('ilosc', true);
+
+            let user = await UserModel.findOne({ userId: targetUser.id });
+            if (!user) user = await UserModel.create({ userId: targetUser.id });
+
+            user.balance = Math.max(0, user.balance - ilosc);
+            await user.save();
+
+            await interaction.editReply({ content: `✅ Pomyślnie zabrano **${ilosc} PJN-Coins** użytkownikowi <@${targetUser.id}>. Nowy stan: **${user.balance} PJN-Coins**` });
+            return;
+        }
+
+        if (commandName === 'rozdaj-wszystkim') {
+            if (!isAuthorized(interaction.user.id)) {
+                await interaction.reply({ content: '❌ Nie masz uprawnień do używania tej komendy!', ephemeral: true });
+                return;
+            }
+
+            await interaction.deferReply({ ephemeral: true });
+            const ilosc = interaction.options.getInteger('ilosc', true);
+            const powod = interaction.options.getString('powod') || 'Brak powódu';
+
+            await UserModel.updateMany({}, { $inc: { balance: ilosc } });
+
+            await interaction.editReply({ content: `🎁 Rozdano po **${ilosc} PJN-Coins** wszystkim użytkownikom w bazie!\n📌 Powód: *${powod}*` });
+            return;
+        }
+
         if (commandName === 'testogloszenia') {
             if (!isAuthorized(interaction.user.id)) {
                 await interaction.reply({ content: '❌ Nie masz uprawnień do używania tej komendy!', ephemeral: true });
                 return;
             }
 
-            // Natychmiastowa odpowiedź ephemeral, żeby Discord nie zawiesił komendy
             await interaction.reply({ content: 'wysyłanie testowego ogłoszenia...', ephemeral: true });
             
             const tresc = interaction.options.getString('tresc') || 'To jest domyślna treść testowego ogłoszenia.';
             
-            // Pobranie kanału bezpieczną metodą z klienta
             const customChannelOpt = interaction.options.getChannel('kanal');
             let targetChannel: any = customChannelOpt;
 
