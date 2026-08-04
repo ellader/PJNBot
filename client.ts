@@ -36,7 +36,7 @@ const token = process.env.DISCORD_BOT_TOKEN;
 if (!token) throw new Error("Brak tokena Discord bota!");
 
 const TOP_CHANNEL_ID = '1534049518377631826'; 
-const STATUS_CHANNEL_ID = '1533839197666807838'; // Zaktualizowany kanał głosowy zmieniający nazwę na Online/Offline dla Kicka
+const STATUS_CHANNEL_ID = '1533839197666807838'; // Kanał głosowy zmieniający nazwę na Online/Offline dla Kicka
 const BADGE_CHANNEL_ID = '1532858772089999606'; 
 const NEWS_CHANNEL_ID = '1534228079914913922'; 
 const STREAM_ANNOUNCE_CHANNEL_ID = '1532399010785263799'; // Kanał tekstowy na powiadomienia o streamie LangusPJN
@@ -131,8 +131,18 @@ async function getTopEmbedData(guild: any) {
         
         let userName = `Użytkownik (${u.userId})`;
         try {
-            const fetchedUser = await client.users.fetch(u.userId);
-            if (fetchedUser) userName = fetchedUser.username;
+            if (guild) {
+                const member = await guild.members.fetch(u.userId).catch(() => null);
+                if (member) {
+                    userName = member.displayName;
+                } else {
+                    const fetchedUser = await client.users.fetch(u.userId);
+                    if (fetchedUser) userName = fetchedUser.username;
+                }
+            } else {
+                const fetchedUser = await client.users.fetch(u.userId);
+                if (fetchedUser) userName = fetchedUser.username;
+            }
         } catch (e) {}
 
         desc += `${medal} **${userName}** — **${u.balance} PJN-Coins**\n`;
@@ -280,7 +290,7 @@ client.once('ready', async () => {
                             await channel.send({
                                 content: '@everyone 🟢 **LangusPJN właśnie wystartował z nowym streamiem na Kicku!**',
                                 embeds: [{
-                                    color: 0x53FC18, // Oficjalny zielony kolor Kick.com
+                                    color: 0x53FC18,
                                     title: `🚀 ${streamTitle}`,
                                     url: kickLink,
                                     description: `**Streamer:** LangusPJN\n**Kategoria:** ${categoryName}\n**Widowie:** 👥 ${viewerCount}\n\nWpadnij na transmisję, zostaw follow i wspieraj czat!`,
@@ -298,9 +308,7 @@ client.once('ready', async () => {
                     wasLiveOnKick = false;
                 }
             }
-        } catch (err) {
-            // Ignorujemy błędy sieciowe API
-        }
+        } catch (err) {}
     }, 60 * 1000);
 
     setInterval(async () => {
@@ -684,7 +692,6 @@ client.on('interactionCreate', async interaction => {
             return;
         }
 
-        // === RĘCZNE WYMUSZENIE STATUSU STREAMU (OPCJONALNIE) ===
         else if (commandName === 'odpalstream') {
             try {
                 if (STATUS_CHANNEL_ID) {
@@ -763,7 +770,6 @@ client.on('interactionCreate', async interaction => {
 
                 await interaction.reply({ content: `✅ Pomyślnie dodano nowość na kanał <#${NEWS_CHANNEL_ID}>!`, ephemeral: true });
             } catch (err) {
-                console.error(err);
                 await interaction.reply({ content: '❌ Wystąpił błąd podczas publikowania nowości.', ephemeral: true });
             }
             return;
@@ -823,7 +829,6 @@ client.on('interactionCreate', async interaction => {
         }
 
     } catch (error) {
-        console.error(error);
         if (!interaction.replied && !interaction.deferred) {
             await interaction.reply({ content: 'Wystąpił błąd.', ephemeral: true }).catch(() => {});
         }
