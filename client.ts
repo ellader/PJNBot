@@ -36,10 +36,13 @@ const token = process.env.DISCORD_BOT_TOKEN;
 if (!token) throw new Error("Brak tokena Discord bota!");
 
 const TOP_CHANNEL_ID = '1534049518377631826'; 
-const STATUS_CHANNEL_ID = '1533839105962676254'; // Kanał głosowy zmieniający nazwę na Online/Offline
+const STATUS_CHANNEL_ID = '1533839197666807838'; // Zaktualizowany kanał głosowy zmieniający nazwę na Online/Offline dla Kicka
 const BADGE_CHANNEL_ID = '1532858772089999606'; 
 const NEWS_CHANNEL_ID = '1534228079914913922'; 
 const STREAM_ANNOUNCE_CHANNEL_ID = '1532399010785263799'; // Kanał tekstowy na powiadomienia o streamie LangusPJN
+
+// Zmienna do śledzenia stanu streama na Kickie, żeby nie spamować powiadomieniami
+let wasLiveOnKick = false; 
 
 const client = new Client({
     intents: [
@@ -198,13 +201,13 @@ const commands = [
         .addUserOption(o => o.setName('uzytkownik').setDescription('Komu').setRequired(true))
         .addStringOption(o => o.setName('odznaka').setDescription('Nazwa odznaki').setRequired(true)),
 
-    // Komendy Stream TikTok LangusPJN
+    // Komendy Stream Kick LangusPJN
     new SlashCommandBuilder()
         .setName('odpalstream')
-        .setDescription('Rozpocznij transmisję LangusPJN na TikToku i powiadom serwer'),
+        .setDescription('Wymuś ręczne ogłoszenie streama LangusPJN z Kicka'),
     new SlashCommandBuilder()
         .setName('zakonczstream')
-        .setDescription('Zakończ transmisję i przywróć status Offline'),
+        .setDescription('Wymuś ręczne zakończenie streama i przywrócenie statusu Offline'),
 
     new SlashCommandBuilder()
         .setName('nowosc')
@@ -241,6 +244,64 @@ client.once('ready', async () => {
     } catch (error) {
         console.error('Błąd rejestracji komend:', error);
     }
+
+    // === AUTOMATYCZNY MONITOR KICK.COM (SPRAWDZANIE CO 1 MINUTĘ) ===
+    setInterval(async () => {
+        try {
+            const response = await fetch('https://kick.com/api/v2/channels/LangusPJN');
+            if (!response.ok) return;
+            const data: any = await response.json();
+            
+            const isLive = data.livestream !== null && data.livestream !== undefined;
+            const streamTitle = isLive ? data.livestream.session_title : 'Transmisja na żywo';
+            const viewerCount = isLive ? data.livestream.viewer_count : 0;
+            const categoryName = isLive && data.livestream.categories && data.livestream.categories.length > 0 ? data.livestream.categories[0].name : 'Just Chatting';
+            const thumbnail = isLive && data.livestream.thumbnail ? data.livestream.thumbnail.url : null;
+            const kickLink = 'https://kick.com/LangusPJN';
+
+            for (const [_, guild] of client.guilds.cache) {
+                // 1. Obsługa kanału statusu (głosowego)
+                if (STATUS_CHANNEL_ID) {
+                    const voiceChannel = await guild.channels.fetch(STATUS_CHANNEL_ID).catch(() => null);
+                    if (voiceChannel && voiceChannel.isVoiceBased()) {
+                        const targetName = isLive ? `🟢 Kick: Online` : `⚫ Kick: Offline`;
+                        if (voiceChannel.name !== targetName) {
+                            await voiceChannel.setName(targetName).catch(() => {});
+                        }
+                    }
+                }
+
+                // 2. Obsługa powiadomienia o starcie/końcu transmisji
+                if (isLive && !wasLiveOnKick) {
+                    wasLiveOnKick = true;
+                    if (STREAM_ANNOUNCE_CHANNEL_ID) {
+                        const channel = await guild.channels.fetch(STREAM_ANNOUNCE_CHANNEL_ID).catch(() => null);
+                        if (channel && channel.isTextBased()) {
+                            await channel.send({
+                                content: '@everyone 🟢 **LangusPJN właśnie wystartował z nowym streamiem na Kicku!**',
+                                embeds: [{
+                                    color: 0x53FC18, // Oficjalny zielony kolor Kick.com
+                                    title: `🚀 ${streamTitle}`,
+                                    url: kickLink,
+                                    description: `**Streamer:** LangusPJN\n**Kategoria:** ${categoryName}\n**Widowie:** 👥 ${viewerCount}\n\nWpadnij na transmisję, zostaw follow i wspieraj czat!`,
+                                    image: thumbnail ? { url: thumbnail } : undefined,
+                                    fields: [
+                                        { name: '🔗 Link do transmisji', value: `[Oglądaj Kick.com/LangusPJN](${kickLink})`, inline: false }
+                                    ],
+                                    footer: { text: 'System Streamów PJN • Kick Live Monitor', iconURL: 'https://kick.com/favicon.ico' },
+                                    timestamp: new Date().toISOString()
+                                }]
+                            }).catch(() => {});
+                        }
+                    }
+                } else if (!isLive && wasLiveOnKick) {
+                    wasLiveOnKick = false;
+                }
+            }
+        } catch (err) {
+            // Ignorujemy błędy sieciowe API
+        }
+    }, 60 * 1000);
 
     setInterval(async () => {
         try {
@@ -623,59 +684,50 @@ client.on('interactionCreate', async interaction => {
             return;
         }
 
-        // === OBSŁUGA STREAM TIKTOK LANGUSPJN (ONLINE / OFFLINE) ===
+        // === RĘCZNE WYMUSZENIE STATUSU STREAMU (OPCJONALNIE) ===
         else if (commandName === 'odpalstream') {
-            const tiktokLink = 'https://www.tiktok.com/@LangusPJN/live';
-
             try {
-                // 1. Zmiana nazwy kanału głosowego statusu na Online
                 if (STATUS_CHANNEL_ID) {
                     const voiceChannel = await interaction.guild?.channels.fetch(STATUS_CHANNEL_ID);
                     if (voiceChannel && voiceChannel.isVoiceBased()) {
-                        await voiceChannel.setName(`🔴 TikTok: Online`);
+                        await voiceChannel.setName(`🟢 Kick: Online`);
                     }
                 }
-
-                // 2. Wysłanie ogłoszenia z @everyone na dedykowany kanał tekstowy dla LangusPJN
                 const channel = await interaction.guild?.channels.fetch(STREAM_ANNOUNCE_CHANNEL_ID);
                 if (channel && channel.isTextBased()) {
                     await channel.send({
-                        content: '@everyone 🔴 **LangusPJN właśnie odpalił transmisję na żywo na TikToku!**',
+                        content: '@everyone 🟢 **LangusPJN właśnie odpalił transmisję na żywo na Kicku!**',
                         embeds: [{
-                            color: 0xFE2C55, // Kolor motywu TikToka
-                            title: `📱 LangusPJN Live na TikTok!`,
+                            color: 0x53FC18,
+                            title: `🚀 LangusPJN Live na Kick!`,
                             description: `**Streamer:** LangusPJN\n\nDołącz do transmisji i zostaw obserwację!`,
                             fields: [
-                                { name: '🔗 Link do transmisji', value: `[Kliknij tutaj, aby oglądać TikTok Live](${tiktokLink})`, inline: false }
+                                { name: '🔗 Link do transmisji', value: `[Kliknij tutaj, aby oglądać Kick Live](https://kick.com/LangusPJN)`, inline: false }
                             ],
-                            footer: { text: 'System Streamów PJN • TikTok' },
+                            footer: { text: 'System Streamów PJN • Kick' },
                             timestamp: new Date().toISOString()
                         }]
                     });
                 }
-
-                await interaction.reply({ content: `✅ Pomyślnie ogłoszono stream LangusPJN z TikToka!`, ephemeral: true });
+                await interaction.reply({ content: `✅ Wymuszono powiadomienie o streamie!`, ephemeral: true });
             } catch (err) {
-                console.error(err);
-                await interaction.reply({ content: `❌ Wystąpił błąd podczas uruchamiania streama.`, ephemeral: true });
+                await interaction.reply({ content: `❌ Błąd podczas wykonywania komendy.`, ephemeral: true });
             }
             return;
         }
 
         else if (commandName === 'zakonczstream') {
             try {
-                // Przywrócenie nazwy kanału głosowego statusu na Offline
                 if (STATUS_CHANNEL_ID) {
                     const voiceChannel = await interaction.guild?.channels.fetch(STATUS_CHANNEL_ID);
                     if (voiceChannel && voiceChannel.isVoiceBased()) {
-                        await voiceChannel.setName(`⚫ TikTok: Offline`);
+                        await voiceChannel.setName(`⚫ Kick: Offline`);
                     }
                 }
-
-                await interaction.reply({ content: `⏹️ Transmisja TikTok została zakończona, a status kanału zmieniono na Offline.`, ephemeral: true });
+                wasLiveOnKick = false;
+                await interaction.reply({ content: `⏹️ Zresetowano status streama do Offline.`, ephemeral: true });
             } catch (err) {
-                console.error(err);
-                await interaction.reply({ content: `❌ Wystąpił błąd podczas kończenia streama.`, ephemeral: true });
+                await interaction.reply({ content: `❌ Błąd podczas wykonywania komendy.`, ephemeral: true });
             }
             return;
         }
