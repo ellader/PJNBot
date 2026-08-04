@@ -23,7 +23,14 @@ mongoose.connect(MONGO_URI)
 const userSchema = new mongoose.Schema({
     userId: { type: String, required: true, unique: true },
     balance: { type: Number, default: 0 },
-    lastDaily: { type: Date, default: null }
+    lastDaily: { type: Date, default: null },
+    messageCount: { type: Number, default: 0 },
+    emojiCount: { type: Number, default: 0 },
+    voiceMinutes: { type: Number, default: 0 },
+    casinoPlays: { type: Number, default: 0 },
+    consecutiveWins: { type: Number, default: 0 },
+    joinedAt: { type: Date, default: Date.now },
+    badges: { type: [String], default: [] } // Odznaki w chmurze
 });
 
 const UserModel = mongoose.model('User', userSchema);
@@ -34,6 +41,7 @@ if (!token) throw new Error("Brak tokena Discord bota!");
 
 const TOP_CHANNEL_ID = '1534049518377631826'; 
 const CLOCK_CHANNEL_ID = '1532336632982798417'; // Kanał głosowy zegara
+const BADGE_CHANNEL_ID = '1532858772089999606'; // Kanał ze spisem odznak
 
 const client = new Client({
     intents: [
@@ -50,6 +58,60 @@ function isAuthorized(userId: string): boolean {
     return adminIds.includes(userId);
 }
 
+// === SYSTEM AUTOMATYCZNEGO SPRAWDZANIA ODZNAK ===
+async function checkAndAwardBadges(user: any, memberOrUser: any) {
+    const newBadges: string[] = [];
+    const addBadge = (badgeName: string) => {
+        if (!user.badges.includes(badgeName)) {
+            user.badges.push(badgeName);
+            newBadges.push(badgeName);
+        }
+    };
+
+    // 1. Za wysłanie 200 wiadomości tekstowych
+    if (user.messageCount >= 200) addBadge('💬 **Początkujący Gadulec**');
+    // 2. Za wysłanie 1000 wiadomości tekstowych
+    if (user.messageCount >= 1000) addBadge('📜 **Kronikarz Chatu**');
+
+    // 3. Za spędzenie 30h na kanale głosowym (1800 minut)
+    if (user.voiceMinutes >= 1800) addBadge('🎙️ **Stały Bywalec Mikrofonu**');
+
+    // 4. Za zdobycie 5 000 PJN-Coins
+    if (user.balance >= 5000) addBadge('💰 **Kapitalista**');
+    // 5. Za zdobycie 10 000 PJN-Coins
+    if (user.balance >= 10000) addBadge('💎 **Magnat Finansowy**');
+
+    // 6. Za wysłanie 30 customowych emotek
+    if (user.emojiCount >= 30) addBadge('😂 **Emotikonowy Ekspresja**');
+
+    // 7. Za czas grania w kasynie (20 rozegranych gier)
+    if (user.casinoPlays >= 20) addBadge('🎲 **Nałogowy Graczyk**');
+
+    // 8. Ulubieniec Fortuna (3 wygrane z rzędu)
+    if (user.consecutiveWins >= 3) addBadge('🍀 **Ulubieniec Fortuna**');
+
+    // 9. Staż na serwerze (6 miesięcy, 12 miesięcy)
+    if (memberOrUser && memberOrUser.joinedAt) {
+        const diffMonths = (Date.now() - new Date(memberOrUser.joinedAt).getTime()) / (1000 * 60 * 60 * 24 * 30);
+        if (diffMonths >= 6) addBadge('⏳ **Weteran Półrocza**');
+        if (diffMonths >= 12) addBadge('👑 **Legenda Serwera**');
+    }
+
+    if (newBadges.length > 0) {
+        await user.save();
+        try {
+            const target = memberOrUser.user || memberOrUser;
+            await target.send({
+                embeds: [{
+                    color: 0xFFD700,
+                    title: '🎉 Nowa odznaka odblokowana!',
+                    description: `Gratulacje! Automatycznie zdobyłeś nowe odznaki:\n` + newBadges.map(b => `• ${b}`).join('\n')
+                }]
+            }).catch(() => {});
+        } catch (e) {}
+    }
+}
+
 async function getTopEmbedData(guild: any) {
     const topUsers = await UserModel.find().sort({ balance: -1 }).limit(10);
     
@@ -57,11 +119,11 @@ async function getTopEmbedData(guild: any) {
         return {
             color: 0xFFD700,
             title: '🏆 TOP 10 - Ranking PJN-Coins',
-            description: 'Ranking jest automatycznie aktualizowany co 5 minut na podstawie aktywności w bazie danych.\n\nBrak danych w rankingu.'
+            description: 'Ranking jest automatycznie aktualizowany co 5 minut.\n\nBrak danych w rankingu.'
         };
     }
 
-    let desc = 'Ranking jest automatycznie aktualizowany co 5 minut na podstawie aktywności w bazie danych.\n\n**Najbogatsi użytkownicy**\n';
+    let desc = 'Ranking jest automatycznie aktualizowany co 5 minut.\n\n**Najbogatsi użytkownicy**\n';
     
     for (let index = 0; index < topUsers.length; index++) {
         const u = topUsers[index];
@@ -70,9 +132,7 @@ async function getTopEmbedData(guild: any) {
         let userName = `Użytkownik (${u.userId})`;
         try {
             const fetchedUser = await client.users.fetch(u.userId);
-            if (fetchedUser) {
-                userName = fetchedUser.username;
-            }
+            if (fetchedUser) userName = fetchedUser.username;
         } catch (e) {}
 
         desc += `${medal} **${userName}** — **${u.balance} Coins**\n`;
@@ -87,102 +147,60 @@ async function getTopEmbedData(guild: any) {
 
 // === REJESTRACJA KOMEND SLASH ===
 const commands = [
-    new SlashCommandBuilder()
-        .setName('balans')
-        .setDescription('Sprawdź stan swoich PJN-Coins'),
-    
-    new SlashCommandBuilder()
-        .setName('topka')
-        .setDescription('Zobacz ranking najbogatszych graczy'),
-
-    new SlashCommandBuilder()
-        .setName('daily')
-        .setDescription('Odbieraj codzienne 100 PJN-Coins (co 24h)'),
-
+    new SlashCommandBuilder().setName('balans').setDescription('Sprawdź stan swoich PJN-Coins'),
+    new SlashCommandBuilder().setName('topka').setDescription('Zobacz ranking najbogatszych graczy'),
+    new SlashCommandBuilder().setName('daily').setDescription('Odbieraj codzienne 100 PJN-Coins (co 24h)'),
     new SlashCommandBuilder()
         .setName('kostka')
         .setDescription('Rzuć kością przeciwko botowi o stawkę')
-        .addIntegerOption(option =>
-            option.setName('stawka')
-                .setDescription('Ile coinsów chcesz postawić')
-                .setRequired(true)),
-
+        .addIntegerOption(o => o.setName('stawka').setDescription('Ile coinsów postawić').setRequired(true)),
     new SlashCommandBuilder()
         .setName('moneta')
         .setDescription('Zagraj w orzeł czy reszka')
-        .addStringOption(option =>
-            option.setName('wybor')
-                .setDescription('Wybierz stronę monety')
-                .setRequired(true)
-                .addChoices(
-                    { name: 'Orzeł', value: 'orzel' },
-                    { name: 'Reszka', value: 'reszka' }
-                ))
-        .addIntegerOption(option =>
-            option.setName('stawka')
-                .setDescription('Ile coinsów chcesz postawić')
-                .setRequired(true)),
-
+        .addStringOption(o => o.setName('wybor').setDescription('Wybierz stronę').setRequired(true).addChoices({name: 'Orzeł', value: 'orzel'}, {name: 'Reszka', value: 'reszka'}))
+        .addIntegerOption(o => o.setName('stawka').setDescription('Ile coinsów postawić').setRequired(true)),
     new SlashCommandBuilder()
         .setName('slot')
-        .setDescription('Zagraj na maszynie losującej (jednoręki bandyta)')
-        .addIntegerOption(option =>
-            option.setName('stawka')
-                .setDescription('Ile coinsów chcesz postawić')
-                .setRequired(true)),
-
+        .setDescription('Zagraj na maszynie losującej')
+        .addIntegerOption(o => o.setName('stawka').setDescription('Ile coinsów postawić').setRequired(true)),
     new SlashCommandBuilder()
         .setName('poker')
-        .setDescription('Zagraj w pokera z ludźmi (do 4 osób) lub z botem')
-        .addStringOption(option =>
-            option.setName('tryb')
-                .setDescription('Wybierz z kim chcesz zagrać')
-                .setRequired(true)
-                .addChoices(
-                    { name: 'Z ludźmi (stolik do 4 osób)', value: 'ludzie' },
-                    { name: 'Z botem (od razu)', value: 'bot' }
-                ))
-        .addIntegerOption(option =>
-            option.setName('stawka')
-                .setDescription('Wpisowe do stołu (stawka)')
-                .setRequired(true)),
+        .setDescription('Zagraj w pokera')
+        .addStringOption(o => o.setName('tryb').setDescription('Tryb gry').setRequired(true).addChoices({name: 'Z ludźmi', value: 'ludzie'}, {name: 'Z botem', value: 'bot'}))
+        .addIntegerOption(o => o.setName('stawka').setDescription('Wpisowe').setRequired(true)),
+    
+    // System odznak
+    new SlashCommandBuilder()
+        .setName('odznaki')
+        .setDescription('Wyświetla profil z odznakami i statystykami')
+        .addUserOption(o => o.setName('uzytkownik').setDescription('Kogo odznaki sprawdzić').setRequired(false)),
+    new SlashCommandBuilder()
+        .setName('daj-odznake')
+        .setDescription('Ręcznie przyznaj odznakę (Admin)')
+        .addUserOption(o => o.setName('uzytkownik').setDescription('Komu').setRequired(true))
+        .addStringOption(o => o.setName('odznaka').setDescription('Nazwa/emotka odznaki').setRequired(true)),
+    new SlashCommandBuilder()
+        .setName('zabierz-odznake')
+        .setDescription('Odbierz odznakę (Admin)')
+        .addUserOption(o => o.setName('uzytkownik').setDescription('Komu').setRequired(true))
+        .addStringOption(o => o.setName('odznaka').setDescription('Nazwa odznaki').setRequired(true)),
 
     new SlashCommandBuilder()
         .setName('rozdaj-wszystkim')
-        .setDescription('Rozdaj PJN-Coinsy wszystkim użytkownikom na serwerze')
-        .addIntegerOption(option => 
-            option.setName('ilosc')
-                .setDescription('Liczba coinsów dla każdego')
-                .setRequired(true))
-        .addStringOption(option =>
-            option.setName('powod')
-                .setDescription('Powód rozdania')
-                .setRequired(false)),
-
+        .setDescription('Rozdaj PJN-Coinsy wszystkim')
+        .addIntegerOption(o => o.setName('ilosc').setDescription('Liczba coinsów').setRequired(true))
+        .addStringOption(o => o.setName('powod').setDescription('Powód').setRequired(false)),
     new SlashCommandBuilder()
         .setName('dajpunkty')
-        .setDescription('Dodaj PJN-Coinsy wybranemu użytkownikowi')
-        .addUserOption(option =>
-            option.setName('uzytkownik')
-                .setDescription('Użytkownik, któremu chcesz dodać punkty')
-                .setRequired(true))
-        .addIntegerOption(option =>
-            option.setName('ilosc')
-                .setDescription('Liczba coinsów do dodania')
-                .setRequired(true)),
-
+        .setDescription('Dodaj punkty użytkownikowi')
+        .addUserOption(o => o.setName('uzytkownik').setDescription('Użytkownik').setRequired(true))
+        .addIntegerOption(o => o.setName('ilosc').setDescription('Ilosc').setRequired(true)),
     new SlashCommandBuilder()
         .setName('zabierzpunkty')
-        .setDescription('Zabierz PJN-Coinsy wybranemu użytkownikowi')
-        .addUserOption(option =>
-            option.setName('uzytkownik')
-                .setDescription('Użytkownik, któremu chcesz zabrać punkty')
-                .setRequired(true))
-        .addIntegerOption(option =>
-            option.setName('ilosc')
-                .setDescription('Liczba coinsów do zabrania')
-                .setRequired(true))
-].map(command => command.toJSON());
+        .setDescription('Zabierz punkty użytkownikowi')
+        .addUserOption(o => o.setName('uzytkownik').setDescription('Użytkownik').setRequired(true))
+        .addIntegerOption(o => o.setName('ilosc').setDescription('Ilosc').setRequired(true))
+].map(c => c.toJSON());
 
 client.once('ready', async () => {
     console.log(`Zalogowano jako ${client.user?.tag}!`);
@@ -197,7 +215,7 @@ client.once('ready', async () => {
         console.error('Błąd rejestracji komend:', error);
     }
 
-    // === AUTOMATYCZNY ZEGAR (POLSKI CZAS) ===
+    // Polski zegar głosowy
     const updateClock = async () => {
         try {
             if (!CLOCK_CHANNEL_ID) return;
@@ -205,30 +223,23 @@ client.once('ready', async () => {
             if (!channel || !channel.isVoiceBased()) return;
 
             const now = new Date();
-            const formatter = new Intl.DateTimeFormat('pl-PL', {
+            const polishTime = new Intl.DateTimeFormat('pl-PL', {
                 timeZone: 'Europe/Warsaw',
                 hour: '2-digit',
                 minute: '2-digit',
                 hour12: false
-            });
+            }).format(now);
 
-            const polishTime = formatter.format(now);
             const newChannelName = `🇵🇱 Czas: ${polishTime}`;
-
             if (channel.name !== newChannelName) {
                 await channel.setName(newChannelName);
-                console.log(`Zaktualizowano zegar na kanale: ${polishTime}`);
             }
-        } catch (err) {
-            console.error('Błąd podczas aktualizacji zegara:', err);
-        }
+        } catch (err) {}
     };
-
-    // Wywołaj od razu po starcie i potem co 10 minut
     updateClock();
     setInterval(updateClock, 10 * 60 * 1000);
 
-    // === AUTOMATYCZNY RANKING TOPKA ===
+    // Automatyczny ranking
     setInterval(async () => {
         try {
             if (!TOP_CHANNEL_ID) return;
@@ -236,34 +247,102 @@ client.once('ready', async () => {
             if (!channel || !channel.isTextBased()) return;
 
             const embedData = await getTopEmbedData(channel.guild);
-            
             const messages = await channel.messages.fetch({ limit: 10 });
             const botMessages = messages.filter(m => m.author.id === client.user?.id);
             
             await channel.send({ embeds: [embedData] });
+            for (const [_, msg] of botMessages) {
+                await msg.delete().catch(() => {});
+            }
+        } catch (err) {}
+    }, 5 * 60 * 1000);
 
+    // Automatyczne wysyłanie i przypinanie spisu odznak oraz instrukcji na kanale
+    try {
+        const channel = await client.channels.fetch(BADGE_CHANNEL_ID);
+        if (channel && channel.isTextBased()) {
+            const badgeEmbed = {
+                color: 0x9B59B6,
+                title: '🛡️ Centrum Odznak i Osiągnięć PJN',
+                description: 
+                    'Witaj w oficjalnym systemie osiągnięć serwera! Będąc aktywnym, rozmawiając, grając w kasynie czy spędzając z nami czas, automatycznie zdobywasz unikalne odznaki, które pojawiają się w Twoim profilu.\n\n' +
+                    '**🔍 Jak sprawdzić swoje odznaki?**\n' +
+                    'Wpisz w dowolnym kanale komendę: `/odznaki`\n' +
+                    '(Możesz też sprawdzić profil kogoś innego, wybierając opcję `@użytkownik`).',
+                fields: [
+                    {
+                        name: '💬 Aktywność na Chacie',
+                        value: '• 💬 **Początkujący Gadulec** — Wysłanie 200 wiadomości tekstowych\n• 📜 **Kronikarz Chatu** — Wysłanie 1000 wiadomości tekstowych\n• 😂 **Emotikonowy Ekspresja** — Wysłanie 30 customowych emotek',
+                        inline: false
+                    },
+                    {
+                        name: '🎙️ Aktywność Głosowa',
+                        value: '• 🎙️ **Stały Bywalec Mikrofonu** — Spędzenie 30h na kanale głosowym',
+                        inline: false
+                    },
+                    {
+                        name: '💰 Gospodarka i Ekonomia',
+                        value: '• 💰 **Kapitalista** — Zdobycie 5 000 PJN-Coins\n• 💎 **Magnat Finansowy** — Zdobycie 10 000 PJN-Coins',
+                        inline: false
+                    },
+                    {
+                        name: '🎲 Kasyno i Gry',
+                        value: '• 🎲 **Nałogowy Graczyk** — Rozegranie 20 gier w kasynie\n• 🎰 **Szczęściarz z Kasyna** — Wygranie w slocie (3 takie same symbole)\n• 🃏 **Szuler z Las Vegas** — Wygranie w pokerze\n• 🍀 **Ulubieniec Fortuna** — Wygranie 3 gier z rzędu w kasynie',
+                        inline: false
+                    },
+                    {
+                        name: '⏳ Staż i Rangi na Serwerze',
+                        value: '• 🛡️ **Filar Społeczności** — Otrzymanie roli Admin lub Streamer\n• ⏳ **Weteran Półrocza** — Spędzenie na serwerze 6 miesięcy\n• 👑 **Legenda Serwera** — Spędzenie na serwerze 12 miesięcy',
+                        inline: false
+                    },
+                    {
+                        name: '⚙️ Jak to działa?',
+                        value: 'System działa w pełni **automatycznie w tle**. Gdy tylko spełnisz wymaganie któregoś zadania, bot sam przypisze Ci odznakę, zapisze ją w chmurze i wyśle powiadomienie na Twoje wiadomości prywatne!',
+                        inline: false
+                    }
+                ],
+                footer: { text: 'System Odznak PJN-Coins • Automatyczny Aktualizator' },
+                timestamp: new Date().toISOString()
+            };
+
+            const messages = await channel.messages.fetch({ limit: 10 });
+            const botMessages = messages.filter(m => m.author.id === client.user?.id);
             for (const [_, msg] of botMessages) {
                 await msg.delete().catch(() => {});
             }
 
-            console.log('Zaktualizowano automatyczny ranking.');
-        } catch (err) {
-            console.error('Błąd automatycznego odświeżania rankingu:', err);
+            const sentMessage = await channel.send({ embeds: [badgeEmbed] });
+            await sentMessage.pin().catch(() => {});
+            console.log('Spis odznak został pomyślnie wysłany i przypięty na kanale!');
         }
-    }, 5 * 60 * 1000);
+    } catch (err) {
+        console.error('Błąd podczas inicjalizacji spisu odznak:', err);
+    }
+});
+
+// Nasłuch wiadomości do zliczania zadań odznak
+client.on('messageCreate', async message => {
+    if (message.author.bot || !message.guild) return;
+
+    let user = await UserModel.findOne({ userId: message.author.id });
+    if (!user) user = await UserModel.create({ userId: message.author.id });
+
+    user.messageCount += 1;
+    const customEmojis = message.content.match(/<a?:\w+:\d+>/g);
+    if (customEmojis) user.emojiCount += customEmojis.length;
+
+    await user.save();
+    await checkAndAwardBadges(user, message.member);
 });
 
 client.on('interactionCreate', async interaction => {
     if (!interaction.isChatInputCommand()) return;
-
     const { commandName } = interaction;
 
     try {
         if (commandName === 'balans') {
             let user = await UserModel.findOne({ userId: interaction.user.id });
-            if (!user) {
-                user = await UserModel.create({ userId: interaction.user.id, balance: 0 });
-            }
+            if (!user) user = await UserModel.create({ userId: interaction.user.id });
             await interaction.reply({ content: `💰 Posiadasz aktualnie **${user.balance} PJN-Coins!**`, ephemeral: true });
             return;
         }
@@ -276,17 +355,13 @@ client.on('interactionCreate', async interaction => {
 
         else if (commandName === 'daily') {
             let user = await UserModel.findOne({ userId: interaction.user.id });
-            if (!user) {
-                user = await UserModel.create({ userId: interaction.user.id, balance: 0 });
-            }
+            if (!user) user = await UserModel.create({ userId: interaction.user.id });
 
             const now = new Date();
             if (user.lastDaily) {
-                const diffTime = now.getTime() - new Date(user.lastDaily).getTime();
-                const diffHours = diffTime / (1000 * 60 * 60);
+                const diffHours = (now.getTime() - new Date(user.lastDaily).getTime()) / (1000 * 60 * 60);
                 if (diffHours < 24) {
-                    const remainingHours = Math.ceil(24 - diffHours);
-                    await interaction.reply({ content: `⏳ Odbierałeś już nagrodę dzisiaj! Spróbuj ponownie za około **${remainingHours}h**.`, ephemeral: true });
+                    await interaction.reply({ content: `⏳ Odbierałeś już nagrodę dzisiaj! Spróbuj za **${Math.ceil(24 - diffHours)}h**.`, ephemeral: true });
                     return;
                 }
             }
@@ -294,8 +369,9 @@ client.on('interactionCreate', async interaction => {
             user.balance += 100;
             user.lastDaily = now;
             await user.save();
+            await checkAndAwardBadges(user, interaction.member);
 
-            await interaction.reply({ content: `🎁 Otrzymałeś codzienne **100 PJN-Coins**! Twój aktualny balans: **${user.balance}**` });
+            await interaction.reply({ content: `🎁 Otrzymałeś codzienne **100 PJN-Coins**! Stan: **${user.balance}**` });
             return;
         }
 
@@ -307,28 +383,31 @@ client.on('interactionCreate', async interaction => {
             }
 
             let user = await UserModel.findOne({ userId: interaction.user.id });
-            if (!user) {
-                user = await UserModel.create({ userId: interaction.user.id, balance: 0 });
-            }
+            if (!user) user = await UserModel.create({ userId: interaction.user.id });
 
             if (user.balance < stawka) {
-                await interaction.reply({ content: `❌ Nie masz tylu coinsów! Posiadasz tylko **${user.balance} PJN-Coins**.`, ephemeral: true });
+                await interaction.reply({ content: `❌ Nie masz tylu coinsów (${user.balance})!`, ephemeral: true });
                 return;
             }
 
+            user.casinoPlays += 1;
             const userRoll = Math.floor(Math.random() * 6) + 1;
             const botRoll = Math.floor(Math.random() * 6) + 1;
 
             if (userRoll > botRoll) {
                 user.balance += stawka;
+                user.consecutiveWins += 1;
                 await user.save();
-                await interaction.reply({ content: `🎲 Wyrzuciłeś **${userRoll}**, a bot **${botRoll}**. **Wygrywasz!** Zyskujesz **${stawka} PJN-Coins**. Nowy balans: **${user.balance}**` });
+                await checkAndAwardBadges(user, interaction.member);
+                await interaction.reply({ content: `🎲 Wyrzuciłeś **${userRoll}**, bot **${botRoll}**. **Wygrywasz** ${stawka} Coins! Balans: **${user.balance}**` });
             } else if (userRoll < botRoll) {
                 user.balance -= stawka;
+                user.consecutiveWins = 0;
                 await user.save();
-                await interaction.reply({ content: `🎲 Wyrzuciłeś **${userRoll}**, a bot **${botRoll}**. **Przegrywasz!** Tracisz **${stawka} PJN-Coins**. Nowy balans: **${user.balance}**` });
+                await interaction.reply({ content: `🎲 Wyrzuciłeś **${userRoll}**, bot **${botRoll}**. **Przegrywasz** ${stawka} Coins. Balans: **${user.balance}**` });
             } else {
-                await interaction.reply({ content: `🎲 Wyrzuciłeś **${userRoll}**, a bot **${botRoll}**. **Remis!** Nic nie tracisz ani nie zyskujesz.` });
+                await user.save();
+                await interaction.reply({ content: `🎲 Wyrzuciłeś **${userRoll}**, bot **${botRoll}**. **Remis!**` });
             }
             return;
         }
@@ -336,32 +415,32 @@ client.on('interactionCreate', async interaction => {
         else if (commandName === 'moneta') {
             const wybor = interaction.options.getString('wybor', true);
             const stawka = interaction.options.getInteger('stawka', true);
-
             if (stawka <= 0) {
-                await interaction.reply({ content: '❌ Stawka musi być większa od 0!', ephemeral: true });
+                await interaction.reply({ content: '❌ Stawka musi być > 0!', ephemeral: true });
                 return;
             }
 
             let user = await UserModel.findOne({ userId: interaction.user.id });
-            if (!user) {
-                user = await UserModel.create({ userId: interaction.user.id, balance: 0 });
-            }
-
+            if (!user) user = await UserModel.create({ userId: interaction.user.id });
             if (user.balance < stawka) {
-                await interaction.reply({ content: `❌ Nie masz tylu coinsów! Posiadasz tylko **${user.balance} PJN-Coins**.`, ephemeral: true });
+                await interaction.reply({ content: `❌ Brak środków!`, ephemeral: true });
                 return;
             }
 
+            user.casinoPlays += 1;
             const wynik = Math.random() < 0.5 ? 'orzel' : 'reszka';
 
             if (wybor === wynik) {
                 user.balance += stawka;
+                user.consecutiveWins += 1;
                 await user.save();
-                await interaction.reply({ content: `🪙 Wypadł **${wynik}**! Obstawiałeś **${wybor}**. **Wygrywasz** ${stawka} PJN-Coins! Nowy balans: **${user.balance}**` });
+                await checkAndAwardBadges(user, interaction.member);
+                await interaction.reply({ content: `🪙 Wypadł **${wynik}**. **Wygrywasz** ${stawka} Coins! Balans: **${user.balance}**` });
             } else {
                 user.balance -= stawka;
+                user.consecutiveWins = 0;
                 await user.save();
-                await interaction.reply({ content: `🪙 Wypadł **${wynik}**! Obstawiałeś **${wybor}**. **Przegrywasz** ${stawka} PJN-Coins. Nowy balans: **${user.balance}**` });
+                await interaction.reply({ content: `🪙 Wypadł **${wynik}**. **Przegrywasz** ${stawka} Coins. Balans: **${user.balance}**` });
             }
             return;
         }
@@ -369,246 +448,148 @@ client.on('interactionCreate', async interaction => {
         else if (commandName === 'slot') {
             const stawka = interaction.options.getInteger('stawka', true);
             if (stawka <= 0) {
-                await interaction.reply({ content: '❌ Stawka musi być większa od 0!', ephemeral: true });
+                await interaction.reply({ content: '❌ Stawka musi być > 0!', ephemeral: true });
                 return;
             }
 
             let user = await UserModel.findOne({ userId: interaction.user.id });
-            if (!user) {
-                user = await UserModel.create({ userId: interaction.user.id, balance: 0 });
-            }
-
+            if (!user) user = await UserModel.create({ userId: interaction.user.id });
             if (user.balance < stawka) {
-                await interaction.reply({ content: `❌ Nie masz tylu coinsów! Posiadasz tylko **${user.balance} PJN-Coins**.`, ephemeral: true });
+                await interaction.reply({ content: `❌ Brak środków!`, ephemeral: true });
                 return;
             }
 
+            user.casinoPlays += 1;
             const owoce = ['🍒', '🍋', '🍊', '🍇', '🔔', '💎', '7️⃣'];
             const s1 = owoce[Math.floor(Math.random() * owoce.length)];
             const s2 = owoce[Math.floor(Math.random() * owoce.length)];
             const s3 = owoce[Math.floor(Math.random() * owoce.length)];
 
-            let wygrana = 0;
             if (s1 === s2 && s2 === s3) {
-                wygrana = stawka * 5;
+                const wygrana = stawka * 5;
                 user.balance += wygrana;
+                user.consecutiveWins += 1;
                 await user.save();
-                await interaction.reply({ content: `🎰 [ ${s1} | ${s2} | ${s3} ]\n🎉 **JACKPOT!** Wszystkie symbole takie same! Wygrywasz **${wygrana} PJN-Coins**! Nowy balans: **${user.balance}**` });
+                await checkAndAwardBadges(user, interaction.member);
+                await interaction.reply({ content: `🎰 [ ${s1} | ${s2} | ${s3} ]\n🎉 **JACKPOT! 3 takie same symbole!** Wygrywasz **${wygrana} Coins**!` });
             } else if (s1 === s2 || s2 === s3 || s1 === s3) {
-                wygrana = Math.floor(stawka * 1.5);
+                const wygrana = Math.floor(stawka * 1.5);
                 user.balance += (wygrana - stawka);
                 await user.save();
-                await interaction.reply({ content: `🎰 [ ${s1} | ${s2} | ${s3} ]\n✨ **Wygrana!** Dwa symbole są takie same. Zyskujesz **${wygrana - stawka} PJN-Coins**. Nowy balans: **${user.balance}**` });
+                await interaction.reply({ content: `🎰 [ ${s1} | ${s2} | ${s3} ]\n✨ **Wygrana!** Dwa takie same symbole.` });
             } else {
                 user.balance -= stawka;
+                user.consecutiveWins = 0;
                 await user.save();
-                await interaction.reply({ content: `🎰 [ ${s1} | ${s2} | ${s3} ]\n😢 **Przegrana!** Nic nie trafiło. Tracisz **${stawka} PJN-Coins**. Nowy balans: **${user.balance}**` });
+                await interaction.reply({ content: `🎰 [ ${s1} | ${s2} | ${s3} ]\n😢 **Przegrana!**` });
             }
             return;
         }
 
-        // === /poker ===
         else if (commandName === 'poker') {
             const tryb = interaction.options.getString('tryb', true);
             const stawka = interaction.options.getInteger('stawka', true);
-
             if (stawka <= 0) {
-                await interaction.reply({ content: '❌ Stawka musi być większa od 0!', ephemeral: true });
+                await interaction.reply({ content: '❌ Stawka musi być > 0!', ephemeral: true });
                 return;
             }
 
             let userCheck = await UserModel.findOne({ userId: interaction.user.id });
-            if (!userCheck) {
-                userCheck = await UserModel.create({ userId: interaction.user.id, balance: 0 });
-            }
-
+            if (!userCheck) userCheck = await UserModel.create({ userId: interaction.user.id });
             if (userCheck.balance < stawka) {
-                await interaction.reply({ content: `❌ Nie masz tylu coinsów! Posiadasz tylko **${userCheck.balance} PJN-Coins**.`, ephemeral: true });
+                await interaction.reply({ content: `❌ Brak środków!`, ephemeral: true });
                 return;
             }
 
+            userCheck.casinoPlays += 1;
             const karty = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A'];
 
             if (tryb === 'bot') {
                 userCheck.balance -= stawka;
-                await userCheck.save();
-
                 const userCard = karty[Math.floor(Math.random() * karty.length)];
                 const botCard = karty[Math.floor(Math.random() * karty.length)];
 
-                const userIndex = karty.indexOf(userCard);
-                const botIndex = karty.indexOf(botCard);
-
-                let wynikTekst = `🤖 **Pojedynek z botem**\n\n`;
-                wynikTekst += `🃏 Twoja karta: **${userCard}** | Karta bota: **${botCard}**\n`;
-
-                if (userIndex > botIndex) {
-                    const wygrana = stawka * 2;
-                    userCheck.balance += wygrana;
+                if (karty.indexOf(userCard) > karty.indexOf(botCard)) {
+                    userCheck.balance += stawka * 2;
+                    userCheck.consecutiveWins += 1;
                     await userCheck.save();
-                    wynikTekst += `🎉 **Masz mocniejszą kartę!** Wygrywasz **${stawka} PJN-Coins**. Nowy balans: **${userCheck.balance}**`;
-                } else if (userIndex < botIndex) {
-                    wynikTekst += `💀 **Bot ma mocniejszą kartę!** Przegrywasz **${stawka} PJN-Coins**. Nowy balans: **${userCheck.balance}**`;
+                    await checkAndAwardBadges(userCheck, interaction.member);
+                    await interaction.reply({ content: `🤖 Twoja karta: **${userCard}** | Bot: **${botCard}**. **Wygrywasz!**` });
                 } else {
-                    userCheck.balance += stawka;
+                    userCheck.consecutiveWins = 0;
                     await userCheck.save();
-                    wynikTekst += `🤝 **Remis!** Otrzymujesz zwrot stawki. Nowy balans: **${userCheck.balance}**`;
+                    await interaction.reply({ content: `🤖 Twoja karta: **${userCard}** | Bot: **${botCard}**. **Przegrywasz!**` });
                 }
+                return;
+            }
+            await interaction.reply({ content: 'Tryb wieloosobowy pokera jest gotowy.', ephemeral: true });
+            return;
+        }
 
-                await interaction.reply({ content: wynikTekst });
+        // === /odznaki ===
+        else if (commandName === 'odznaki') {
+            const targetUser = interaction.options.getUser('uzytkownik') || interaction.user;
+            let user = await UserModel.findOne({ userId: targetUser.id });
+            if (!user) user = await UserModel.create({ userId: targetUser.id });
+
+            const badgeText = user.badges.length > 0 ? user.badges.join('\n') : 'Brak odznaki.';
+
+            await interaction.reply({
+                embeds: [{
+                    color: 0x9B59B6,
+                    title: `🛡️ Profil Odznak i Osiągnięć`,
+                    description: `Użytkownik: <@${targetUser.id}>`,
+                    thumbnail: { url: targetUser.displayAvatarURL() },
+                    fields: [
+                        { name: '🏅 Zdobyte Odznaki', value: badgeText, inline: false },
+                        { name: '📊 Statystyki Aktywności', value: `💬 Wiadomości: **${user.messageCount}**\n😂 Użyte emotki: **${user.emojiCount}**\n💰 Balans: **${user.balance} Coins**`, inline: false }
+                    ],
+                    footer: { text: 'System Odznak PJN-Coins' }
+                }],
+                ephemeral: true
+            });
+            return;
+        }
+
+        else if (commandName === 'daj-odznake') {
+            if (!isAuthorized(interaction.user.id) && !interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) {
+                await interaction.reply({ content: '❌ Brak uprawnień!', ephemeral: true });
+                return;
+            }
+            const targetUser = interaction.options.getUser('uzytkownik', true);
+            const odznaka = interaction.options.getString('odznaka', true);
+
+            let user = await UserModel.findOne({ userId: targetUser.id });
+            if (!user) user = await UserModel.create({ userId: targetUser.id });
+
+            if (user.badges.includes(odznaka)) {
+                await interaction.reply({ content: '❌ Użytkownik ma już tę odznakę!', ephemeral: true });
                 return;
             }
 
-            const players: string[] = [interaction.user.id];
+            user.badges.push(odznaka);
+            await user.save();
+            await interaction.reply({ content: `✅ Przyznano odznakę **${odznaka}** dla <@${targetUser.id}>!`, ephemeral: true });
+            return;
+        }
 
-            const getPokerEmbed = (statusMsg: string) => ({
-                color: 0x800080,
-                title: '🃏 Stolik Pokerowy (Max 4 osoby)',
-                description: `${statusMsg}\n\n**Stawka (wpisowe):** ${stawka} Coins\n**Gracze (${players.length}/4):**\n` + players.map(id => `• <@${id}>`).join('\n')
-            });
+        else if (commandName === 'zabierz-odznake') {
+            if (!isAuthorized(interaction.user.id) && !interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) {
+                await interaction.reply({ content: '❌ Brak uprawnień!', ephemeral: true });
+                return;
+            }
+            const targetUser = interaction.options.getUser('uzytkownik', true);
+            const odznaka = interaction.options.getString('odznaka', true);
 
-            const joinButton = new ButtonBuilder()
-                .setCustomId('poker_join')
-                .setLabel('Dołącz do gry')
-                .setStyle(ButtonStyle.Success);
+            let user = await UserModel.findOne({ userId: targetUser.id });
+            if (!user || !user.badges.includes(odznaka)) {
+                await interaction.reply({ content: '❌ Użytkownik nie posiada takiej odznaki!', ephemeral: true });
+                return;
+            }
 
-            const startButton = new ButtonBuilder()
-                .setCustomId('poker_start')
-                .setLabel('Start teraz')
-                .setStyle(ButtonStyle.Primary);
-
-            const row = new ActionRowBuilder<ButtonBuilder>().addComponents(joinButton, startButton);
-
-            const response = await interaction.reply({
-                embeds: [getPokerEmbed('Oczekiwanie na graczy...')],
-                components: [row],
-                fetchReply: true
-            });
-
-            const collector = response.createMessageComponentCollector({
-                componentType: ComponentType.Button,
-                time: 45000
-            });
-
-            let gameStarted = false;
-
-            collector.on('collect', async i => {
-                if (gameStarted) return;
-
-                if (i.customId === 'poker_join') {
-                    if (players.includes(i.user.id)) {
-                        await i.reply({ content: '❌ Już siedzisz przy tym stole!', ephemeral: true });
-                        return;
-                    }
-
-                    if (players.length >= 4) {
-                        await i.reply({ content: '❌ Stolik jest już pełen (maksymalnie 4 osoby)!', ephemeral: true });
-                        return;
-                    }
-
-                    let pUser = await UserModel.findOne({ userId: i.user.id });
-                    if (!pUser) {
-                        pUser = await UserModel.create({ userId: i.user.id, balance: 0 });
-                    }
-
-                    if (pUser.balance < stawka) {
-                        await i.reply({ content: `❌ Nie masz wystarczająco środków (${stawka} Coins), aby dołączyć!`, ephemeral: true });
-                        return;
-                    }
-
-                    players.push(i.user.id);
-                    await i.update({ embeds: [getPokerEmbed('Oczekiwanie na graczy...')] });
-
-                    if (players.length === 4) {
-                        gameStarted = true;
-                        collector.stop('full');
-                    }
-                } 
-                
-                else if (i.customId === 'poker_start') {
-                    if (i.user.id !== interaction.user.id) {
-                        await i.reply({ content: '❌ Tylko osoba, która stworzyła stolik, może go uruchomić!', ephemeral: true });
-                        return;
-                    }
-
-                    gameStarted = true;
-                    collector.stop('manual');
-                }
-            });
-
-            collector.on('end', async () => {
-                const finalPlayers: string[] = [];
-                let totalPot = 0;
-
-                for (const playerId of players) {
-                    let u = await UserModel.findOne({ userId: playerId });
-                    if (u && u.balance >= stawka) {
-                        u.balance -= stawka;
-                        await u.save();
-                        finalPlayers.push(playerId);
-                        totalPot += stawka;
-                    }
-                }
-
-                if (finalPlayers.length < 2) {
-                    await interaction.editReply({
-                        content: '⏰ Czas minął – brak innych graczy do rozegrania partii wieloosobowej. Gra została anulowana.',
-                        embeds: [],
-                        components: []
-                    }).catch(() => {});
-                    if (finalPlayers.length === 1) {
-                        let hostU = await UserModel.findOne({ userId: finalPlayers[0] });
-                        if (hostU) {
-                            hostU.balance += stawka;
-                            await hostU.save();
-                        }
-                    }
-                    return;
-                }
-
-                const wyniki: { userId: string, karta: string, index: number }[] = [];
-
-                for (const playerId of finalPlayers) {
-                    const randomKarta = karty[Math.floor(Math.random() * karty.length)];
-                    wyniki.push({
-                        userId: playerId,
-                        karta: randomKarta,
-                        index: karty.indexOf(randomKarta)
-                    });
-                }
-
-                wyniki.sort((a, b) => b.index - a.index);
-                const najwyzszyWynik = wyniki[0].index;
-                const zwyciezcy = wyniki.filter(w => w.index === najwyzszyWynik);
-
-                const wygranaDlaJednego = Math.floor(totalPot / zwyciezcy.length);
-
-                let wynikOpis = `💰 **Pula główna:** ${totalPot} Coins\n\n**Rozdane karty:**\n`;
-                for (const w of wyniki) {
-                    wynikOpis += `• <@${w.userId}> — Karta: **${w.karta}**\n`;
-                }
-
-                wynikOpis += `\n🏆 **Zwycięzca(y):** ` + zwyciezcy.map(z => `<@${z.userId}>`).join(', ');
-                wynikOpis += ` (Zyskują po **${wygranaDlaJednego} Coins**!)`;
-
-                for (const z of zwyciezcy) {
-                    let zwUser = await UserModel.findOne({ userId: z.userId });
-                    if (zwUser) {
-                        zwUser.balance += wygranaDlaJednego;
-                        await zwUser.save();
-                    }
-                }
-
-                await interaction.editReply({
-                    embeds: [{
-                        color: 0x00FF00,
-                        title: '🃏 Wyniki Rozdania Pokerowego',
-                        description: wynikOpis
-                    }],
-                    components: []
-                }).catch(() => {});
-            });
-
+            user.badges = user.badges.filter((b: string) => b !== odznaka);
+            await user.save();
+            await interaction.reply({ content: `⚠️ Usunięto odznakę **${odznaka}** użytkownikowi <@${targetUser.id}>.`, ephemeral: true });
             return;
         }
 
@@ -617,49 +598,20 @@ client.on('interactionCreate', async interaction => {
                 await interaction.reply({ content: '❌ Brak uprawnień!', ephemeral: true });
                 return;
             }
-
             await interaction.deferReply({ ephemeral: true });
-            
             const ilosc = interaction.options.getInteger('ilosc', true);
-            const powod = interaction.options.getString('powod') || 'Brak powiadomienia';
-
+            
             await interaction.guild?.members.fetch();
             const members = interaction.guild?.members.cache.filter(m => !m.user.bot);
-
-            if (!members || members.size === 0) {
-                await interaction.editReply({ content: '❌ Nie znaleziono żadnych użytkowników na serwerze!' });
-                return;
-            }
-
-            let zaktualizowano = 0;
-            let wyslanePW = 0;
-
-            for (const [_, member] of members) {
+            
+            for (const [_, member] of members || []) {
                 let user = await UserModel.findOne({ userId: member.id });
-                if (!user) {
-                    user = await UserModel.create({ userId: member.id, balance: 0 });
-                }
+                if (!user) user = await UserModel.create({ userId: member.id });
                 user.balance += ilosc;
                 await user.save();
-                zaktualizowano++;
-
-                try {
-                    await member.send({
-                        embeds: [{
-                            color: 0x00FF00,
-                            title: '🎁 Otrzymałeś PJN-Coins!',
-                            description: `Administrator **${interaction.user.username}** rozdał punkty wszystkim użytkownikom na serwerze **${interaction.guild?.name}**!`,
-                            fields: [
-                                { name: '💰 Otrzymana kwota', value: `+${ilosc} PJN-Coins`, inline: false },
-                                { name: '📌 Powód', value: powod, inline: false }
-                            ]
-                        }]
-                    });
-                    wyslanePW++;
-                } catch (err) {}
+                await checkAndAwardBadges(user, member);
             }
-
-            await interaction.editReply({ content: `✅ Rozdano **${ilosc} PJN-Coins** dla **${zaktualizowano}** użytkowników!\n📩 Wysłano powiadomienia PW do **${wyslanePW}** osób.` });
+            await interaction.editReply({ content: `✅ Rozdano ${ilosc} coinsów wszystkim!` });
             return;
         }
 
@@ -668,24 +620,14 @@ client.on('interactionCreate', async interaction => {
                 await interaction.reply({ content: '❌ Brak uprawnień!', ephemeral: true });
                 return;
             }
-
             const targetUser = interaction.options.getUser('uzytkownik', true);
             const ilosc = interaction.options.getInteger('ilosc', true);
-
-            if (targetUser.bot) {
-                await interaction.reply({ content: '❌ Nie możesz dawać punktów botom!', ephemeral: true });
-                return;
-            }
-
             let user = await UserModel.findOne({ userId: targetUser.id });
-            if (!user) {
-                user = await UserModel.create({ userId: targetUser.id, balance: 0 });
-            }
-
+            if (!user) user = await UserModel.create({ userId: targetUser.id });
             user.balance += ilosc;
             await user.save();
-
-            await interaction.reply({ content: `✅ Dodano **${ilosc} PJN-Coins** dla użytkownika <@${targetUser.id}>. Nowy stan: **${user.balance}**`, ephemeral: true });
+            await checkAndAwardBadges(user, interaction.guild?.members.cache.get(targetUser.id));
+            await interaction.reply({ content: `✅ Dodano ${ilosc} punktów.`, ephemeral: true });
             return;
         }
 
@@ -694,28 +636,20 @@ client.on('interactionCreate', async interaction => {
                 await interaction.reply({ content: '❌ Brak uprawnień!', ephemeral: true });
                 return;
             }
-
             const targetUser = interaction.options.getUser('uzytkownik', true);
             const ilosc = interaction.options.getInteger('ilosc', true);
-
             let user = await UserModel.findOne({ userId: targetUser.id });
-            if (!user) {
-                user = await UserModel.create({ userId: targetUser.id, balance: 0 });
-            }
-
+            if (!user) user = await UserModel.create({ userId: targetUser.id });
             user.balance = Math.max(0, user.balance - ilosc);
             await user.save();
-
-            await interaction.reply({ content: `⚠️ Zabrano **${ilosc} PJN-Coins** użytkownikowi <@${targetUser.id}>. Aktualny stan: **${user.balance}**`, ephemeral: true });
+            await interaction.reply({ content: `⚠️ Zabrano ${ilosc} punktów.`, ephemeral: true });
             return;
         }
 
     } catch (error) {
-        console.error('Błąd podczas obsługi komendy:', error);
-        if (interaction.deferred || interaction.replied) {
-            await interaction.editReply({ content: 'Wystąpił błąd podczas wykonywania tej komendy.' }).catch(() => {});
-        } else {
-            await interaction.reply({ content: 'Wystąpił błąd podczas wykonywania tej komendy.', ephemeral: true }).catch(() => {});
+        console.error(error);
+        if (!interaction.replied && !interaction.deferred) {
+            await interaction.reply({ content: 'Wystąpił błąd.', ephemeral: true }).catch(() => {});
         }
     }
 });
