@@ -7,7 +7,11 @@ import {
     TextChannel,
     VoiceChannel,
     PermissionFlagsBits,
-    EmbedBuilder 
+    EmbedBuilder,
+    ActionRowBuilder,
+    ButtonBuilder,
+    ButtonStyle,
+    ComponentType
 } from 'discord.js';
 import mongoose from 'mongoose';
 
@@ -55,7 +59,7 @@ const client = new Client({
     ]
 });
 
-// Główne ID kanałów i rang (zgodne z Twoimi starymi ustawieniami)
+// Główne ID kanałów i rang
 const ANNOUNCE_CHANNEL_ID = '1532399010785263799';
 const STREAM_CHANNEL_ID = '1533839105962676254'; 
 const CHANNEL_POWITANIA = "witamy";
@@ -76,7 +80,6 @@ function isAuthorized(userId: string): boolean {
     return adminIds.includes(userId);
 }
 
-// Oryginalna funkcja ogłoszeń godzinnych
 function createOgłoszenieEmbed() {
     return new EmbedBuilder()
         .setColor(0x3498DB)
@@ -312,7 +315,6 @@ client.once('ready', async () => {
     startHourlyAnnouncements();
 });
 
-// Obsługa wiadomości (licznik i system duszków ze starego kodu)
 client.on('messageCreate', async message => {
     if (message.author.bot || !message.guild) return;
 
@@ -327,7 +329,6 @@ client.on('messageCreate', async message => {
         await user.save();
         await checkAndAwardBadges(user, message.member);
 
-        // Obsługa kanału duszków ze starego kodu
         if (message.channelId === ID_KANALU_DUSZKI) {
             const pings = `<@&${ID_RANGI_DUSZKOWIEC}> <@&${ID_RANGI_MODERATOR}> <@&${ID_RANGI_ADMIN}>`;
             const replyText = `Cześć ${message.author}, dziękuję że jesteś, teraz zawołam osoby odpowiedzialne do Ciebie abyście porozmawiali o darmowych duszkach!\n\n${pings}`;
@@ -347,7 +348,6 @@ client.on('messageCreate', async message => {
     }
 });
 
-// Obsługa powitań nowych użytkowników ze starego kodu
 client.on('guildMemberAdd', async member => {
     try {
         let user = await UserModel.findOne({ userId: member.id });
@@ -481,7 +481,7 @@ client.on('interactionCreate', async interaction => {
             return;
         }
 
-        if (commandName === 'kostka' || commandName === 'moneta' || commandName === 'slot' || commandName === 'poker') {
+        if (commandName === 'kostka' || commandName === 'moneta' || commandName === 'slot') {
             await interaction.deferReply();
             const stawka = interaction.options.getInteger('stawka', true);
             let user = await UserModel.findOne({ userId: interaction.user.id });
@@ -515,9 +515,6 @@ client.on('interactionCreate', async interaction => {
                 if (s1 === s2 && s2 === s3) { wygrana = true; user.balance += stawka * 5; info = `🎰 [ ${s1} | ${s2} | ${s3} ] - JACKPOT!`; }
                 else if (s1 === s2 || s2 === s3 || s1 === s3) { wygrana = true; user.balance += stawka * 2; info = `🎰 [ ${s1} | ${s2} | ${s3} ] - Trafione dwa!`; }
                 else { user.balance -= stawka; info = `🎰 [ ${s1} | ${s2} | ${s3} ] - Przegrana.`; }
-            } else if (commandName === 'poker') {
-                if (Math.random() > 0.5) { wygrana = true; user.balance += stawka; info = `🃏 Poker: Wygrana!`; }
-                else { user.balance -= stawka; info = `🃏 Poker: Przegrana!`; }
             }
 
             if (wygrana) {
@@ -529,6 +526,210 @@ client.on('interactionCreate', async interaction => {
 
             await user.save();
             await interaction.editReply({ content: `${info} Stan konta: **${user.balance}**` });
+            return;
+        }
+
+        // === POKER (BOT LUB LUDZIE OD 2 DO 4 OSÓB) ===
+        if (commandName === 'poker') {
+            const tryb = interaction.options.getString('tryb', true);
+            const stawka = interaction.options.getInteger('stawka', true);
+
+            let hostUser = await UserModel.findOne({ userId: interaction.user.id });
+            if (!hostUser) hostUser = await UserModel.create({ userId: interaction.user.id });
+
+            if (hostUser.balance < stawka || stawka <= 0) {
+                await interaction.reply({ content: `❌ Nie masz wystarczającej liczby PJN-Coins (${stawka}), aby opłacić wpisowe!`, ephemeral: true });
+                return;
+            }
+
+            // TRYB Z BOTEM
+            if (tryb === 'bot') {
+                await interaction.deferReply();
+                hostUser.casinoPlays = (hostUser.casinoPlays || 0) + 1;
+                
+                let wygrana = false;
+                let info = '';
+                if (Math.random() > 0.5) { 
+                    wygrana = true; 
+                    hostUser.balance += stawka; 
+                    info = `🃏 Poker z botem: **Wygrana!** Zyskujesz +${stawka} PJN-Coins.`; 
+                } else { 
+                    hostUser.balance -= stawka; 
+                    info = `🃏 Poker z botem: **Przegrana!** Tracisz -${stawka} PJN-Coins.`; 
+                }
+
+                if (wygrana) {
+                    hostUser.consecutiveWins = (hostUser.consecutiveWins || 0) + 1;
+                    await checkAndAwardBadges(hostUser, interaction.member);
+                } else {
+                    hostUser.consecutiveWins = 0;
+                }
+
+                await hostUser.save();
+                await interaction.editReply({ content: `${info} Stan konta: **${hostUser.balance}** PJN-Coins.` });
+                return;
+            }
+
+            // TRYB Z LUDŹMI (2-4 osoby)
+            if (tryb === 'ludzie') {
+                await interaction.deferReply();
+
+                const joinedPlayers: string[] = [interaction.user.id];
+
+                const joinButton = new ButtonBuilder()
+                    .setCustomId('poker_join')
+                    .setLabel('Dołącz do stolika')
+                    .setStyle(ButtonStyle.Success)
+                    .setEmoji('🃏');
+
+                const startButton = new ButtonBuilder()
+                    .setCustomId('poker_start')
+                    .setLabel('Odkryj karty (Start)')
+                    .setStyle(ButtonStyle.Primary)
+                    .setEmoji('🚀');
+
+                const row = new ActionRowBuilder<ButtonBuilder>().addComponents(joinButton, startButton);
+
+                const embed = new EmbedBuilder()
+                    .setColor(0xE67E22)
+                    .setTitle('🃏 Stolik Pokerowy (2-4 osoby)')
+                    .setDescription(
+                        `Gospodarz: <@${interaction.user.id}>\n` +
+                        `Wpisowe: **${stawka} PJN-Coins**\n\n` +
+                        `**Gracze przy stoliku (1/4):**\n• <@${interaction.user.id}>\n\n` +
+                        `*Kliknij przycisk poniżej, aby dołączyć (czas na dołączenie to 1 minuta). Host może kliknąć Start w dowolnym momencie.*`
+                    );
+
+                const message = await interaction.editReply({ embeds: [embed], components: [row] });
+
+                const collector = message.createMessageComponentCollector({
+                    componentType: ComponentType.Button,
+                    time: 60000 // 60 sekund (1 minuta) na zbieranie graczy
+                });
+
+                collector.on('collect', async i => {
+                    if (i.customId === 'poker_join') {
+                        if (joinedPlayers.includes(i.user.id)) {
+                            await i.reply({ content: '❌ Już siedzisz przy tym stoliku!', ephemeral: true });
+                            return;
+                        }
+
+                        if (joinedPlayers.length >= 4) {
+                            await i.reply({ content: '❌ Stolik jest już pełen (maksymalnie 4 osoby)!', ephemeral: true });
+                            return;
+                        }
+
+                        let pUser = await UserModel.findOne({ userId: i.user.id });
+                        if (!pUser) pUser = await UserModel.create({ userId: i.user.id });
+
+                        if (pUser.balance < stawka) {
+                            await i.reply({ content: `❌ Masz za mało PJN-Coins (${pUser.balance}/${stawka}), aby dołączyć!`, ephemeral: true });
+                            return;
+                        }
+
+                        joinedPlayers.push(i.user.id);
+
+                        const listStr = joinedPlayers.map(id => `• <@${id}>`).join('\n');
+                        embed.setDescription(
+                            `Gospodarz: <@${interaction.user.id}>\n` +
+                            `Wpisowe: **${stawka} PJN-Coins**\n\n` +
+                            `**Gracze przy stoliku (${joinedPlayers.length}/4):**\n${listStr}\n\n` +
+                            `*Kliknij przycisk poniżej, aby dołączyć (czas na dołączenie to 1 minuta).*`
+                        );
+
+                        await i.update({ embeds: [embed] });
+                    }
+
+                    if (i.customId === 'poker_start') {
+                        if (i.user.id !== interaction.user.id) {
+                            await i.reply({ content: '❌ Tylko gospodarz stolika może rozpocząć rozdanie!', ephemeral: true });
+                            return;
+                        }
+
+                        if (joinedPlayers.length < 2) {
+                            await i.reply({ content: '❌ Do gry potrzeba przynajmniej 2 graczy!', ephemeral: true });
+                            return;
+                        }
+
+                        collector.stop('started');
+                    }
+                });
+
+                collector.on('end', async (_, reason) => {
+                    if (reason === 'time' && joinedPlayers.length < 2) {
+                        await interaction.editReply({
+                            content: '⏳ Czas minął (1 minuta). Zbyt mało graczy dołączyło do stolika. Gra została anulowana.',
+                            embeds: [],
+                            components: []
+                        }).catch(() => {});
+                        return;
+                    }
+
+                    // SPRAWDZENIE SALD I POBRANIE WPISOWEGO DLA WSZYSTKICH
+                    const validPlayers: string[] = [];
+                    for (const userId of joinedPlayers) {
+                        let u = await UserModel.findOne({ userId });
+                        if (u && u.balance >= stawka) {
+                            u.balance -= stawka;
+                            u.casinoPlays = (u.casinoPlays || 0) + 1;
+                            await u.save();
+                            validPlayers.push(userId);
+                        }
+                    }
+
+                    if (validPlayers.length < 2) {
+                        await interaction.editReply({
+                            content: '❌ Niektórzy gracze stracili środki i zabrakło wymaganej liczby osób (min. 2). Gra anulowana.',
+                            embeds: [],
+                            components: []
+                        }).catch(() => {});
+                        return;
+                    }
+
+                    // LOSOWANIE ZWYCIĘZCY SPOŚRÓD ZEBRANYCH GRACZY
+                    const winnerId = validPlayers[Math.floor(Math.random() * validPlayers.length)];
+                    const totalPool = validPlayers.length * stawka;
+
+                    let winnerUser = await UserModel.findOne({ userId: winnerId });
+                    if (winnerUser) {
+                        winnerUser.balance += totalPool;
+                        winnerUser.consecutiveWins = (winnerUser.consecutiveWins || 0) + 1;
+                        await winnerUser.save();
+                        const mem = await interaction.guild?.members.fetch(winnerId).catch(() => null);
+                        if (mem) await checkAndAwardBadges(winnerUser, mem);
+                    }
+
+                    // ROZSYŁANIE KART W DM DO KAŻDEGO UCZESTNIKA
+                    const kartyPool = ['2 Trefl', '3 Kier', 'As Pik', 'Król Karo', 'Dama Pik', 'Walet Kier', '10 Trefl', '9 Karo'];
+                    for (const userId of validPlayers) {
+                        try {
+                            const discordUser = await client.users.fetch(userId);
+                            const k1 = kartyPool[Math.floor(Math.random() * kartyPool.length)];
+                            const k2 = kartyPool[Math.floor(Math.random() * kartyPool.length)];
+                            await discordUser.send({
+                                embeds: [{
+                                    color: 0x2ECC71,
+                                    title: '🃏 Twoje karty w stoliku pokerowym',
+                                    description: `Otrzymałeś karty na rękę:\n• **${k1}**\n• **${k2}**\n\nPula całkowita stolika wynosiła: **${totalPool} PJN-Coins**.`
+                                }]
+                            }).catch(() => {});
+                        } catch (e) {}
+                    }
+
+                    // PODSUMOWANIE NA KANALE PUBLICZNYM
+                    const summaryDesc = validPlayers.map(id => `• <@${id}>`).join('\n');
+                    await interaction.editReply({
+                        content: `🏁 **Rozdanie zakończone!**\n🏆 Zwycięzcą zostaje <@${winnerId}> i zgarnia pulę **${totalPool} PJN-Coins**!\n\n*(Karty zostały rozesłane w wiadomościach prywatnych DM)*`,
+                        embeds: [
+                            new EmbedBuilder()
+                                .setColor(0xF1C40F)
+                                .setTitle('🃏 Wyniki Stolika Pokerowego')
+                                .setDescription(`**Uczestnicy:**\n${summaryDesc}\n\n🏆 **Zwycięzca:** <@${winnerId}>\n💰 **Wygrana:** +${totalPool} PJN-Coins`)
+                        ],
+                        components: []
+                    }).catch(() => {});
+                });
+            }
             return;
         }
 
