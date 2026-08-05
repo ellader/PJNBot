@@ -793,7 +793,6 @@ client.on('interactionCreate', async interaction => {
                     embed.setImage(zdjecie.url);
                 }
 
-                // Wysyłamy wiadomość z @everyone oraz embedem
                 await targetChannel.send({
                     content: '@everyone',
                     embeds: [embed],
