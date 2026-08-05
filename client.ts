@@ -533,7 +533,7 @@ client.on('interactionCreate', async interaction => {
             return;
         }
 
-        // === POKER (BOT LUDZIE 1 MINUTA CZASU) ===
+        // === POKER ===
         if (commandName === 'poker') {
             const tryb = interaction.options.getString('tryb', true);
             const stawka = interaction.options.getInteger('stawka', true);
@@ -841,10 +841,41 @@ client.on('interactionCreate', async interaction => {
 
             await interaction.deferReply({ ephemeral: true });
             const ilosc = interaction.options.getInteger('ilosc', true);
-            const powod = interaction.options.getString('powod') || 'Brak powódu';
+            const powod = interaction.options.getString('powod') || 'Brak powodu';
 
+            // Zwiększamy balans wszystkim w bazie
             await UserModel.updateMany({}, { $inc: { balance: ilosc } });
-            await interaction.editReply({ content: `🎁 Rozdano po **${ilosc} PJN-Coins** wszystkim! Powód: *${powod}*` });
+
+            const allUsers = await UserModel.find({});
+            let wyslane = 0;
+            let bledy = 0;
+
+            for (const u of allUsers) {
+                try {
+                    const targetUser = await client.users.fetch(u.userId);
+                    if (targetUser) {
+                        const embedDm = new EmbedBuilder()
+                            .setColor(0xF1C40F)
+                            .setTitle('🎁 Otrzymałeś PJN-Coins od Administratora!')
+                            .setDescription(
+                                `Cześć! Administrator **${interaction.user.tag}** rozdał nagrodę dla całej społeczności!\n\n` +
+                                `💰 **Otrzymana kwota:** +${ilosc} PJN-Coins\n` +
+                                `📌 **Powód:** *${powod}*\n` +
+                                `💼 **Twój aktualny stan konta:** ${u.balance} PJN-Coins`
+                            )
+                            .setTimestamp();
+
+                        await targetUser.send({ embeds: [embedDm] });
+                        wyslane++;
+                    }
+                } catch (e) {
+                    bledy++;
+                }
+            }
+
+            await interaction.editReply({ 
+                content: `✅ Rozdano po **${ilosc} PJN-Coins** wszystkim użytkownikom w bazie!\n📨 Wysłano powiadomienia DM: **${wyslane}** sukcesów, **${bledy}** zablokowanych wiadomości.\n📌 Powód: *${powod}*` 
+            });
             return;
         }
 
