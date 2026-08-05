@@ -319,6 +319,7 @@ client.once('ready', async () => {
     startHourlyAnnouncements();
 });
 
+// Naliczanie 1 PJN-Coins za każdą wiadomość
 client.on('messageCreate', async message => {
     if (message.author.bot || !message.guild) return;
 
@@ -327,6 +328,8 @@ client.on('messageCreate', async message => {
         if (!user) user = await UserModel.create({ userId: message.author.id });
 
         user.messageCount = (user.messageCount || 0) + 1;
+        user.balance += 1; // 1 PJN-Coins za wiadomość
+        
         const customEmojis = message.content.match(/<a?:\w+:\d+>/g);
         if (customEmojis) user.emojiCount = (user.emojiCount || 0) + customEmojis.length;
 
@@ -349,6 +352,45 @@ client.on('messageCreate', async message => {
         }
     } catch (error) {
         console.error('Błąd wiadomości:', error);
+    }
+});
+
+// Naliczanie 1 PJN-Coins za każdą minutę spędzoną na kanale głosowym
+const voiceTimestamps = new Map<string, number>();
+
+client.on('voiceStateUpdate', async (oldState, newState) => {
+    if (newState.member?.user.bot) return;
+
+    const userId = newState.id;
+    const now = Date.now();
+
+    // Dołączenie do kanału głosowego
+    if (!oldState.channelId && newState.channelId) {
+        voiceTimestamps.set(userId, now);
+    } 
+    // Wyjście z kanału głosowego
+    else if (oldState.channelId && !newState.channelId) {
+        const joinTime = voiceTimestamps.get(userId);
+        if (joinTime) {
+            const minutesSpent = Math.floor((now - joinTime) / (1000 * 60));
+            if (minutesSpent > 0) {
+                try {
+                    let user = await UserModel.findOne({ userId });
+                    if (!user) user = await UserModel.create({ userId });
+
+                    user.voiceMinutes = (user.voiceMinutes || 0) + minutesSpent;
+                    user.balance += minutesSpent; // 1 PJN-Coins za minutę na głosie
+                    await user.save();
+                    
+                    if (newState.member) {
+                        await checkAndAwardBadges(user, newState.member);
+                    }
+                } catch (e) {
+                    console.error('Błąd zapisu minut głosowych:', e);
+                }
+            }
+            voiceTimestamps.delete(userId);
+        }
     }
 });
 
@@ -843,7 +885,6 @@ client.on('interactionCreate', async interaction => {
             const ilosc = interaction.options.getInteger('ilosc', true);
             const powod = interaction.options.getString('powod') || 'Brak powodu';
 
-            // Zwiększamy balans wszystkim w bazie
             await UserModel.updateMany({}, { $inc: { balance: ilosc } });
 
             const allUsers = await UserModel.find({});
