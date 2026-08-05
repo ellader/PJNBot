@@ -14,6 +14,7 @@ import {
     ComponentType
 } from 'discord.js';
 import mongoose from 'mongoose';
+import cron from 'node-cron';
 
 // === KONFIGURACJA BAZY DANYCH MONGOOSE ===
 const MONGO_URI = process.env.MONGO_URI;
@@ -62,6 +63,7 @@ const client = new Client({
 // Główne ID kanałów i rang
 const ANNOUNCE_CHANNEL_ID = '1532399010785263799';
 const STREAM_CHANNEL_ID = '1533839105962676254'; 
+const ID_KANALU_NOWOSCI = '1534228079914913922';
 const CHANNEL_POWITANIA = "witamy";
 const ID_KANALU_DUSZKI = "1532977723843285112"; 
 const ID_KANALU_GRY_INFO = "1534060343473475644";
@@ -218,16 +220,17 @@ async function startTopUpdater() {
 }
 
 function startHourlyAnnouncements() {
-    setInterval(async () => {
+    cron.schedule('0 * * * *', async () => {
         try {
             const channel = await client.channels.fetch(ANNOUNCE_CHANNEL_ID).catch(() => null) as TextChannel;
             if (!channel) return;
 
             await channel.send({ embeds: [createOgłoszenieEmbed()] });
+            console.log('Wysłano automatyczne ogłoszenie godzinne.');
         } catch (err) {
             console.error('Błąd ogłoszenia godzinnego:', err);
         }
-    }, 60 * 60 * 1000);
+    });
 }
 
 const commands = [
@@ -285,7 +288,8 @@ const commands = [
     new SlashCommandBuilder().setName('zakonczstream').setDescription('Wymuś ręczne zakończenie streama i przywrócenie statusu Offline'),
     new SlashCommandBuilder().setName('nowosc').setDescription('Opublikuj nową funkcję lub aktualizację na kanale nowości (Admin)')
         .addStringOption(o => o.setName('tytul').setDescription('Tytuł nowości').setRequired(true))
-        .addStringOption(o => o.setName('opis').setDescription('Szczegółowy opis zmiany').setRequired(true)),
+        .addStringOption(o => o.setName('opis').setDescription('Szczegółowy opis zmiany').setRequired(true))
+        .addAttachmentOption(o => o.setName('zdjecie').setDescription('Opcjonalne zdjęcie do nowości').setRequired(false)),
     new SlashCommandBuilder().setName('rozdaj-wszystkim').setDescription('Rozdaj PJN-Coinsy wszystkim')
         .addIntegerOption(o => o.setName('ilosc').setDescription('Liczba PJN-Coins').setRequired(true))
         .addStringOption(o => o.setName('powod').setDescription('Powód').setRequired(false)),
@@ -529,7 +533,7 @@ client.on('interactionCreate', async interaction => {
             return;
         }
 
-        // === POKER (BOT LUB LUDZIE OD 2 DO 4 OSÓB) ===
+        // === POKER (BOT LUDZIE 1 MINUTA CZASU) ===
         if (commandName === 'poker') {
             const tryb = interaction.options.getString('tryb', true);
             const stawka = interaction.options.getInteger('stawka', true);
@@ -542,7 +546,6 @@ client.on('interactionCreate', async interaction => {
                 return;
             }
 
-            // TRYB Z BOTEM
             if (tryb === 'bot') {
                 await interaction.deferReply();
                 hostUser.casinoPlays = (hostUser.casinoPlays || 0) + 1;
@@ -570,7 +573,6 @@ client.on('interactionCreate', async interaction => {
                 return;
             }
 
-            // TRYB Z LUDŹMI (2-4 osoby)
             if (tryb === 'ludzie') {
                 await interaction.deferReply();
 
@@ -604,7 +606,7 @@ client.on('interactionCreate', async interaction => {
 
                 const collector = message.createMessageComponentCollector({
                     componentType: ComponentType.Button,
-                    time: 60000 // 60 sekund (1 minuta) na zbieranie graczy
+                    time: 60000 
                 });
 
                 collector.on('collect', async i => {
@@ -665,7 +667,6 @@ client.on('interactionCreate', async interaction => {
                         return;
                     }
 
-                    // SPRAWDZENIE SALD I POBRANIE WPISOWEGO DLA WSZYSTKICH
                     const validPlayers: string[] = [];
                     for (const userId of joinedPlayers) {
                         let u = await UserModel.findOne({ userId });
@@ -686,7 +687,6 @@ client.on('interactionCreate', async interaction => {
                         return;
                     }
 
-                    // LOSOWANIE ZWYCIĘZCY SPOŚRÓD ZEBRANYCH GRACZY
                     const winnerId = validPlayers[Math.floor(Math.random() * validPlayers.length)];
                     const totalPool = validPlayers.length * stawka;
 
@@ -699,7 +699,6 @@ client.on('interactionCreate', async interaction => {
                         if (mem) await checkAndAwardBadges(winnerUser, mem);
                     }
 
-                    // ROZSYŁANIE KART W DM DO KAŻDEGO UCZESTNIKA
                     const kartyPool = ['2 Trefl', '3 Kier', 'As Pik', 'Król Karo', 'Dama Pik', 'Walet Kier', '10 Trefl', '9 Karo'];
                     for (const userId of validPlayers) {
                         try {
@@ -716,7 +715,6 @@ client.on('interactionCreate', async interaction => {
                         } catch (e) {}
                     }
 
-                    // PODSUMOWANIE NA KANALE PUBLICZNYM
                     const summaryDesc = validPlayers.map(id => `• <@${id}>`).join('\n');
                     await interaction.editReply({
                         content: `🏁 **Rozdanie zakończone!**\n🏆 Zwycięzcą zostaje <@${winnerId}> i zgarnia pulę **${totalPool} PJN-Coins**!\n\n*(Karty zostały rozesłane w wiadomościach prywatnych DM)*`,
@@ -780,21 +778,31 @@ client.on('interactionCreate', async interaction => {
             await interaction.deferReply({ ephemeral: true });
             const tytul = interaction.options.getString('tytul', true);
             const opis = interaction.options.getString('opis', true);
+            const zdjecie = interaction.options.getAttachment('zdjecie');
 
-            const targetChannel = await client.channels.fetch(ANNOUNCE_CHANNEL_ID).catch(() => null);
+            const targetChannel = await client.channels.fetch(ID_KANALU_NOWOSCI).catch(() => null);
             if (targetChannel && typeof targetChannel.send === 'function') {
+                const embed = new EmbedBuilder()
+                    .setColor(0x9B59B6)
+                    .setTitle(`🚀 NOWOŚĆ: ${tytul}`)
+                    .setDescription(opis)
+                    .setFooter({ text: `Opublikował ${interaction.user.tag}` })
+                    .setTimestamp();
+
+                if (zdjecie) {
+                    embed.setImage(zdjecie.url);
+                }
+
+                // Wysyłamy wiadomość z @everyone oraz embedem
                 await targetChannel.send({
-                    embeds: [{
-                        color: 0x9B59B6,
-                        title: `🚀 NOWOŚĆ: ${tytul}`,
-                        description: opis,
-                        footer: { text: `Opublikował ${interaction.user.tag}` },
-                        timestamp: new Date().toISOString()
-                    }]
+                    content: '@everyone',
+                    embeds: [embed],
+                    allowedMentions: { parse: ['everyone'] }
                 });
-                await interaction.editReply({ content: `✅ Nowość opublikowana!` });
+
+                await interaction.editReply({ content: `✅ Nowość opublikowana na kanale nowości z oznaczeniem @everyone!` });
             } else {
-                await interaction.editReply({ content: `❌ Nie znaleziono kanału ogłoszeń.` });
+                await interaction.editReply({ content: `❌ Nie znaleziono kanału nowości o ID: ${ID_KANALU_NOWOSCI}.` });
             }
             return;
         }
