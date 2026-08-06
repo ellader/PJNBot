@@ -1,3 +1,4 @@
+
 import { 
     Client, 
     GatewayIntentBits, 
@@ -303,7 +304,6 @@ async function startTopUpdater() {
     }, 5 * 60 * 1000);
 }
 
-// === AUTOMATYCZNA AKTUALIZACJA CENTRUM ODZNAK (co 10 minut) ===
 async function startBadgesInfoUpdater() {
     setInterval(async () => {
         try {
@@ -340,10 +340,7 @@ const commands = [
     new SlashCommandBuilder().setName('portfel').setDescription('Sprawdź stan swoich PJN-Coins w portfelu'),
     new SlashCommandBuilder().setName('topka').setDescription('Zobacz ranking najbogatszych graczy'),
     new SlashCommandBuilder().setName('ustaw-topke').setDescription('Ustaw ten kanał jako ranking (Admin)').setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
-    
-    // Nowa komenda do ustawienia kanału z informacjami o odznakach
     new SlashCommandBuilder().setName('ustaw-odznaki').setDescription('Ustaw ten kanał jako centrum odznak (Admin)').setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
-
     new SlashCommandBuilder().setName('daily').setDescription('Odbieraj codzienne 100 PJN-Coins'),
     new SlashCommandBuilder().setName('przelej').setDescription('Przelewa PJN-Coins').addUserOption(o => o.setName('uzytkownik').setDescription('Komu').setRequired(true)).addIntegerOption(o => o.setName('kwota').setDescription('Ile').setRequired(true)),
     new SlashCommandBuilder().setName('kostka').setDescription('Rzuć kością').addIntegerOption(o => o.setName('stawka').setDescription('Stawka').setRequired(true)),
@@ -351,11 +348,9 @@ const commands = [
     new SlashCommandBuilder().setName('slot').setDescription('Sloty').addIntegerOption(o => o.setName('stawka').setDescription('Stawka').setRequired(true)),
     new SlashCommandBuilder().setName('poker').setDescription('Poker').addStringOption(o => o.setName('tryb').setDescription('Tryb').setRequired(true).addChoices({name: 'Z ludźmi', value: 'ludzie'}, {name: 'Z botem', value: 'bot'})).addIntegerOption(o => o.setName('stawka').setDescription('Stawka').setRequired(true)),
     new SlashCommandBuilder().setName('odznaki').setDescription('Wyświetla profil z odznakami').addUserOption(o => o.setName('uzytkownik').setDescription('Użytkownik').setRequired(false)),
-    
     new SlashCommandBuilder().setName('daj-odznake').setDescription('Przyznaj odznakę (Admin)')
         .addUserOption(o => o.setName('uzytkownik').setDescription('Komu').setRequired(true))
-        .addStringOption(o => o.setName('odznaka').setDescription('Wpisz pełną nazwę odznaki (np. ⏳ **Weteran**)').setRequired(true)),
-
+        .addStringOption(o => o.setName('odznaka').setDescription('Wpisz pełną nazwę odznaki').setRequired(true)),
     new SlashCommandBuilder().setName('zabierz-odznake').setDescription('Odbierz odznakę (Admin)').addUserOption(o => o.setName('uzytkownik').setDescription('Komu').setRequired(true)).addStringOption(o => o.setName('odznaka').setDescription('Nazwa').setRequired(true)),
     new SlashCommandBuilder().setName('dajpunkty').setDescription('Daj punkty').addUserOption(o => o.setName('uzytkownik').setDescription('User').setRequired(true)).addIntegerOption(o => o.setName('ilosc').setDescription('Ilość').setRequired(true)),
     new SlashCommandBuilder().setName('zabierzpunkty').setDescription('Zabierz punkty').addUserOption(o => o.setName('uzytkownik').setDescription('User').setRequired(true)).addIntegerOption(o => o.setName('ilosc').setDescription('Ilość').setRequired(true)),
@@ -441,6 +436,7 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
     }
 });
 
+// === ORYGINALNA, PEŁNA FORMA POWITANIA (PRZYWRÓCONA) ===
 client.on('guildMemberAdd', async member => {
     try {
         let user = await UserModel.findOne({ userId: member.id });
@@ -451,7 +447,22 @@ client.on('guildMemberAdd', async member => {
 
         const channel = member.guild.channels.cache.find(ch => ch.isTextBased() && 'name' in ch && ch.name === CHANNEL_POWITANIA) as TextChannel;
         if (channel) {
-            await channel.send({ content: `👋 Witaj na serwerze PJN, <@${member.id}>! +200 PJN-Coins na start!` });
+            const embed = new EmbedBuilder()
+                .setColor(0x2ECC71)
+                .setDescription(
+                    `📌 **Skonfiguruj swój profil i sprawdź najważniejsze miejsca:**\n\n` +
+                    `• Wyberaj płeć: <#1532837330761502750>\n` +
+                    `• Dostosuj role: <#1532839950796398642>\n` +
+                    `• Wybierz swój sprzęt: <#1532840051757264896>\n\n` +
+                    `🎮 Informacje o grach: <#1532840201472901170>\n` +
+                    `👻 Darmowe duszki: <#1532977723843285112>`
+                )
+                .setThumbnail(member.user.displayAvatarURL());
+
+            await channel.send({
+                content: `👋 Witaj na serwerze PJN, <@${member.id}>! Cieszymy się, że jesteś z nami!🎉\n🎁 Na start otrzymujesz w prezencie **200 PJN-Coins**!`,
+                embeds: [embed]
+            });
         }
     } catch (e) {}
 });
@@ -473,7 +484,6 @@ client.on('interactionCreate', async interaction => {
             return;
         }
 
-        // Obsługa komendy ustawiającej kanał odznak
         if (commandName === 'ustaw-odznaki') {
             if (!isAuthorized(interaction.user.id)) return interaction.reply({ content: '❌ Brak uprawnień!', ephemeral: true });
             await interaction.deferReply({ ephemeral: true });
@@ -486,7 +496,6 @@ client.on('interactionCreate', async interaction => {
             return;
         }
 
-        // Obsługa przelewania PJN-Coins z powiadomieniem na PW
         if (commandName === 'przelej') {
             await interaction.deferReply({ ephemeral: true });
             const targetUser = interaction.options.getUser('uzytkownik', true);
@@ -510,19 +519,14 @@ client.on('interactionCreate', async interaction => {
             let receiver = await UserModel.findOne({ userId: targetUser.id });
             if (!receiver) receiver = await UserModel.create({ userId: targetUser.id });
 
-            // Przelew właściwy
             sender.balance -= kwota;
             receiver.balance += kwota;
-
-            // Statystyka darczyńcy
             sender.totalDonated = (sender.totalDonated || 0) + kwota;
 
             await sender.save();
             await receiver.save();
-
             await checkAndAwardBadges(sender, interaction.member);
 
-            // Wysłanie powiadomienia na PW do odbiorcy
             try {
                 await targetUser.send({
                     embeds: [{
@@ -532,9 +536,7 @@ client.on('interactionCreate', async interaction => {
                         timestamp: new Date().toISOString()
                     }]
                 });
-            } catch (e) {
-                // Jeśli użytkownik ma zablokowane PW, bot zignoruje błąd, żeby nie wywalić komendy
-            }
+            } catch (e) {}
 
             await interaction.editReply({ content: `✅ Pomyślnie przelano **${kwota} PJN-Coins** dla użytkownika <@${targetUser.id}>!` });
             return;
