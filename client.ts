@@ -1,4 +1,3 @@
-
 import { 
     Client, 
     GatewayIntentBits, 
@@ -348,6 +347,7 @@ const commands = [
     new SlashCommandBuilder().setName('slot').setDescription('Sloty').addIntegerOption(o => o.setName('stawka').setDescription('Stawka').setRequired(true)),
     new SlashCommandBuilder().setName('poker').setDescription('Poker').addStringOption(o => o.setName('tryb').setDescription('Tryb').setRequired(true).addChoices({name: 'Z ludźmi', value: 'ludzie'}, {name: 'Z botem', value: 'bot'})).addIntegerOption(o => o.setName('stawka').setDescription('Stawka').setRequired(true)),
     new SlashCommandBuilder().setName('odznaki').setDescription('Wyświetla profil z odznakami').addUserOption(o => o.setName('uzytkownik').setDescription('Użytkownik').setRequired(false)),
+    new SlashCommandBuilder().setName('nowości').setDescription('Sprawdź najnowsze funkcje na serwerze: odznaki i przelewy'),
     new SlashCommandBuilder().setName('daj-odznake').setDescription('Przyznaj odznakę (Admin)')
         .addUserOption(o => o.setName('uzytkownik').setDescription('Komu').setRequired(true))
         .addStringOption(o => o.setName('odznaka').setDescription('Wpisz pełną nazwę odznaki').setRequired(true)),
@@ -436,7 +436,7 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
     }
 });
 
-// === ORYGINALNA, PEŁNA FORMA POWITANIA (PRZYWRÓCONA) ===
+// === POPRAWIONE ID KANAŁÓW W POWITANIACH ===
 client.on('guildMemberAdd', async member => {
     try {
         let user = await UserModel.findOne({ userId: member.id });
@@ -493,6 +493,31 @@ client.on('interactionCreate', async interaction => {
                 await ConfigModel.findOneAndUpdate({ key: 'odznaki_info_msg' }, { channelId: interaction.channelId, messageId: sentMessage.id }, { upsert: true, new: true });
                 await interaction.editReply({ content: `✅ Ustawiono ten kanał jako centrum odznak.` });
             }
+            return;
+        }
+
+        if (commandName === 'nowości') {
+            await interaction.deferReply({ ephemeral: true });
+            
+            const embed = new EmbedBuilder()
+                .setColor(0x3498DB)
+                .setTitle('✨ Odkryj najnowsze funkcje na serwerze PJN!')
+                .setDescription(
+                    'Wdrożyliśmy dla Was dwie duże nowości, które urozmaicą ekonomię oraz pozwolą pochwalić się aktywnością! 🚀\n\n' +
+                    '🛡️ **1. System Odznak i Osiągnięć**\n' +
+                    'Od teraz Twoja aktywność (pisanie wiadomości, czas na głosowych, gry w kasynie czy stan portfela) jest nagradzana unikalnymi odznakami!\n' +
+                    '• Wpisz **/odznaki**, aby podejrzeć swój profil i zdobyte tytuły.\n' +
+                    '• Możesz też sprawdzić profil innego gracza, wybierając go w opcji komendy.\n' +
+                    '• Szczegółowy spis wszystkich osiągnięć znajdziesz w dedykowanym centrum odznak na serwerze.\n\n' +
+                    '💸 **2. Przelewy PJN-Coins**\n' +
+                    'Chcesz wesprzeć znajomego lub podzielić się wygraną z kasyna? Teraz to możliwe!\n' +
+                    '• Użyj komendy **/przelej [użytkownik] [kwota]**, aby przekazać środki.\n' +
+                    '• Transakcja jest w pełni bezpieczna, a odbiorca otrzyma powiadomienie na prywatnej wiadomości (PW) o otrzymanym przelewie.'
+                )
+                .setTimestamp()
+                .setFooter({ text: 'PJN System • Rozwijamy się dla Was' });
+
+            await interaction.editReply({ embeds: [embed] });
             return;
         }
 
