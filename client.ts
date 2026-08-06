@@ -799,11 +799,11 @@ client.on('interactionCreate', async interaction => {
             const dol = interaction.options.getString('dol') || '';
 
             try {
-                // Użycie poprawnego formatu URLSearchParams dla metody POST
+                // Użycie Twoich danych logowania z Imgflip
                 const params = new URLSearchParams();
                 params.append('template_id', templateId);
-                params.append('username', 'test');
-                params.append('password', 'test');
+                params.append('username', 'ellader');
+                params.append('password', 'ellader123');
                 params.append('text0', gora);
                 params.append('text1', dol);
 
