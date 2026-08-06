@@ -201,7 +201,13 @@ async function sendQuoteToChannel(channelId: string) {
         .setTimestamp()
         .setFooter({ text: 'PJN Codzienna Inspiracja' });
 
-    await channel.send({ embeds: [embed] });
+    // Wysłanie wiadomości z oznaczeniem @everyone oraz embedem
+    await channel.send({ 
+        content: '@everyone', 
+        embeds: [embed],
+        allowedMentions: { parse: ['everyone'] } 
+    });
+    
     return true;
 }
 
@@ -434,10 +440,10 @@ const commands = [
     new SlashCommandBuilder().setName('zabierzpunkty').setDescription('Zabierz PJN-Coins użytkownikowi')
         .addUserOption(o => o.setName('uzytkownik').setDescription('Użytkownik').setRequired(true))
         .addIntegerOption(o => o.setName('ilosc').setDescription('Ilość PJN-Coins').setRequired(true)),
-    // Nowe komendy dotyczące cytatów:
+    // Komendy dotyczące cytatów:
     new SlashCommandBuilder()
         .setName('cytat')
-        .setDescription('Wyślij losowy życiowy cytat na kanał cytatów'),
+        .setDescription('Wyślij losowy życiowy cytat z oznaczeniem @everyone na kanał cytatów'),
     new SlashCommandBuilder()
         .setName('dodaj-cytat')
         .setDescription('Dodaj nowy cytat do bazy bota (Admin)')
@@ -475,7 +481,7 @@ client.on('messageCreate', async message => {
         if (!user) user = await UserModel.create({ userId: message.author.id });
 
         user.messageCount = (user.messageCount || 0) + 1;
-        user.balance += 1; // 1 PJN-Coins za wiadomość
+        user.balance += 1;
         
         const customEmojis = message.content.match(/<a?:\w+:\d+>/g);
         if (customEmojis) user.emojiCount = (user.emojiCount || 0) + customEmojis.length;
@@ -511,11 +517,9 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
     const userId = newState.id;
     const now = Date.now();
 
-    // Dołączenie do kanału głosowego
     if (!oldState.channelId && newState.channelId) {
         voiceTimestamps.set(userId, now);
     } 
-    // Wyjście z kanału głosowego
     else if (oldState.channelId && !newState.channelId) {
         const joinTime = voiceTimestamps.get(userId);
         if (joinTime) {
@@ -526,7 +530,7 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
                     if (!user) user = await UserModel.create({ userId });
 
                     user.voiceMinutes = (user.voiceMinutes || 0) + minutesSpent;
-                    user.balance += minutesSpent; // 1 PJN-Coins za minutę na głosie
+                    user.balance += minutesSpent;
                     await user.save();
                     
                     if (newState.member) {
@@ -722,7 +726,6 @@ client.on('interactionCreate', async interaction => {
             return;
         }
 
-        // === POKER ===
         if (commandName === 'poker') {
             const tryb = interaction.options.getString('tryb', true);
             const stawka = interaction.options.getInteger('stawka', true);
@@ -995,12 +998,12 @@ client.on('interactionCreate', async interaction => {
             return;
         }
 
-        // --- Obsługa komendy /cytat ---
+        // --- Obsługa komendy /cytat (z oznaczeniem @everyone) ---
         if (commandName === 'cytat') {
             await interaction.deferReply({ ephemeral: true });
             const success = await sendQuoteToChannel(ID_KANALU_CYTATY);
             if (success) {
-                await interaction.editReply({ content: `✅ Pomyślnie wysłano losowy cytat na kanał <#${ID_KANALU_CYTATY}>!` });
+                await interaction.editReply({ content: `✅ Pomyślnie wysłano losowy cytat (z @everyone) na kanał <#${ID_KANALU_CYTATY}>!` });
             } else {
                 await interaction.editReply({ content: `❌ Nie udało się wysłać cytatu (sprawdź ID kanału lub bazę).` });
             }
