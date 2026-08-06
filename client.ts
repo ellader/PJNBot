@@ -32,7 +32,7 @@ const userSchema = new mongoose.Schema({
     nightMessageCount: { type: Number, default: 0 }, 
     totalDonated: { type: Number, default: 0 },      
     quotesAdded: { type: Number, default: 0 },
-    helpCount: { type: Number, default: 0 }, // Pomocna dłoń
+    helpCount: { type: Number, default: 0 },
     joinedAt: { type: Date, default: Date.now },
     badges: { type: [String], default: [] }
 });
@@ -153,7 +153,34 @@ function createOgłoszenieEmbed() {
         .setFooter({ text: 'PJN System Ogłoszeń' });
 }
 
-// === ROZBUDOWANY SYSTEM WSZYSTKICH ODZNAK (ZGODNY Z PANELEM) ===
+// === CENTRUM INFORMACJI O ODZNACKACH (EMBED) ===
+function createBadgesInfoEmbed() {
+    return new EmbedBuilder()
+        .setColor(0x9B59B6)
+        .setTitle('🛡️ Centrum Odznak i Osiągnięć PJN')
+        .setDescription(
+            'Witaj w oficjalnym systemie osiągnięć serwera! Będąc aktywnym, rozmawiając, grając w kasynie czy spędzając z nami czas, automatycznie zdobywasz unikalne odznaki, które pojawiają się w Twoim profilu.\n\n' +
+            '🔍 **Jak sprawdzić swoje odznaki?**\n' +
+            'Wpisz w dowolnym kanale komendę: `/odznaki` (Możesz też sprawdzić profil kogoś innego, wybierając opcję `@użytkownik`).\n\n' +
+            '💬 **Aktywność na Chacie**\n' +
+            '• 💬 **Początkujący Gadulec** — Wysłanie 200 wiadomości tekstowych\n' +
+            '• 📜 **Kronikarz Chatu** — Wysłanie 1000 wiadomości tekstowych\n' +
+            '• 😂 **Emotikonowy Ekspresja** — Wysłanie 30 customowych emotek\n\n' +
+            '🎙️ **Aktywność Głosowa**\n' +
+            '• 🎙️ **Stały Bywalec Mikrofonu** — Spędzenie 30h na kanale głosowym\n\n' +
+            '💰 **Gospodarka i Ekonomia**\n' +
+            '• 💰 **Kapitalista** — Zdobycie 5 000 PJN-Coins\n' +
+            '• 💎 **Magnat Finansowy** — Zdobycie 10 000 PJN-Coins\n\n' +
+            '🎲 **Kasyno i Gry**\n' +
+            '• 🎲 **Nałogowy Graczyk** — Rozegranie 20 gier w kasynie\n' +
+            '• 🍀 **Ulubieniec Fortuna** — Wygranie 3 gier z rzędu w kasynie\n\n' +
+            '⏳ **Staż i Rangi na Serwerze**'
+        )
+        .setTimestamp()
+        .setFooter({ text: 'PJN System Odznak • Automatycznie aktualizowany' });
+}
+
+// === KOMPLETNY SYSTEM SPRAWDZANIA ODZNAK ===
 async function checkAndAwardBadges(user: any, memberOrUser: any) {
     const newBadges: string[] = [];
     const addBadge = (badgeName: string) => {
@@ -163,34 +190,28 @@ async function checkAndAwardBadges(user: any, memberOrUser: any) {
         }
     };
 
-    // 1. Aktywność na Chacie
     if (user.messageCount >= 200) addBadge('💬 **Początkujący Gadulec**');
     if (user.messageCount >= 1000) addBadge('📜 **Kronikarz Chatu**');
     if (user.messageCount >= 5000) addBadge('💬 **Król Wiadomości**');
     if (user.emojiCount >= 30) addBadge('😂 **Emotikonowy Ekspresja**');
     if (user.nightMessageCount >= 50) addBadge('🌙 **Nocny Marek**');
 
-    // 2. Aktywność Głosowa (Próg z panelu: 30h = 1800 minut)
     if (user.voiceMinutes >= 1800) addBadge('🎙️ **Stały Bywalec Mikrofonu**');
     if (user.voiceMinutes >= 6000) addBadge('🎧 **Audiofil**'); 
 
-    // 3. Gospodarka i Ekonomia
     if (user.balance >= 5000) addBadge('💰 **Kapitalista**');
     if (user.balance >= 10000) addBadge('💎 **Magnat Finansowy**');
     if (user.balance >= 100000) addBadge('🏦 **Milioner**');
     if (user.totalDonated >= 5000) addBadge('💸 **Hojny Darczyńca**');
 
-    // 4. Kasyno i Gry
     if (user.casinoPlays >= 20) addBadge('🎲 **Nałogowy Graczyk**');
     if (user.casinoPlays >= 100) addBadge('🎰 **Ryzykant**');
     if (user.consecutiveWins >= 3) addBadge('🍀 **Ulubieniec Fortuna**');
     if (user.consecutiveLosses >= 5) addBadge('🎯 **Czarna Seria**');
 
-    // 5. Społecznościowe i Pomocnicze
     if (user.quotesAdded >= 5) addBadge('💡 **Filozof**');
     if (user.helpCount >= 10) addBadge('🤝 **Pomocna Dłoń**');
 
-    // Staż i Rangi na Serwerze
     if (memberOrUser && memberOrUser.joinedAt) {
         const diffMonths = (Date.now() - new Date(memberOrUser.joinedAt).getTime()) / (1000 * 60 * 60 * 24 * 30);
         const diffYears = diffMonths / 12;
@@ -205,7 +226,6 @@ async function checkAndAwardBadges(user: any, memberOrUser: any) {
         if (hasAdminRole) addBadge('🛡️ **Filar Społeczności**');
     }
 
-    // Kolekcjoner (zbieracz wszystkich głównych odznak)
     const masterPoolCount = 18; 
     const currentCountWithoutCollector = user.badges.filter((b: string) => !b.includes('Kolekcjoner')).length;
     if (currentCountWithoutCollector >= masterPoolCount) {
@@ -283,6 +303,28 @@ async function startTopUpdater() {
     }, 5 * 60 * 1000);
 }
 
+// === AUTOMATYCZNA AKTUALIZACJA CENTRUM ODZNAK (co 10 minut) ===
+async function startBadgesInfoUpdater() {
+    setInterval(async () => {
+        try {
+            const config = await ConfigModel.findOne({ key: 'odznaki_info_msg' });
+            if (!config) return;
+
+            const channel = await client.channels.fetch(config.channelId).catch(() => null) as TextChannel;
+            if (!channel) return;
+
+            const oldMessage = await channel.messages.fetch(config.messageId).catch(() => null);
+            if (oldMessage) await oldMessage.delete().catch(() => {});
+
+            const embedData = createBadgesInfoEmbed();
+            const newMessage = await channel.send({ embeds: [embedData] });
+
+            config.messageId = newMessage.id;
+            await config.save();
+        } catch (err) {}
+    }, 10 * 60 * 1000);
+}
+
 function startHourlyAnnouncements() {
     cron.schedule('0 * * * *', async () => {
         try {
@@ -293,11 +335,15 @@ function startHourlyAnnouncements() {
     });
 }
 
-// Rejestracja komend slash
+// === KOMENDY SLASH ===
 const commands = [
     new SlashCommandBuilder().setName('portfel').setDescription('Sprawdź stan swoich PJN-Coins w portfelu'),
     new SlashCommandBuilder().setName('topka').setDescription('Zobacz ranking najbogatszych graczy'),
     new SlashCommandBuilder().setName('ustaw-topke').setDescription('Ustaw ten kanał jako ranking (Admin)').setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+    
+    // Nowa komenda do ustawienia kanału z informacjami o odznakach
+    new SlashCommandBuilder().setName('ustaw-odznaki').setDescription('Ustaw ten kanał jako centrum odznak (Admin)').setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+
     new SlashCommandBuilder().setName('daily').setDescription('Odbieraj codzienne 100 PJN-Coins'),
     new SlashCommandBuilder().setName('przelej').setDescription('Przelewa PJN-Coins').addUserOption(o => o.setName('uzytkownik').setDescription('Komu').setRequired(true)).addIntegerOption(o => o.setName('kwota').setDescription('Ile').setRequired(true)),
     new SlashCommandBuilder().setName('kostka').setDescription('Rzuć kością').addIntegerOption(o => o.setName('stawka').setDescription('Stawka').setRequired(true)),
@@ -305,27 +351,11 @@ const commands = [
     new SlashCommandBuilder().setName('slot').setDescription('Sloty').addIntegerOption(o => o.setName('stawka').setDescription('Stawka').setRequired(true)),
     new SlashCommandBuilder().setName('poker').setDescription('Poker').addStringOption(o => o.setName('tryb').setDescription('Tryb').setRequired(true).addChoices({name: 'Z ludźmi', value: 'ludzie'}, {name: 'Z botem', value: 'bot'})).addIntegerOption(o => o.setName('stawka').setDescription('Stawka').setRequired(true)),
     new SlashCommandBuilder().setName('odznaki').setDescription('Wyświetla profil z odznakami').addUserOption(o => o.setName('uzytkownik').setDescription('Użytkownik').setRequired(false)),
+    
     new SlashCommandBuilder().setName('daj-odznake').setDescription('Przyznaj odznakę (Admin)')
         .addUserOption(o => o.setName('uzytkownik').setDescription('Komu').setRequired(true))
-        .addStringOption(o => o.setName('odznaka').setDescription('Wybierz odznakę').setRequired(true)
-            .addChoices(
-                { name: '⏳ Weteran', value: '⏳ **Weteran**' },
-                { name: '🎂 Urodzinowy Gość', value: '🎂 **Urodzinowy Gość**' },
-                { name: '⚡ Błyskawica', value: '⚡ **Błyskawica**' },
-                { name: '❤️ Ulubieniec Publiczności', value: '❤️ **Ulubieniec Publiczności**' },
-                { name: '🤝 Pomocna Dłoń', value: '🤝 **Pomocna Dłoń**' },
-                { name: '🏦 Milioner', value: '🏦 **Milioner**' },
-                { name: '🎟️ Kolekcjoner', value: '🎟️ **Kolekcjoner**' },
-                { name: '🎲 Nałogowy Graczyk', value: '🎲 **Nałogowy Graczyk**' },
-                { name: '🍕 Smakosz', value: '🍕 **Smakosz**' },
-                { name: '💬 Król Wiadomości', value: '💬 **Król Wiadomości**' },
-                { name: '🌙 Nocny Marek', value: '🌙 **Nocny Marek**' },
-                { name: '🎧 Audiofil', value: '🎧 **Audiofil**' },
-                { name: '💸 Hojny Darczyńca', value: '💸 **Hojny Darczyńca**' },
-                { name: '🎰 Ryzykant', value: '🎰 **Ryzykant**' },
-                { name: '💡 Filozof', value: '💡 **Filozof**' }
-            )
-        ),
+        .addStringOption(o => o.setName('odznaka').setDescription('Wpisz pełną nazwę odznaki (np. ⏳ **Weteran**)').setRequired(true)),
+
     new SlashCommandBuilder().setName('zabierz-odznake').setDescription('Odbierz odznakę (Admin)').addUserOption(o => o.setName('uzytkownik').setDescription('Komu').setRequired(true)).addStringOption(o => o.setName('odznaka').setDescription('Nazwa').setRequired(true)),
     new SlashCommandBuilder().setName('dajpunkty').setDescription('Daj punkty').addUserOption(o => o.setName('uzytkownik').setDescription('User').setRequired(true)).addIntegerOption(o => o.setName('ilosc').setDescription('Ilość').setRequired(true)),
     new SlashCommandBuilder().setName('zabierzpunkty').setDescription('Zabierz punkty').addUserOption(o => o.setName('uzytkownik').setDescription('User').setRequired(true)).addIntegerOption(o => o.setName('ilosc').setDescription('Ilość').setRequired(true)),
@@ -347,6 +377,7 @@ client.once('ready', async () => {
     }
 
     startTopUpdater();
+    startBadgesInfoUpdater();
     startHourlyAnnouncements();
     startDailyQuotes();
 });
@@ -439,6 +470,73 @@ client.on('interactionCreate', async interaction => {
                 await ConfigModel.findOneAndUpdate({ key: 'topka_msg' }, { channelId: interaction.channelId, messageId: sentMessage.id }, { upsert: true, new: true });
                 await interaction.editReply({ content: `✅ Ustawiono ten kanał jako ranking.` });
             }
+            return;
+        }
+
+        // Obsługa komendy ustawiającej kanał odznak
+        if (commandName === 'ustaw-odznaki') {
+            if (!isAuthorized(interaction.user.id)) return interaction.reply({ content: '❌ Brak uprawnień!', ephemeral: true });
+            await interaction.deferReply({ ephemeral: true });
+            const embedData = createBadgesInfoEmbed();
+            const sentMessage = await interaction.channel?.send({ embeds: [embedData] });
+            if (sentMessage) {
+                await ConfigModel.findOneAndUpdate({ key: 'odznaki_info_msg' }, { channelId: interaction.channelId, messageId: sentMessage.id }, { upsert: true, new: true });
+                await interaction.editReply({ content: `✅ Ustawiono ten kanał jako centrum odznak.` });
+            }
+            return;
+        }
+
+        // Obsługa przelewania PJN-Coins z powiadomieniem na PW
+        if (commandName === 'przelej') {
+            await interaction.deferReply({ ephemeral: true });
+            const targetUser = interaction.options.getUser('uzytkownik', true);
+            const kwota = interaction.options.getInteger('kwota', true);
+
+            if (kwota <= 0) {
+                return interaction.editReply({ content: '❌ Kwota przelewu musi być większa od zera!' });
+            }
+
+            if (targetUser.id === interaction.user.id) {
+                return interaction.editReply({ content: '❌ Nie możesz przelać środków sam do siebie!' });
+            }
+
+            let sender = await UserModel.findOne({ userId: interaction.user.id });
+            if (!sender) sender = await UserModel.create({ userId: interaction.user.id });
+
+            if (sender.balance < kwota) {
+                return interaction.editReply({ content: `❌ Nie masz wystarczająco środków! Posiadasz **${sender.balance} PJN-Coins**.` });
+            }
+
+            let receiver = await UserModel.findOne({ userId: targetUser.id });
+            if (!receiver) receiver = await UserModel.create({ userId: targetUser.id });
+
+            // Przelew właściwy
+            sender.balance -= kwota;
+            receiver.balance += kwota;
+
+            // Statystyka darczyńcy
+            sender.totalDonated = (sender.totalDonated || 0) + kwota;
+
+            await sender.save();
+            await receiver.save();
+
+            await checkAndAwardBadges(sender, interaction.member);
+
+            // Wysłanie powiadomienia na PW do odbiorcy
+            try {
+                await targetUser.send({
+                    embeds: [{
+                        color: 0x2ECC71,
+                        title: '💸 Otrzymałeś przelew!',
+                        description: `Użytkownik **${interaction.user.tag}** przelał Ci **${kwota} PJN-Coins**!`,
+                        timestamp: new Date().toISOString()
+                    }]
+                });
+            } catch (e) {
+                // Jeśli użytkownik ma zablokowane PW, bot zignoruje błąd, żeby nie wywalić komendy
+            }
+
+            await interaction.editReply({ content: `✅ Pomyślnie przelano **${kwota} PJN-Coins** dla użytkownika <@${targetUser.id}>!` });
             return;
         }
 
