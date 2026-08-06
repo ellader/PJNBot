@@ -369,8 +369,8 @@ const commands = [
     new SlashCommandBuilder()
         .setName('nowości')
         .setDescription('Wysyła ogłoszenie o nowościach na serwerze (Admin)')
-        .addStringOption(o => o.setName('tytul').setDescription('Tytuł ogłoszenia').setRequired(true))
-        .addStringOption(o => o.setName('tresc').setDescription('Treść ogłoszenia').setRequired(true))
+        .addStringOption(o => o.setName('tytul').setDescription('Tytuł ogłoszenia (np. System Odznak)').setRequired(true))
+        .addStringOption(o => o.setName('co_nowego').setDescription('Krótko opisz co faktycznie dodano').setRequired(true))
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
     new SlashCommandBuilder().setName('daj-odznake').setDescription('Przyznaj odznakę (Admin)')
         .addUserOption(o => o.setName('uzytkownik').setDescription('Komu').setRequired(true))
@@ -523,17 +523,22 @@ client.on('interactionCreate', async interaction => {
         if (commandName === 'nowości') {
             if (!isAuthorized(interaction.user.id)) return interaction.reply({ content: '❌ Brak uprawnień!', ephemeral: true });
             
-            const tytul = interaction.options.getString('tytul', true);
-            const tresc = interaction.options.getString('tresc', true);
+            const tytulWpisany = interaction.options.getString('tytul', true);
+            const coNowego = interaction.options.getString('co_nowego', true);
 
             await interaction.deferReply({ ephemeral: true });
 
             const embed = new EmbedBuilder()
                 .setColor(0x3498DB)
-                .setTitle(tytul)
-                .setDescription(tresc)
+                .setTitle(`🚀 NOWOŚĆ! • ${tytulWpisany}`)
+                .setDescription(
+                    `Cześć społeczności **PJN**! Wprowadziliśmy właśnie nowe ulepszenia na serwer. Oto co dla Was przygotowaliśmy:\n\n` +
+                    `🔹 **Szczegóły aktualizacji:**\n${coNowego}\n\n` +
+                    `💡 *Wpadajcie na odpowiednie kanały, sprawdźcie nowe funkcje i dajcie znać, co o tym sądzicie!*`
+                )
+                .setImage(LIVE_IMAGE_URL)
                 .setTimestamp()
-                .setFooter({ text: 'PJN System • Rozwijamy się dla Was' });
+                .setFooter({ text: 'PJN System Aktualizacji • Rozwijamy się dla Was' });
 
             const channel = interaction.channel as TextChannel;
             if (channel) {
@@ -544,7 +549,7 @@ client.on('interactionCreate', async interaction => {
                 });
             }
 
-            await interaction.editReply({ content: `✅ Pomyślnie wysłano ogłoszenie o nowościach na ten kanał z oznaczeniem @everyone!` });
+            await interaction.editReply({ content: `✅ Pomyślnie wysłano ogłoszenie o nowościach!` });
             return;
         }
 
