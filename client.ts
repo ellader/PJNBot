@@ -5,13 +5,8 @@ import {
     Routes, 
     SlashCommandBuilder,
     TextChannel,
-    VoiceChannel,
     PermissionFlagsBits,
-    EmbedBuilder,
-    ActionRowBuilder,
-    ButtonBuilder,
-    ButtonStyle,
-    ComponentType
+    EmbedBuilder
 } from 'discord.js';
 import mongoose from 'mongoose';
 import cron from 'node-cron';
@@ -36,7 +31,8 @@ const userSchema = new mongoose.Schema({
     consecutiveLosses: { type: Number, default: 0 }, 
     nightMessageCount: { type: Number, default: 0 }, 
     totalDonated: { type: Number, default: 0 },      
-    quotesAdded: { type: Number, default: 0 },       
+    quotesAdded: { type: Number, default: 0 },
+    helpCount: { type: Number, default: 0 }, // Pomocna dłoń
     joinedAt: { type: Date, default: Date.now },
     badges: { type: [String], default: [] }
 });
@@ -72,19 +68,12 @@ const client = new Client({
 });
 
 const ANNOUNCE_CHANNEL_ID = '1532399010785263799';
-const STREAM_CHANNEL_ID = '1533839105962676254'; 
-const ID_KANALU_NOWOSCI = '1534228079914913922';
 const ID_KANALU_CYTATY = '1534780578912665653';
 const CHANNEL_POWITANIA = "witamy";
 const ID_KANALU_DUSZKI = "1532977723843285112"; 
-const ID_KANALU_GRY_INFO = "1534060343473475644";
 const ID_RANGI_DUSZKOWIEC = "1532978703842283551";
 const ID_RANGI_MODERATOR = "1532321767857721344";
 const ID_RANGI_ADMIN = "1532324059470237857";
-
-const ID_KANALU_PLEC = '1532374188634144898';
-const ID_KANALU_RANGES = '1532397673842217010';
-const ID_KANALU_SPRZET = '1532398069524594708';
 
 const LIVE_IMAGE_URL = "https://cdn.discordapp.com/attachments/1532862421729808565/1532865034642919574/1784490427936.png";
 
@@ -96,10 +85,7 @@ function isAuthorized(userId: string): boolean {
 const initialQuotes = [
     { text: "Nie liczy się to, co robisz od czasu do czasu, ale to, co robisz codziennie.", author: "Bruce Lee" },
     { text: "Bądź jak woda przepływająca przez szczeliny. Nie bądź sztywny, a dostosujesz się do otoczenia.", author: "Bruce Lee" },
-    { text: "Nie ukrywaj porażki, ucz się z niej i idź naprzód.", author: "Bruce Lee" },
-    { text: "Wiedza nie wystarczy, musimy ją zastosować. Chcenie nie wystarczy, musimy działać.", author: "Bruce Lee" },
-    { text: "Masz władzę nad swoim umysłem – nie nad zewnętrznymi wydarzeniami. Zrozum to, a odnajdziesz siłę.", author: "Marek Aureliusz" },
-    { text: "Życie nie polega na czekaniu, aż minie burza, ale na nauce tańca w deszczu.", author: "Seneka" }
+    { text: "Nie ukrywaj porażki, ucz się z niej i idź naprzód.", author: "Bruce Lee" }
 ];
 
 async function seedQuotesIfNeeded() {
@@ -167,7 +153,7 @@ function createOgłoszenieEmbed() {
         .setFooter({ text: 'PJN System Ogłoszeń' });
 }
 
-// === KOMPLETNY SYSTEM WSZYSTKICH AUTORSKICH ODZNAK ===
+// === ROZBUDOWANY SYSTEM WSZYSTKICH ODZNAK (ZGODNY Z PANELEM) ===
 async function checkAndAwardBadges(user: any, memberOrUser: any) {
     const newBadges: string[] = [];
     const addBadge = (badgeName: string) => {
@@ -177,63 +163,50 @@ async function checkAndAwardBadges(user: any, memberOrUser: any) {
         }
     };
 
-    // 1. Aktywność i Społeczność
+    // 1. Aktywność na Chacie
     if (user.messageCount >= 200) addBadge('💬 **Początkujący Gadulec**');
     if (user.messageCount >= 1000) addBadge('📜 **Kronikarz Chatu**');
     if (user.messageCount >= 5000) addBadge('💬 **Król Wiadomości**');
+    if (user.emojiCount >= 30) addBadge('😂 **Emotikonowy Ekspresja**');
     if (user.nightMessageCount >= 50) addBadge('🌙 **Nocny Marek**');
 
-    // 2. Głos i Komunikacja
+    // 2. Aktywność Głosowa (Próg z panelu: 30h = 1800 minut)
     if (user.voiceMinutes >= 1800) addBadge('🎙️ **Stały Bywalec Mikrofonu**');
     if (user.voiceMinutes >= 6000) addBadge('🎧 **Audiofil**'); 
 
-    // 3. Ekonomia i Hazard
+    // 3. Gospodarka i Ekonomia
     if (user.balance >= 5000) addBadge('💰 **Kapitalista**');
     if (user.balance >= 10000) addBadge('💎 **Magnat Finansowy**');
     if (user.balance >= 100000) addBadge('🏦 **Milioner**');
     if (user.totalDonated >= 5000) addBadge('💸 **Hojny Darczyńca**');
-    if (user.casinoPlays >= 100) addBadge('🎰 **Ryzykant**');
+
+    // 4. Kasyno i Gry
     if (user.casinoPlays >= 20) addBadge('🎲 **Nałogowy Graczyk**');
+    if (user.casinoPlays >= 100) addBadge('🎰 **Ryzykant**');
     if (user.consecutiveWins >= 3) addBadge('🍀 **Ulubieniec Fortuna**');
     if (user.consecutiveLosses >= 5) addBadge('🎯 **Czarna Seria**');
 
-    // 4. Zabawne, Społecznościowe i Unikalne
-    if (user.emojiCount >= 30) addBadge('😂 **Emotikonowy Ekspresja**');
+    // 5. Społecznościowe i Pomocnicze
     if (user.quotesAdded >= 5) addBadge('💡 **Filozof**');
-    
-    // Dodane nowe odznaki z Twojej listy:
-    // - Błyskawica (obsługiwana logicznie lub ręcznie/przez eventy szybkiej odpowiedzi)
-    // - Urodzinowy Gość
-    // - Ulubieniec Publiczności / Komediant (na bazie reakcji)
-    // - Pomocna Dłoń / Detektyw
-    // - Śpioch (dla AFK)
-    // - Smakosz / Imprezowicz / Dusza Towarzystwa
-    // - Beta Tester / Twórca Memów / Artysta
-    
-    // Sprawdzanie stażu na serwerze (Weterani)
+    if (user.helpCount >= 10) addBadge('🤝 **Pomocna Dłoń**');
+
+    // Staż i Rangi na Serwerze
     if (memberOrUser && memberOrUser.joinedAt) {
         const diffMonths = (Date.now() - new Date(memberOrUser.joinedAt).getTime()) / (1000 * 60 * 60 * 24 * 30);
         const diffYears = diffMonths / 12;
         if (diffYears >= 1) addBadge('⏳ **Weteran**');
         if (diffMonths >= 6) addBadge('⏳ **Weteran Półrocza**');
-        if (diffMonths >= 12) addBadge('👑 **Legenda Serwera**');
     }
 
     if (memberOrUser && memberOrUser.roles && typeof memberOrUser.roles.cache?.some === 'function') {
         const hasAdminRole = memberOrUser.roles.cache.some((role: any) => 
-            role.name.toLowerCase() === 'admin' || role.name.toLowerCase() === 'administrator'
+            ['admin', 'administrator', 'streamer'].includes(role.name.toLowerCase())
         );
-        const hasStreamerRole = memberOrUser.roles.cache.some((role: any) => 
-            role.name.toLowerCase() === 'streamer'
-        );
-
-        if (hasAdminRole || hasStreamerRole) {
-            addBadge('🛡️ **Filar Społeczności**');
-        }
+        if (hasAdminRole) addBadge('🛡️ **Filar Społeczności**');
     }
 
-    // Odznaka Mistrzowska - Kolekcjoner (za komplet odznak)
-    const masterPoolCount = 20; 
+    // Kolekcjoner (zbieracz wszystkich głównych odznak)
+    const masterPoolCount = 18; 
     const currentCountWithoutCollector = user.badges.filter((b: string) => !b.includes('Kolekcjoner')).length;
     if (currentCountWithoutCollector >= masterPoolCount) {
         addBadge('🎟️ **Kolekcjoner**');
@@ -320,7 +293,7 @@ function startHourlyAnnouncements() {
     });
 }
 
-// Rejestracja wszystkich komend uwzględniająca nowe odznaki
+// Rejestracja komend slash
 const commands = [
     new SlashCommandBuilder().setName('portfel').setDescription('Sprawdź stan swoich PJN-Coins w portfelu'),
     new SlashCommandBuilder().setName('topka').setDescription('Zobacz ranking najbogatszych graczy'),
@@ -341,30 +314,19 @@ const commands = [
                 { name: '⚡ Błyskawica', value: '⚡ **Błyskawica**' },
                 { name: '❤️ Ulubieniec Publiczności', value: '❤️ **Ulubieniec Publiczności**' },
                 { name: '🤝 Pomocna Dłoń', value: '🤝 **Pomocna Dłoń**' },
-                { name: '🕵️ Detektyw', value: '🕵️ **Detektyw**' },
                 { name: '🏦 Milioner', value: '🏦 **Milioner**' },
                 { name: '🎟️ Kolekcjoner', value: '🎟️ **Kolekcjoner**' },
-                { name: '🎲 Szczęściarz', value: '🎲 **Szczęściarz**' },
-                { name: '💤 Śpioch', value: '💤 **Śpioch**' },
+                { name: '🎲 Nałogowy Graczyk', value: '🎲 **Nałogowy Graczyk**' },
                 { name: '🍕 Smakosz', value: '🍕 **Smakosz**' },
-                { name: '🎭 Komediant', value: '🎭 **Komediant**' },
                 { name: '💬 Król Wiadomości', value: '💬 **Król Wiadomości**' },
                 { name: '🌙 Nocny Marek', value: '🌙 **Nocny Marek**' },
-                { name: '🤝 Dusza Towarzystwa', value: '🤝 **Dusza Towarzystwa**' },
-                { name: '🎉 Imprezowicz', value: '🎉 **Imprezowicz**' },
                 { name: '🎧 Audiofil', value: '🎧 **Audiofil**' },
-                { name: '🎤 Główny Mówca', value: '🎤 **Główny Mówca**' },
                 { name: '💸 Hojny Darczyńca', value: '💸 **Hojny Darczyńca**' },
                 { name: '🎰 Ryzykant', value: '🎰 **Ryzykant**' },
-                { name: '🎯 Czarna Seria', value: '🎯 **Czarna Seria**' },
-                { name: '💡 Filozof', value: '💡 **Filozof**' },
-                { name: '🚀 Beta Tester', value: '🚀 **Beta Tester**' },
-                { name: '🎨 Twórca Memów / Artysta', value: '🎨 **Twórca Memów / Artysta**' }
+                { name: '💡 Filozof', value: '💡 **Filozof**' }
             )
         ),
     new SlashCommandBuilder().setName('zabierz-odznake').setDescription('Odbierz odznakę (Admin)').addUserOption(o => o.setName('uzytkownik').setDescription('Komu').setRequired(true)).addStringOption(o => o.setName('odznaka').setDescription('Nazwa').setRequired(true)),
-    new SlashCommandBuilder().setName('nowosc').setDescription('Nowość (Admin)').addStringOption(o => o.setName('tytul').setDescription('Tytuł').setRequired(true)).addStringOption(o => o.setName('opis').setDescription('Opis').setRequired(true)).addAttachmentOption(o => o.setName('zdjecie').setDescription('Zdjęcie').setRequired(false)),
-    new SlashCommandBuilder().setName('rozdaj-wszystkim').setDescription('Rozdaj monety').addIntegerOption(o => o.setName('ilosc').setDescription('Ilość').setRequired(true)).addStringOption(o => o.setName('powod').setDescription('Powód').setRequired(false)),
     new SlashCommandBuilder().setName('dajpunkty').setDescription('Daj punkty').addUserOption(o => o.setName('uzytkownik').setDescription('User').setRequired(true)).addIntegerOption(o => o.setName('ilosc').setDescription('Ilość').setRequired(true)),
     new SlashCommandBuilder().setName('zabierzpunkty').setDescription('Zabierz punkty').addUserOption(o => o.setName('uzytkownik').setDescription('User').setRequired(true)).addIntegerOption(o => o.setName('ilosc').setDescription('Ilość').setRequired(true)),
     new SlashCommandBuilder().setName('cytat').setDescription('Wyślij cytat'),
