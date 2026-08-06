@@ -366,7 +366,12 @@ const commands = [
     new SlashCommandBuilder().setName('slot').setDescription('Sloty').addIntegerOption(o => o.setName('stawka').setDescription('Stawka').setRequired(true)),
     new SlashCommandBuilder().setName('poker').setDescription('Poker').addStringOption(o => o.setName('tryb').setDescription('Tryb').setRequired(true).addChoices({name: 'Z ludźmi', value: 'ludzie'}, {name: 'Z botem', value: 'bot'})).addIntegerOption(o => o.setName('stawka').setDescription('Stawka').setRequired(true)),
     new SlashCommandBuilder().setName('odznaki').setDescription('Wyświetla profil z odznakami').addUserOption(o => o.setName('uzytkownik').setDescription('Użytkownik').setRequired(false)),
-    new SlashCommandBuilder().setName('nowości').setDescription('Sprawdź najnowsze funkcje na serwerze: odznaki i przelewy'),
+    new SlashCommandBuilder()
+        .setName('nowości')
+        .setDescription('Wysyła ogłoszenie o nowościach na serwerze (Admin)')
+        .addStringOption(o => o.setName('tytul').setDescription('Tytuł ogłoszenia').setRequired(true))
+        .addStringOption(o => o.setName('tresc').setDescription('Treść ogłoszenia').setRequired(true))
+        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
     new SlashCommandBuilder().setName('daj-odznake').setDescription('Przyznaj odznakę (Admin)')
         .addUserOption(o => o.setName('uzytkownik').setDescription('Komu').setRequired(true))
         .addStringOption(o => o.setName('odznaka').setDescription('Wpisz pełną nazwę odznaki').setRequired(true)),
@@ -516,27 +521,30 @@ client.on('interactionCreate', async interaction => {
         }
 
         if (commandName === 'nowości') {
-            await interaction.deferReply({ ephemeral: true });
+            if (!isAuthorized(interaction.user.id)) return interaction.reply({ content: '❌ Brak uprawnień!', ephemeral: true });
             
+            const tytul = interaction.options.getString('tytul', true);
+            const tresc = interaction.options.getString('tresc', true);
+
+            await interaction.deferReply({ ephemeral: true });
+
             const embed = new EmbedBuilder()
                 .setColor(0x3498DB)
-                .setTitle('✨ Odkryj najnowsze funkcje na serwerze PJN!')
-                .setDescription(
-                    'Wdrożyliśmy dla Was dwie duże nowości, które urozmaicą ekonomię oraz pozwolą pochwalić się aktywnością! 🚀\n\n' +
-                    '🛡️ **1. System Odznak i Osiągnięć**\n' +
-                    'Od teraz Twoja aktywność (pisanie wiadomości, czas na głosowych, gry w kasynie czy stan portfela) jest nagradzana unikalnymi odznakami!\n' +
-                    '• Wpisz **/odznaki**, aby podejrzeć swój profil i zdobyte tytuły.\n' +
-                    '• Możesz też sprawdzić profil innego gracza, wybierając go w opcji komendy.\n' +
-                    '• Szczegółowy spis wszystkich osiągnięć znajdziesz w dedykowanym centrum odznak na serwerze.\n\n' +
-                    '💸 **2. Przelewy PJN-Coins**\n' +
-                    'Chcesz wesprzeć znajomego lub podzielić się wygraną z kasyna? Teraz to możliwe!\n' +
-                    '• Użyj komendy **/przelej [użytkownik] [kwota]**, aby przekazać środki.\n' +
-                    '• Transakcja jest w pełni bezpieczna, a odbiorca otrzyma powiadomienie na prywatnej wiadomości (PW) o otrzymanym przelewie.'
-                )
+                .setTitle(tytul)
+                .setDescription(tresc)
                 .setTimestamp()
                 .setFooter({ text: 'PJN System • Rozwijamy się dla Was' });
 
-            await interaction.editReply({ embeds: [embed] });
+            const channel = interaction.channel as TextChannel;
+            if (channel) {
+                await channel.send({ 
+                    content: '@everyone', 
+                    embeds: [embed],
+                    allowedMentions: { parse: ['everyone'] } 
+                });
+            }
+
+            await interaction.editReply({ content: `✅ Pomyślnie wysłano ogłoszenie o nowościach na ten kanał z oznaczeniem @everyone!` });
             return;
         }
 
