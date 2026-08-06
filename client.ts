@@ -222,7 +222,7 @@ async function setupMemeChannelInstruction() {
                 'W tym kanale możesz w pełni bezpiecznie i bez spamowania tworzyć własne memy za pomocą bota!\n\n' +
                 '🛠️ **Jak wygenerować mema?**\n' +
                 '1. Wpisz w oknie wiadomości komendę: `/mem`\n' +
-                '2. Wybierz z listy rozwijanej interesujący Cię **szablon** (widzisz jego polską nazwę i podgląd).\n' +
+                '2. Wpisz nazwę w polu **szablon** – bot podpowie Ci setki dostępnych szablonów z całego świata!\n' +
                 '3. Wpisz tekst górny i dolny (opcjonalnie).\n' +
                 '4. Naciśnij **Enter**, a bot w kilka sekund wygeneruje gotowy obrazek na czacie!\n\n' +
                 '⚠️ *Na tym kanale wysyłanie zwykłego tekstu jest zablokowane – korzystaj wyłącznie z komendy `/mem`!*'
@@ -391,7 +391,7 @@ function startHourlyAnnouncements() {
     });
 }
 
-// === KOMENDY SLASH ===
+// === KOMPONENTY / KOMENDY SLASH ===
 const commands = [
     new SlashCommandBuilder().setName('portfel').setDescription('Sprawdź stan swoich PJN-Coins w portfelu'),
     new SlashCommandBuilder().setName('topka').setDescription('Zobacz ranking najbogatszych graczy'),
@@ -420,20 +420,12 @@ const commands = [
     new SlashCommandBuilder().setName('dodaj-cytat').setDescription('Dodaj cytat').addStringOption(o => o.setName('tekst').setDescription('Tekst').setRequired(true)).addStringOption(o => o.setName('autor').setDescription('Autor').setRequired(true)),
     new SlashCommandBuilder()
         .setName('mem')
-        .setDescription('Generuje mema z wybranego szablonu')
+        .setDescription('Generuje mema z wyszukiwarką szablonów')
         .addStringOption(o => 
             o.setName('szablon')
-             .setDescription('Wybierz jasny szablon mema')
+             .setDescription('Wpisz nazwę szablonu (np. drake, cat, sponge)')
              .setRequired(true)
-             .addChoices(
-                 { name: 'Drake (Odrzuca / Akceptuje)', value: '181913649' },
-                 { name: 'Zazdrosny Chłopak (Ogląda się za inną)', value: '112126428' },
-                 { name: 'Zmieniające się zdanie (Pan z mózgiem)', value: '129242436' },
-                 { name: 'Kłótnia przy obiedzie (Pan przy stole)', value: '124822590' },
-                 { name: 'Pies w płonącym pokoju (This is fine)', value: '55311130' },
-                 { name: 'Dwóch Batmanów (Policzek)', value: '438680' },
-                 { name: 'Płaczący Cat (Smutny kotek)', value: '178591752' }
-             )
+             .setAutocomplete(true)
         )
         .addStringOption(o => o.setName('gora').setDescription('Tekst na górze mema').setRequired(false))
         .addStringOption(o => o.setName('dol').setDescription('Tekst na dole mema').setRequired(false))
@@ -550,6 +542,33 @@ client.on('guildMemberAdd', async member => {
 });
 
 client.on('interactionCreate', async interaction => {
+    // Obsługa podpowiedzi (Autocomplete) dla szablonów memów
+    if (interaction.isAutocomplete()) {
+        if (interaction.commandName === 'mem') {
+            const focusedValue = interaction.options.focusedOfType ? interaction.options.getFocused() : interaction.options.getFocused();
+            try {
+                const response = await fetch('https://api.imgflip.com/get_memes');
+                const data = await response.json() as any;
+                
+                if (data && data.success && data.data && data.data.memes) {
+                    const memes = data.data.memes;
+                    const filtered = memes
+                        .filter((m: any) => m.name.toLowerCase().includes(focusedValue.toLowerCase()))
+                        .slice(0, 25); // Discord pozwala maksymalnie na 25 podpowiedzi
+
+                    await interaction.respond(
+                        filtered.map((m: any) => ({ name: m.name, value: m.id }))
+                    );
+                } else {
+                    await interaction.respond([]);
+                }
+            } catch (err) {
+                await interaction.respond([]);
+            }
+        }
+        return;
+    }
+
     if (!interaction.isChatInputCommand()) return;
     const { commandName } = interaction;
 
@@ -780,14 +799,26 @@ client.on('interactionCreate', async interaction => {
             const dol = interaction.options.getString('dol') || '';
 
             try {
-                const url = `https://api.imgflip.com/caption_image?template_id=${templateId}&username=test&password=test&text0=${encodeURIComponent(gora)}&text1=${encodeURIComponent(dol)}`;
-                const response = await fetch(url, { method: 'POST' });
+                // Użycie poprawnego formatu URLSearchParams dla metody POST
+                const params = new URLSearchParams();
+                params.append('template_id', templateId);
+                params.append('username', 'test');
+                params.append('password', 'test');
+                params.append('text0', gora);
+                params.append('text1', dol);
+
+                const response = await fetch('https://api.imgflip.com/caption_image', { 
+                    method: 'POST',
+                    body: params
+                });
+                
                 const data = await response.json() as any;
 
                 if (data && data.success) {
                     await interaction.editReply({ content: `🖼️ Oto Twój mem wygenerowany przez <@${interaction.user.id}>:`, files: [data.data.url] });
                 } else {
-                    await interaction.editReply({ content: '❌ Nie udało się wygenerować mema. Spróbuj ponownie później.' });
+                    const errorMsg = data?.error_message || 'Nieznany błąd';
+                    await interaction.editReply({ content: `❌ Nie udało się wygenerować mema. Powód: ${errorMsg}` });
                 }
             } catch (err) {
                 console.error(err);
