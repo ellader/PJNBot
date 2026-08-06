@@ -403,6 +403,7 @@ const commands = [
     new SlashCommandBuilder().setName('moneta').setDescription('Orzeł czy reszka').addStringOption(o => o.setName('wybor').setDescription('Wybór').setRequired(true).addChoices({name: 'Orzeł', value: 'orzel'}, {name: 'Reszka', value: 'reszka'})).addIntegerOption(o => o.setName('stawka').setDescription('Stawka').setRequired(true)),
     new SlashCommandBuilder().setName('slot').setDescription('Sloty').addIntegerOption(o => o.setName('stawka').setDescription('Stawka').setRequired(true)),
     new SlashCommandBuilder().setName('poker').setDescription('Poker').addStringOption(o => o.setName('tryb').setDescription('Tryb').setRequired(true).addChoices({name: 'Z ludźmi', value: 'ludzie'}, {name: 'Z botem', value: 'bot'})).addIntegerOption(o => o.setName('stawka').setDescription('Stawka').setRequired(true)),
+    new SlashCommandBuilder().setName('quiz').setDescription('Odpowiedz na pytanie quizowe'),
     new SlashCommandBuilder().setName('odznaki').setDescription('Wyświetla profil z odznakami').addUserOption(o => o.setName('uzytkownik').setDescription('Użytkownik').setRequired(false)),
     new SlashCommandBuilder()
         .setName('nowości')
@@ -410,6 +411,14 @@ const commands = [
         .addStringOption(o => o.setName('tytul').setDescription('Tytuł ogłoszenia (np. System Odznak)').setRequired(true))
         .addStringOption(o => o.setName('co_nowego').setDescription('Krótko opisz co faktycznie dodano').setRequired(true))
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+    new SlashCommandBuilder()
+        .setName('odpalstream')
+        .setDescription('Ogłasza start streama (Streamer/Admin)')
+        .addStringOption(o => o.setName('tytul').setDescription('Tytuł streama').setRequired(true))
+        .addStringOption(o => o.setName('link').setDescription('Link do transmisji (Kick/TikTok)').setRequired(true)),
+    new SlashCommandBuilder()
+        .setName('zakonczstream')
+        .setDescription('Ogłasza zakończenie streama (Streamer/Admin)'),
     new SlashCommandBuilder().setName('daj-odznake').setDescription('Przyznaj odznakę (Admin)')
         .addUserOption(o => o.setName('uzytkownik').setDescription('Komu').setRequired(true))
         .addStringOption(o => o.setName('odznaka').setDescription('Wpisz pełną nazwę odznaki').setRequired(true)),
@@ -554,7 +563,7 @@ client.on('interactionCreate', async interaction => {
                     const memes = data.data.memes;
                     const filtered = memes
                         .filter((m: any) => m.name.toLowerCase().includes(focusedValue.toLowerCase()))
-                        .slice(0, 25); // Discord pozwala maksymalnie na 25 podpowiedzi
+                        .slice(0, 25);
 
                     await interaction.respond(
                         filtered.map((m: any) => ({ name: m.name, value: m.id }))
@@ -630,6 +639,46 @@ client.on('interactionCreate', async interaction => {
             return;
         }
 
+        if (commandName === 'odpalstream') {
+            if (!isAuthorized(interaction.user.id)) return interaction.reply({ content: '❌ Brak uprawnień!', ephemeral: true });
+            const tytul = interaction.options.getString('tytul', true);
+            const link = interaction.options.getString('link', true);
+
+            await interaction.deferReply();
+            const embed = new EmbedBuilder()
+                .setColor(0x9146FF)
+                .setTitle('🔴 NA ŻYWO! • LangusPJN wystartował ze stremem!')
+                .setDescription(`**${tytul}**\n\n▶️ Oglądaj tutaj: [Kliknij, aby przejść do transmisji](${link})`)
+                .setImage(LIVE_IMAGE_URL)
+                .setTimestamp()
+                .setFooter({ text: 'PJN System Streamów' });
+
+            const channel = interaction.channel as TextChannel;
+            if (channel) {
+                await channel.send({ content: '@everyone', embeds: [embed], allowedMentions: { parse: ['everyone'] } });
+            }
+            await interaction.editReply({ content: `✅ Pomyślnie ogłoszono start streama!` });
+            return;
+        }
+
+        if (commandName === 'zakonczstream') {
+            if (!isAuthorized(interaction.user.id)) return interaction.reply({ content: '❌ Brak uprawnień!', ephemeral: true });
+            await interaction.deferReply();
+            const embed = new EmbedBuilder()
+                .setColor(0xE74C3C)
+                .setTitle('⏹️ STREAM ZAKOŃCZONY')
+                .setDescription('Dziękujemy wszystkim za obecność! Do zobaczenia na kolejnej transmisji! 🔥')
+                .setTimestamp()
+                .setFooter({ text: 'PJN System Streamów' });
+
+            const channel = interaction.channel as TextChannel;
+            if (channel) {
+                await channel.send({ embeds: [embed] });
+            }
+            await interaction.editReply({ content: `✅ Pomyślnie ogłoszono zakończenie streama!` });
+            return;
+        }
+
         if (commandName === 'przelej') {
             await interaction.deferReply({ ephemeral: true });
             const targetUser = interaction.options.getUser('uzytkownik', true);
@@ -673,6 +722,157 @@ client.on('interactionCreate', async interaction => {
             } catch (e) {}
 
             await interaction.editReply({ content: `✅ Pomyślnie przelano **${kwota} PJN-Coins** dla użytkownika <@${targetUser.id}>!` });
+            return;
+        }
+
+        if (commandName === 'kostka') {
+            await interaction.deferReply();
+            const stawka = interaction.options.getInteger('stawka', true);
+            if (stawka <= 0) return interaction.editReply({ content: '❌ Stawka musi być większa od zera!' });
+
+            let user = await UserModel.findOne({ userId: interaction.user.id });
+            if (!user) user = await UserModel.create({ userId: interaction.user.id });
+
+            if (user.balance < stawka) {
+                return interaction.editReply({ content: `❌ Nie masz tylu środków! Posiadasz **${user.balance} PJN-Coins**.` });
+            }
+
+            user.casinoPlays = (user.casinoPlays || 0) + 1;
+            const rzutGracza = Math.floor(Math.random() * 6) + 1;
+            const rzutBota = Math.floor(Math.random() * 6) + 1;
+
+            if (rzutGracza > rzutBota) {
+                user.balance += stawka;
+                user.consecutiveWins = (user.consecutiveWins || 0) + 1;
+                user.consecutiveLosses = 0;
+                await user.save();
+                await checkAndAwardBadges(user, interaction.member);
+                return interaction.editReply({ content: `🎲 Rzuciłeś **${rzutGracza}**, a bot **${rzutBota}**. Wygrana! Wygrywasz **${stawka} PJN-Coins** (Stan: **${user.balance}**).` });
+            } else if (rzutGracza < rzutBota) {
+                user.balance -= stawka;
+                user.consecutiveLosses = (user.consecutiveLosses || 0) + 1;
+                user.consecutiveWins = 0;
+                await user.save();
+                await checkAndAwardBadges(user, interaction.member);
+                return interaction.editReply({ content: `🎲 Rzuciłeś **${rzutGracza}**, a bot **${rzutBota}**. Przegrana! Tracisz **${stawka} PJN-Coins** (Stan: **${user.balance}**).` });
+            } else {
+                await user.save();
+                return interaction.editReply({ content: `🎲 Remis! Obaj wyrzuciliście **${rzutGracza}**. Środki wracają do portfela.` });
+            }
+        }
+
+        if (commandName === 'moneta') {
+            await interaction.deferReply();
+            const wybor = interaction.options.getString('wybor', true);
+            const stawka = interaction.options.getInteger('stawka', true);
+            if (stawka <= 0) return interaction.editReply({ content: '❌ Stawka musi być większa od zera!' });
+
+            let user = await UserModel.findOne({ userId: interaction.user.id });
+            if (!user) user = await UserModel.create({ userId: interaction.user.id });
+
+            if (user.balance < stawka) {
+                return interaction.editReply({ content: `❌ Nie masz tylu środków! Posiadasz **${user.balance} PJN-Coins**.` });
+            }
+
+            user.casinoPlays = (user.casinoPlays || 0) + 1;
+            const wynik = Math.random() < 0.5 ? 'orzel' : 'reszka';
+
+            if (wybor === wynik) {
+                user.balance += stawka;
+                user.consecutiveWins = (user.consecutiveWins || 0) + 1;
+                user.consecutiveLosses = 0;
+                await user.save();
+                await checkAndAwardBadges(user, interaction.member);
+                return interaction.editReply({ content: `🪙 Wypadł **${wynik === 'orzel' ? 'Orzeł' : 'Reszka'}**! Trafiłeś! Zyskujesz **${stawka} PJN-Coins** (Stan: **${user.balance}**).` });
+            } else {
+                user.balance -= stawka;
+                user.consecutiveLosses = (user.consecutiveLosses || 0) + 1;
+                user.consecutiveWins = 0;
+                await user.save();
+                await checkAndAwardBadges(user, interaction.member);
+                return interaction.editReply({ content: `🪙 Wypadł **${wynik === 'orzel' ? 'Orzeł' : 'Reszka'}**! Niestety przegrałeś **${stawka} PJN-Coins** (Stan: **${user.balance}**).` });
+            }
+        }
+
+        if (commandName === 'slot') {
+            await interaction.deferReply();
+            const stawka = interaction.options.getInteger('stawka', true);
+            if (stawka <= 0) return interaction.editReply({ content: '❌ Stawka musi być większa od zera!' });
+
+            let user = await UserModel.findOne({ userId: interaction.user.id });
+            if (!user) user = await UserModel.create({ userId: interaction.user.id });
+
+            if (user.balance < stawka) {
+                return interaction.editReply({ content: `❌ Nie masz tylu środków! Posiadasz **${user.balance} PJN-Coins**.` });
+            }
+
+            user.casinoPlays = (user.casinoPlays || 0) + 1;
+            const symbols = ['🍎', '🍋', '🍒', '🔔', '💎'];
+            const s1 = symbols[Math.floor(Math.random() * symbols.length)];
+            const s2 = symbols[Math.floor(Math.random() * symbols.length)];
+            const s3 = symbols[Math.floor(Math.random() * symbols.length)];
+
+            if (s1 === s2 && s2 === s3) {
+                const wygrana = stawka * 5;
+                user.balance += wygrana;
+                user.consecutiveWins = (user.consecutiveWins || 0) + 1;
+                user.consecutiveLosses = 0;
+                await user.save();
+                await checkAndAwardBadges(user, interaction.member);
+                return interaction.editReply({ content: `🎰 [ ${s1} | ${s2} | ${s3} ]\nJackpot! Trafiłeś trzy symbole! Wygrywasz **${wygrana} PJN-Coins**!` });
+            } else if (s1 === s2 || s2 === s3 || s1 === s3) {
+                user.balance += stawka;
+                user.consecutiveWins = (user.consecutiveWins || 0) + 1;
+                user.consecutiveLosses = 0;
+                await user.save();
+                await checkAndAwardBadges(user, interaction.member);
+                return interaction.editReply({ content: `🎰 [ ${s1} | ${s2} | ${s3} ]\nMała wygrana! Dwa symbole się zgadzają. Otrzymujesz zwrot stawki **${stawka} PJN-Coins**.` });
+            } else {
+                user.balance -= stawka;
+                user.consecutiveLosses = (user.consecutiveLosses || 0) + 1;
+                user.consecutiveWins = 0;
+                await user.save();
+                await checkAndAwardBadges(user, interaction.member);
+                return interaction.editReply({ content: `🎰 [ ${s1} | ${s2} | ${s3} ]\nNic z tego! Tracisz **${stawka} PJN-Coins**.` });
+            }
+        }
+
+        if (commandName === 'poker') {
+            await interaction.deferReply();
+            const tryb = interaction.options.getString('tryb', true);
+            const stawka = interaction.options.getInteger('stawka', true);
+            if (stawka <= 0) return interaction.editReply({ content: '❌ Stawka musi być większa od zera!' });
+
+            let user = await UserModel.findOne({ userId: interaction.user.id });
+            if (!user) user = await UserModel.create({ userId: interaction.user.id });
+
+            if (user.balance < stawka) {
+                return interaction.editReply({ content: `❌ Nie masz tylu środków! Posiadasz **${user.balance} PJN-Coins**.` });
+            }
+
+            user.casinoPlays = (user.casinoPlays || 0) + 1;
+            const wygrana = Math.random() < 0.4 ? stawka * 2 : -stawka;
+
+            user.balance += wygrana;
+            if (wygrana > 0) {
+                user.consecutiveWins = (user.consecutiveWins || 0) + 1;
+                user.consecutiveLosses = 0;
+            } else {
+                user.consecutiveLosses = (user.consecutiveLosses || 0) + 1;
+                user.consecutiveWins = 0;
+            }
+            await user.save();
+            await checkAndAwardBadges(user, interaction.member);
+
+            if (wygrana > 0) {
+                return interaction.editReply({ content: `🃏 [Poker - ${tryb}] Rozegrałeś rozdanie i wygrałeś **${wygrana} PJN-Coins**! (Stan: **${user.balance}**)` });
+            } else {
+                return interaction.editReply({ content: `🃏 [Poker - ${tryb}] Przegrałeś rozdanie i tracisz **${stawka} PJN-Coins**! (Stan: **${user.balance}**)` });
+            }
+        }
+
+        if (commandName === 'quiz') {
+            await interaction.reply({ content: '❓ **Quiz PJN:** Jak nazywa się twórca tego serwera lub główne platformy streamingowe projektu? (Odpowiedz w wiadomości na czacie: LangusPJN)', ephemeral: false });
             return;
         }
 
@@ -799,7 +999,6 @@ client.on('interactionCreate', async interaction => {
             const dol = interaction.options.getString('dol') || '';
 
             try {
-                // Użycie Twoich danych logowania z Imgflip
                 const params = new URLSearchParams();
                 params.append('template_id', templateId);
                 params.append('username', 'ellader');
