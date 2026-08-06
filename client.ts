@@ -69,13 +69,14 @@ const client = new Client({
 
 const ANNOUNCE_CHANNEL_ID = '1532399010785263799';
 const ID_KANALU_CYTATY = '1534780578912665653';
+const ID_KANALU_MEMOW = '1534833757335326810';
 const CHANNEL_POWITANIA = "witamy";
 const ID_KANALU_DUSZKI = "1532977723843285112"; 
 const ID_RANGI_DUSZKOWIEC = "1532978703842283551";
 const ID_RANGI_MODERATOR = "1532321767857721344";
 const ID_RANGI_ADMIN = "1532324059470237857";
 
-const LIVE_IMAGE_URL = "https://cdn.discordapp.com/attachments/1532862421729808565/1532865034642919574/1784490427936.png";
+const LIVE_IMAGE_URL = "https://cdn.discordapp.com/attachments/1532321067731783684/1534837837374029914/IMG_20260806_094843.jpg?ex=6a7594a0&is=6a744320&hm=822597b60136cc08a4aac4b01d9684bcda8b7d6e388232f24a5c7f15ed3f9e5e&";
 
 function isAuthorized(userId: string): boolean {
     const adminIds = ['1175798371995361343', '1493928957408448563'];
@@ -197,6 +198,43 @@ function createBadgesInfoEmbed() {
         )
         .setTimestamp()
         .setFooter({ text: 'PJN System Odznak • Automatycznie aktualizowany' });
+}
+
+// === INSTRUKCJA GENERATORA MEMÓW ===
+async function setupMemeChannelInstruction() {
+    try {
+        const channel = await client.channels.fetch(ID_KANALU_MEMOW).catch(() => null) as TextChannel;
+        if (!channel) return;
+
+        const messages = await channel.messages.fetch({ limit: 10 }).catch(() => null);
+        if (messages) {
+            for (const [_, msg] of messages) {
+                if (msg.author.id === client.user?.id) {
+                    await msg.delete().catch(() => {});
+                }
+            }
+        }
+
+        const embed = new EmbedBuilder()
+            .setColor(0xE74C3C)
+            .setTitle('🖼️ Jak korzystać z Generatora Memów PJN?')
+            .setDescription(
+                'W tym kanale możesz w pełni bezpiecznie i bez spamowania tworzyć własne memy za pomocą bota!\n\n' +
+                '🛠️ **Jak wygenerować mema?**\n' +
+                '1. Wpisz w oknie wiadomości komendę: `/mem`\n' +
+                '2. Wybierz z listy rozwijanej interesujący Cię **szablon** (widzisz jego polską nazwę i podgląd).\n' +
+                '3. Wpisz tekst górny i dolny (opcjonalnie).\n' +
+                '4. Naciśnij **Enter**, a bot w kilka sekund wygeneruje gotowy obrazek na czacie!\n\n' +
+                '⚠️ *Na tym kanale wysyłanie zwykłego tekstu jest zablokowane – korzystaj wyłącznie z komendy `/mem`!*'
+            )
+            .setImage('https://imgflip.com/s/meme/Drake-Hotline-Bling.jpg')
+            .setFooter({ text: 'PJN Generator Memów • Miłej zabawy!' });
+
+        const sentMsg = await channel.send({ embeds: [embed] });
+        await sentMsg.pin().catch(() => {});
+    } catch (e) {
+        console.error('Błąd podczas ustawiania instrukcji memów:', e);
+    }
 }
 
 // === KOMPLETNY SYSTEM SPRAWDZANIA ODZNAK ===
@@ -379,12 +417,32 @@ const commands = [
     new SlashCommandBuilder().setName('dajpunkty').setDescription('Daj punkty').addUserOption(o => o.setName('uzytkownik').setDescription('User').setRequired(true)).addIntegerOption(o => o.setName('ilosc').setDescription('Ilość').setRequired(true)),
     new SlashCommandBuilder().setName('zabierzpunkty').setDescription('Zabierz punkty').addUserOption(o => o.setName('uzytkownik').setDescription('User').setRequired(true)).addIntegerOption(o => o.setName('ilosc').setDescription('Ilość').setRequired(true)),
     new SlashCommandBuilder().setName('cytat').setDescription('Wyślij cytat'),
-    new SlashCommandBuilder().setName('dodaj-cytat').setDescription('Dodaj cytat').addStringOption(o => o.setName('tekst').setDescription('Tekst').setRequired(true)).addStringOption(o => o.setName('autor').setDescription('Autor').setRequired(true))
+    new SlashCommandBuilder().setName('dodaj-cytat').setDescription('Dodaj cytat').addStringOption(o => o.setName('tekst').setDescription('Tekst').setRequired(true)).addStringOption(o => o.setName('autor').setDescription('Autor').setRequired(true)),
+    new SlashCommandBuilder()
+        .setName('mem')
+        .setDescription('Generuje mema z wybranego szablonu')
+        .addStringOption(o => 
+            o.setName('szablon')
+             .setDescription('Wybierz jasny szablon mema')
+             .setRequired(true)
+             .addChoices(
+                 { name: 'Drake (Odrzuca / Akceptuje)', value: '181913649' },
+                 { name: 'Zazdrosny Chłopak (Ogląda się za inną)', value: '112126428' },
+                 { name: 'Zmieniające się zdanie (Pan z mózgiem)', value: '129242436' },
+                 { name: 'Kłótnia przy obiedzie (Pan przy stole)', value: '124822590' },
+                 { name: 'Pies w płonącym pokoju (This is fine)', value: '55311130' },
+                 { name: 'Dwóch Batmanów (Policzek)', value: '438680' },
+                 { name: 'Płaczący Cat (Smutny kotek)', value: '178591752' }
+             )
+        )
+        .addStringOption(o => o.setName('gora').setDescription('Tekst na górze mema').setRequired(false))
+        .addStringOption(o => o.setName('dol').setDescription('Tekst na dole mema').setRequired(false))
 ].map(c => c.toJSON());
 
 client.once('ready', async () => {
     console.log(`Zalogowano jako ${client.user?.tag}!`);
     await seedQuotesIfNeeded();
+    await setupMemeChannelInstruction();
 
     const rest = new REST({ version: '10' }).setToken(token);
     try {
@@ -460,7 +518,7 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
     }
 });
 
-// === ZAKTUALIZOWANE ID KANAŁÓW W POWITANIACH ===
+// === POWITANIA ===
 client.on('guildMemberAdd', async member => {
     try {
         let user = await UserModel.findOne({ userId: member.id });
@@ -712,6 +770,29 @@ client.on('interactionCreate', async interaction => {
             await checkAndAwardBadges(user, interaction.member);
 
             await interaction.editReply({ content: `✅ Dodano cytat i przyznano postęp do odznaki Filozof!` });
+            return;
+        }
+
+        if (commandName === 'mem') {
+            await interaction.deferReply();
+            const templateId = interaction.options.getString('szablon', true);
+            const gora = interaction.options.getString('gora') || '';
+            const dol = interaction.options.getString('dol') || '';
+
+            try {
+                const url = `https://api.imgflip.com/caption_image?template_id=${templateId}&username=test&password=test&text0=${encodeURIComponent(gora)}&text1=${encodeURIComponent(dol)}`;
+                const response = await fetch(url, { method: 'POST' });
+                const data = await response.json() as any;
+
+                if (data && data.success) {
+                    await interaction.editReply({ content: `🖼️ Oto Twój mem wygenerowany przez <@${interaction.user.id}>:`, files: [data.data.url] });
+                } else {
+                    await interaction.editReply({ content: '❌ Nie udało się wygenerować mema. Spróbuj ponownie później.' });
+                }
+            } catch (err) {
+                console.error(err);
+                await interaction.editReply({ content: '❌ Wystąpił błąd podczas komunikacji z generatorem memów.' });
+            }
             return;
         }
 
