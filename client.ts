@@ -436,7 +436,7 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
     }
 });
 
-// === POPRAWIONE ID KANAŁÓW W POWITANIACH ===
+// === ZAKTUALIZOWANE ID KANAŁÓW W POWITANIACH ===
 client.on('guildMemberAdd', async member => {
     try {
         let user = await UserModel.findOne({ userId: member.id });
@@ -451,10 +451,10 @@ client.on('guildMemberAdd', async member => {
                 .setColor(0x2ECC71)
                 .setDescription(
                     `📌 **Skonfiguruj swój profil i sprawdź najważniejsze miejsca:**\n\n` +
-                    `• Wyberaj płeć: <#1532837330761502750>\n` +
-                    `• Dostosuj role: <#1532839950796398642>\n` +
-                    `• Wybierz swój sprzęt: <#1532840051757264896>\n\n` +
-                    `🎮 Informacje o grach: <#1532840201472901170>\n` +
+                    `• Wyberaj płeć: <#1532374188634144898>\n` +
+                    `• Dostosuj role: <#1532397673842217010>\n` +
+                    `• Wybierz swój sprzęt: <#1532398069524594708>\n\n` +
+                    `🎮 Informacje o grach: <#1534060343473475644>\n` +
                     `👻 Darmowe duszki: <#1532977723843285112>`
                 )
                 .setThumbnail(member.user.displayAvatarURL());
