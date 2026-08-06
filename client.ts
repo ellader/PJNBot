@@ -46,6 +46,13 @@ const configSchema = new mongoose.Schema({
 });
 const ConfigModel = mongoose.model('Config', configSchema);
 
+// Schemat bazy danych dla dynamicznych cytatów
+const quoteSchema = new mongoose.Schema({
+    text: { type: String, required: true },
+    author: { type: String, required: true }
+});
+const QuoteModel = mongoose.model('Quote', quoteSchema);
+
 // === KONFIGURACJA BOTA DISCORD ===
 const token = process.env.DISCORD_BOT_TOKEN;
 if (!token) throw new Error("Brak tokena Discord bota!");
@@ -64,6 +71,7 @@ const client = new Client({
 const ANNOUNCE_CHANNEL_ID = '1532399010785263799';
 const STREAM_CHANNEL_ID = '1533839105962676254'; 
 const ID_KANALU_NOWOSCI = '1534228079914913922';
+const ID_KANALU_CYTATY = '1534780578912665653';
 const CHANNEL_POWITANIA = "witamy";
 const ID_KANALU_DUSZKI = "1532977723843285112"; 
 const ID_KANALU_GRY_INFO = "1534060343473475644";
@@ -80,6 +88,133 @@ const LIVE_IMAGE_URL = "https://cdn.discordapp.com/attachments/15328624217298085
 function isAuthorized(userId: string): boolean {
     const adminIds = ['1175798371995361343', '1493928957408448563'];
     return adminIds.includes(userId);
+}
+
+// Początkowa pula 100 cytatów
+const initialQuotes = [
+    { text: "Nie liczy się to, co robisz od czasu do czasu, ale to, co robisz codziennie.", author: "Bruce Lee" },
+    { text: "Bądź jak woda przepływająca przez szczeliny. Nie bądź sztywny, a dostosujesz się do otoczenia.", author: "Bruce Lee" },
+    { text: "Nie ukrywaj porażki, ucz się z niej i idź naprzód.", author: "Bruce Lee" },
+    { text: "Nie walcz z życiem, płyń z jego prądem, wykorzystując jego własną energię.", author: "Bruce Lee" },
+    { text: "Wiedza nie wystarczy, musimy ją zastosować. Chcenie nie wystarczy, musimy działać.", author: "Bruce Lee" },
+    { text: "Błędy są zawsze przebaczalne, jeśli ma się odwagę się do nich przyznać.", author: "Bruce Lee" },
+    { text: "Oczekuj najlepszego, ale przygotuj się na najgorsze.", author: "Bruce Lee" },
+    { text: "Lataj jak motyl, żądło jak pszczoła.", author: "Muhammad Ali" },
+    { text: "Niemożliwe to tylko słowo rzucane przez małych ludzi, którym łatwiej żyć w świecie, który dostarczyli, niż odkryć siłę, którą mają, by go zmienić.", author: "Muhammad Ali" },
+    { text: "Człowiek, który nie ma wyobraźni, nie ma skrzydeł.", author: "Muhammad Ali" },
+    { text: "Ten, kto nie ryzykuje niczego, nie osiąga niczego.", author: "Muhammad Ali" },
+    { text: "Mistrzowie rodzą się z głębokiego pragnienia, marzenia i wizji.", author: "Muhammad Ali" },
+    { text: "Nienawidziłem każdej minuty treningu, ale powtarzałem: 'Nie poddawaj się. Cierp teraz i żyj resztę życia jak mistrz'.", author: "Muhammad Ali" },
+    { text: "To nie góra, którą musisz pokonać, cię wykańcza; to kamień w twoim bucie.", author: "Muhammad Ali" },
+    { text: "Masz władzę nad swoim umysłem – nie nad zewnętrznymi wydarzeniami. Zrozum to, a odnajdziesz siłę.", author: "Marek Aureliusz" },
+    { text: "Często cierpimy bardziej w wyobraźni niż w rzeczywistości.", author: "Seneka" },
+    { text: "Życie nie polega na czekaniu, aż minie burza, ale na nauce tańca w deszczu.", author: "Seneka" },
+    { text: "Szczęście naszego życia zależy od jakości naszych myśli.", author: "Marek Aureliusz" },
+    { text: "Człowiek dwa razy traci to, czego się obawia.", author: "Seneka" },
+    { text: "Nie bój się, że życie się skończy, bój się, że nigdy tak naprawdę się nie zacznie.", author: "Grace Hansen" },
+    { text: "Najlepszą zemstą jest brak podobieństwa do tego, kto wyrządził krzywdę.", author: "Marek Aureliusz" },
+    { text: "Trudności wzmacniają umysł tak, jak praca wzmacnia ciało.", author: "Seneka" },
+    { text: "Życie jest zbyt krótkie, aby marnować je na pielęgnowanie uraz.", author: "Nelson Mandela" },
+    { text: "Edukacja to najpotężniejsza broń, jakiej możesz użyć, aby zmienić świat.", author: "Nelson Mandela" },
+    { text: "Wszystko wydaje się niemożliwe, dopóki nie zostanie zrobione.", author: "Nelson Mandela" },
+    { text: "Bądź zmianą, którą pragniesz ujrzeć w świecie.", author: "Mahatma Gandhi" },
+    { text: "Słabi nigdy nie potrafią przebaczać. Przebaczenie jest atrybutem silnych.", author: "Mahatma Gandhi" },
+    { text: "Najlepszym sposobem na odnalezienie samego siebie jest zatracenie się w służbie innym.", author: "Mahatma Gandhi" },
+    { text: "Wyobraźnia jest ważniejsza niż wiedza. Wiedza jest ograniczona, podczas gdy wyobraźnia ogarnia cały świat.", author: "Albert Einstein" },
+    { text: "Szaleństwo to robienie wciąż tego samego i oczekiwanie różnych rezultatów.", author: "Albert Einstein" },
+    { text: "Nigdy nie uczę moich uczniów. Usiłuję tylko stworzyć im warunki, w których mogą się uczyć.", author: "Albert Einstein" },
+    { text: "Twój czas jest ograniczony, więc nie marnuj go na życie cudzym życiem.", author: "Steve Jobs" },
+    { text: "Innowacja odróżnia lidera od naśladowcy.", author: "Steve Jobs" },
+    { text: "Jedynym sposobem na wykonywanie wielkiej pracy jest kochanie tego, co się robi.", author: "Steve Jobs" },
+    { text: "Prostota jest szczytem wyrafinowania.", author: "Leonardo da Vinci" },
+    { text: "Kto mało myśli, dużo się myli.", author: "Leonardo da Vinci" },
+    { text: "Największą chwałą w życiu nie jest to, że nigdy nie upadamy, ale to, że potrafimy podnieść się po każdym upadku.", author: "Konfucjusz" },
+    { text: "Wybierz pracę, którą kochasz, a nie będziesz musiał pracować ani jednego dnia w swoim życiu.", author: "Konfucjusz" },
+    { text: "Kto pyta, jest głupcem przez pięć minut; kto nie pyta, pozostaje nim na zawsze.", author: "Przysłowie chińskie" },
+    { text: "Nawet najdłuższa podróż zaczyna się od jednego kroku.", author: "Lao Tse" },
+    { text: "Kto wie, że ma wystarczająco dużo, jest bogaty.", author: "Lao Tse" },
+    { text: "Sukces składa się z małych wysiłków powtarzanych dzień po dniu.", author: "Robert Collier" },
+    { text: "Za dwadzieścia lat bardziej będziesz żałował tego, czego nie zrobiłeś, niż tego, co zrobiłeś.", author: "Mark Twain" },
+    { text: "Sekret sukcesu to zacząć. Sekret zaczynania to rozbicie wielkich, przytłaczających zadań na mniejsze.", author: "Mark Twain" },
+    { text: "Bądź sobą; wszyscy inni są już zajęci.", author: "Oscar Wilde" },
+    { text: "Doświadczenie to nazwa, którą każdy nadaje swoim błędom.", author: "Oscar Wilde" },
+    { text: "Sukces to nie koniec, porażka to nie śmierć: liczy się odwaga, by trwać.", author: "Winston Churchill" },
+    { text: "Nigdy, nigdy, nigdy się nie poddawaj.", author: "Winston Churchill" },
+    { text: "Kto ma po co żyć, zniesie prawie każde jak.", author: "Friedrich Nietzsche" },
+    { text: "Jeśli nie wierzysz w siebie, nikt inny w Ciebie nie uwierzy.", author: "Kobe Bryant" },
+    { text: "Skupienie to kwestia rezygnowania z rzeczy, na które nie warto tracić energii.", author: "Kobe Bryant" },
+    { text: "Niepowodzenia mnie nie zniechęcają. Każda porażka uczy mnie czegoś nowego.", author: "Michael Jordan" },
+    { text: "Przegrałem ponad 300 meczów. 26 razy powierzono mi rzut na wagę zwycięstwa i nie trafiłem. Przegrywałem raz za razem. I dlatego odniosłem sukces.", author: "Michael Jordan" },
+    { text: "Granice, podobnie jak strach, to często tylko iluzja.", author: "Michael Jordan" },
+    { text: "Im trudniejsze zwycięstwo, tym większa radość z wygranej.", author: "Pele" },
+    { text: "Nie ma czegoś takiego jak pech, jest tylko brak przygotowania.", author: "Ayrton Senna" },
+    { text: "Najlepszy czas na zasadzenie drzewa był 20 lat temu. Drugi najlepszy czas jest teraz.", author: "Przysłowie chińskie" },
+    { text: "Nie mierz się z tym, co osiągnąłeś, ale z tym, co powinieneś osiągnąć, biorąc pod uwagę swoje możliwości.", author: "John Wooden" },
+    { text: "Cierpliwość jest gorzka, ale jej owoc jest słodki.", author: "Arystoteles" },
+    { text: "Dzielny nie jest ten, kto nie odczuwa strachu, lecz ten, kto potrafi nad nim zapanować.", author: "Nelson Mandela" },
+    { text: "Życie nie mierzy się liczbą oddechów, ale chwilami, które zapierają dech w piersiach.", author: "Maya Angelou" },
+    { text: "Zamiast martwić się tym, co przyniesie jutro, wykorzystaj w pełni to, co masz dzisiaj.", author: "Seneka" },
+    { text: "Kto chce szuka sposobu, kto nie chce – szuka powodu.", author: "Sokrates" },
+    { text: "Twoja przyszłość zależy od tego, co zrobisz dzisiaj.", author: "Mahatma Gandhi" },
+    { text: "Nigdy nie jest za późno, aby stać się tym, kim mogłeś być.", author: "George Eliot" },
+    { text: "Wszystko, o czym marzysz, jest po drugiej stronie strachu.", author: "George Addair" },
+    { text: "Człowiek staje się tym, o czym przez cały dzień myśli.", author: "Ralph Waldo Emerson" },
+    { text: "Działaj tak, jakby od Twojego działania zależało wszystko, pamiętając zarazem, że nic od Ciebie nie zależy.", author: "Ignacy Loyola" },
+    { text: "Nie liczy się to, co spotyka cię w życiu, ale to, jak na to reagujesz.", author: "Epiktet" },
+    { text: "Siła nie pochodzi z wygranych. Twoje zmagania rozwijają Twoją siłę.", author: "Arnold Schwarzenegger" },
+    { text: "Zrób dziś to, czego inni im nie chcą zrobić, a jutro będziesz żył tak, jak inni nie mogą.", author: "Les Brown" },
+    { text: "Nie liczy się to, jak mocno uderzasz, ale jak dużo ciosów możesz przyjąć i iść ciągle naprzód.", author: "Rocky Balboa" },
+    { text: "Cierpienie jest najlepszym nauczycielem, ale nikt nie chce być jego uczniem.", author: "Paulo Coelho" },
+    { text: "Człowiek jest wielki nie przez to, co posiada, lecz przez to, kim jest; nie przez to, co ma, lecz przez to, czym się dzieli z innymi.", author: "Jan Paweł II" },
+    { text: "Wielkość nie polega na tym, że nigdy nie upadasz, ale na tym, że podnosisz się za każdym razem.", author: "Nelson Mandela" },
+    { text: "Zwycięzcą jest ten, kto wstaje pięć minut wcześniej, niż poddają się inni.", author: "Henry Ford" },
+    { text: "Jeśli płyniesz pod prąd, musisz włożyć wysiłek w każdy ruch, ale dzięki temu rośniesz w siłę.", author: "Seneka" }
+];
+
+async function seedQuotesIfNeeded() {
+    try {
+        const count = await QuoteModel.countDocuments();
+        if (count === 0) {
+            await QuoteModel.insertMany(initialQuotes);
+            console.log('Zainicjalizowano bazę cytatów początkowymi danymi!');
+        }
+    } catch (e) {
+        console.error('Błąd inicjalizacji cytatów:', e);
+    }
+}
+
+async function sendQuoteToChannel(channelId: string) {
+    const channel = await client.channels.fetch(channelId).catch(() => null) as TextChannel;
+    if (!channel) return false;
+
+    const count = await QuoteModel.countDocuments();
+    if (count === 0) return false;
+
+    const random = Math.floor(Math.random() * count);
+    const quote = await QuoteModel.findOne().skip(random);
+    if (!quote) return false;
+
+    const embed = new EmbedBuilder()
+        .setColor(0xE67E22)
+        .setTitle('💡 Życiowa myśl na dzisiejszy poranek')
+        .setDescription(`> *„${quote.text}”*\n\n**— ${quote.author}**`)
+        .setTimestamp()
+        .setFooter({ text: 'PJN Codzienna Inspiracja' });
+
+    await channel.send({ embeds: [embed] });
+    return true;
+}
+
+function startDailyQuotes() {
+    // Codziennie o godzinie 05:30
+    cron.schedule('30 5 * * *', async () => {
+        try {
+            await sendQuoteToChannel(ID_KANALU_CYTATY);
+            console.log('Wysłano poranny cytat automatycznie.');
+        } catch (err) {
+            console.error('Błąd podczas wysyłania codziennego cytatu:', err);
+        }
+    });
 }
 
 function createOgłoszenieEmbed() {
@@ -298,11 +433,22 @@ const commands = [
         .addIntegerOption(o => o.setName('ilosc').setDescription('Ilość PJN-Coins').setRequired(true)),
     new SlashCommandBuilder().setName('zabierzpunkty').setDescription('Zabierz PJN-Coins użytkownikowi')
         .addUserOption(o => o.setName('uzytkownik').setDescription('Użytkownik').setRequired(true))
-        .addIntegerOption(o => o.setName('ilosc').setDescription('Ilość PJN-Coins').setRequired(true))
+        .addIntegerOption(o => o.setName('ilosc').setDescription('Ilość PJN-Coins').setRequired(true)),
+    // Nowe komendy dotyczące cytatów:
+    new SlashCommandBuilder()
+        .setName('cytat')
+        .setDescription('Wyślij losowy życiowy cytat na kanał cytatów'),
+    new SlashCommandBuilder()
+        .setName('dodaj-cytat')
+        .setDescription('Dodaj nowy cytat do bazy bota (Admin)')
+        .addStringOption(o => o.setName('tekst').setDescription('Treść cytatu').setRequired(true))
+        .addStringOption(o => o.setName('autor').setDescription('Autor cytatu').setRequired(true))
 ].map(c => c.toJSON());
 
 client.once('ready', async () => {
     console.log(`Zalogowano jako ${client.user?.tag}!`);
+
+    await seedQuotesIfNeeded();
 
     const rest = new REST({ version: '10' }).setToken(token);
     try {
@@ -317,6 +463,7 @@ client.once('ready', async () => {
 
     startTopUpdater();
     startHourlyAnnouncements();
+    startDailyQuotes();
 });
 
 // Naliczanie 1 PJN-Coins za każdą wiadomość
@@ -844,6 +991,39 @@ client.on('interactionCreate', async interaction => {
                 await interaction.editReply({ content: `✅ Nowość opublikowana na kanale nowości z oznaczeniem @everyone!` });
             } else {
                 await interaction.editReply({ content: `❌ Nie znaleziono kanału nowości o ID: ${ID_KANALU_NOWOSCI}.` });
+            }
+            return;
+        }
+
+        // --- Obsługa komendy /cytat ---
+        if (commandName === 'cytat') {
+            await interaction.deferReply({ ephemeral: true });
+            const success = await sendQuoteToChannel(ID_KANALU_CYTATY);
+            if (success) {
+                await interaction.editReply({ content: `✅ Pomyślnie wysłano losowy cytat na kanał <#${ID_KANALU_CYTATY}>!` });
+            } else {
+                await interaction.editReply({ content: `❌ Nie udało się wysłać cytatu (sprawdź ID kanału lub bazę).` });
+            }
+            return;
+        }
+
+        // --- Obsługa komendy /dodaj-cytat ---
+        if (commandName === 'dodaj-cytat') {
+            if (!isAuthorized(interaction.user.id)) {
+                await interaction.reply({ content: '❌ Brak uprawnień!', ephemeral: true });
+                return;
+            }
+
+            await interaction.deferReply({ ephemeral: true });
+            const text = interaction.options.getString('tekst', true);
+            const author = interaction.options.getString('autor', true);
+
+            try {
+                await QuoteModel.create({ text, author });
+                await interaction.editReply({ content: `✅ Pomyślnie dodano nowy cytat do bazy!\n> *„${text}”* — **${author}**` });
+            } catch (err) {
+                console.error('Błąd dodawania cytatu:', err);
+                await interaction.editReply({ content: `❌ Wystąpił błąd podczas zapisywania cytatu w bazie.` });
             }
             return;
         }
