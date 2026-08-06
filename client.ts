@@ -161,20 +161,39 @@ function createBadgesInfoEmbed() {
         .setDescription(
             'Witaj w oficjalnym systemie osiągnięć serwera! Będąc aktywnym, rozmawiając, grając w kasynie czy spędzając z nami czas, automatycznie zdobywasz unikalne odznaki, które pojawiają się w Twoim profilu.\n\n' +
             '🔍 **Jak sprawdzić swoje odznaki?**\n' +
-            'Wpisz w dowolnym kanale komendę: `/odznaki` (Możesz też sprawdzić profil kogoś innego, wybierając opcję `@użytkownik`).\n\n' +
-            '💬 **Aktywność na Chacie**\n' +
-            '• 💬 **Początkujący Gadulec** — Wysłanie 200 wiadomości tekstowych\n' +
-            '• 📜 **Kronikarz Chatu** — Wysłanie 1000 wiadomości tekstowych\n' +
-            '• 😂 **Emotikonowy Ekspresja** — Wysłanie 30 customowych emotek\n\n' +
-            '🎙️ **Aktywność Głosowa**\n' +
-            '• 🎙️ **Stały Bywalec Mikrofonu** — Spędzenie 30h na kanale głosowym\n\n' +
-            '💰 **Gospodarka i Ekonomia**\n' +
-            '• 💰 **Kapitalista** — Zdobycie 5 000 PJN-Coins\n' +
-            '• 💎 **Magnat Finansowy** — Zdobycie 10 000 PJN-Coins\n\n' +
-            '🎲 **Kasyno i Gry**\n' +
-            '• 🎲 **Nałogowy Graczyk** — Rozegranie 20 gier w kasynie\n' +
-            '• 🍀 **Ulubieniec Fortuna** — Wygranie 3 gier z rzędu w kasynie\n\n' +
-            '⏳ **Staż i Rangi na Serwerze**'
+            'Wpisz w dowolnym kanale komendę: `/odznaki` (Możesz też sprawdzić profil kogoś innego, wybierając opcję `@użytkownik`).'
+        )
+        .addFields(
+            {
+                name: '💬 Aktywność na Chacie i Głosie',
+                value: 
+                    '• 💬 **Początkujący Gadulec** — 200 wiadomości\n' +
+                    '• 📜 **Kronikarz Chatu** — 1000 wiadomości\n' +
+                    '• 💬 **Król Wiadomości** — 5000 wiadomości\n' +
+                    '• 😂 **Emotikonowy Ekspresja** — 30 customowych emotek\n' +
+                    '• 🌙 **Nocny Marek** — 50 wiadomości w nocy (00:00–04:00)\n' +
+                    '• 🎙️ **Stały Bywalec Mikrofonu** — 30h na kanale głosowym\n' +
+                    '• 🎧 **Audiofil** — 100h na kanale głosowym',
+                inline: false
+            },
+            {
+                name: '💰 Gospodarka, Kasyno i Społeczność',
+                value: 
+                    '• 💰 **Kapitalista** — 5 000 PJN-Coins\n' +
+                    '• 💎 **Magnat Finansowy** — 10 000 PJN-Coins\n' +
+                    '• 🏦 **Milioner** — 100 000 PJN-Coins\n' +
+                    '• 💸 **Hojny Darczyńca** — 5 000 przekazanych w przelewach\n' +
+                    '• 🎲 **Nałogowy Graczyk** — 20 gier w kasynie\n' +
+                    '• 🎰 **Ryzykant** — 100 gier w kasynie\n' +
+                    '• 🍀 **Ulubieniec Fortuna** — 3 wygrane z rzędu w kasynie\n' +
+                    '• 🎯 **Czarna Seria** — 5 przegranych z rzędu w kasynie\n' +
+                    '• 💡 **Filozof** — Dodanie 5 cytatów\n' +
+                    '• 🤝 **Pomocna Dłoń** — 10 akcji pomocy\n' +
+                    '• ⏳ **Weteran Półrocza / Weteran** — Staż na serwerze (6 miesięcy / rok)\n' +
+                    '• 🛡️ **Filar Społeczności** — Posiadanie rangi Administracji/Streamera\n' +
+                    '• 🎟️ **Kolekcjoner** — Zdobycie wszystkich pozostałych odznak',
+                inline: false
+            }
         )
         .setTimestamp()
         .setFooter({ text: 'PJN System Odznak • Automatycznie aktualizowany' });
