@@ -128,7 +128,7 @@ async function sendQuoteToChannel(channelId: string) {
 }
 
 function startDailyQuotes() {
-    cron.schedule('30 5 * * *', async () => {
+    cron.schedule('30 3 * * *', async () => {
         try {
             await sendQuoteToChannel(ID_KANALU_CYTATY);
         } catch (err) {
