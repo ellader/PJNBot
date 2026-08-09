@@ -561,8 +561,8 @@ client.on('interactionCreate', async interaction => {
                     .setTitle(`🎫 Ticket od: ${interaction.user.tag}`)
                     .setDescription(
                         `Witaj <@${interaction.user.id}>!\n\n` +
-                        `Opisz swój problem lub powód zgłoszenia. Administracja (<@&${ID_RANGI_DUSZKOWIEC}>, <@&${ID_RANGI_MODERATOR}>, <@&${ID_RANGI_ADMIN}>) została powiadomiona i wkrótce odpowie.\n\n` +
-                        `Kliknij przycisk **Zamknij Ticket**, gdy sprawa zostanie rozwiązana.`
+                        `Napisz jakiego duszka potrzebujesz, ktoś z ekipy wejdzie i od razu zobaczy Twoją wiadomość (<@&${ID_RANGI_DUSZKOWIEC}>, <@&${ID_RANGI_MODERATOR}>, <@&${ID_RANGI_ADMIN}>) została powiadomiona i wkrótce odpowie.\n\n` +
+                        `Kliknij przycisk **Zamknij Ticket**, gdy juz otrzymasz duszka.`
                     )
                     .setTimestamp();
 
