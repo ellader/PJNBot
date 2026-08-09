@@ -6,7 +6,11 @@ import {
     SlashCommandBuilder,
     TextChannel,
     PermissionFlagsBits,
-    EmbedBuilder
+    EmbedBuilder,
+    ActionRowBuilder,
+    ButtonBuilder,
+    ButtonStyle,
+    ChannelType
 } from 'discord.js';
 import mongoose from 'mongoose';
 import cron from 'node-cron';
@@ -198,6 +202,51 @@ function createBadgesInfoEmbed() {
         )
         .setTimestamp()
         .setFooter({ text: 'PJN System Odznak • Automatycznie aktualizowany' });
+}
+
+// === SYSTEM TICKETÓW - EMBED PANELU ===
+function createTicketPanelEmbed() {
+    return new EmbedBuilder()
+        .setColor(0x2ECC71)
+        .setTitle('🎫 Centrum Pomocy i Zgłoszeń PJN')
+        .setDescription(
+            'Potrzebujesz pomocy, chcesz zgłosić problem lub skontaktować się z administracją?\n\n' +
+            'Kliknij poniższy przycisk **"Stwórz Ticket"**, aby otworzyć prywatny kanał zgłoszeniowy. Nasza ekipa pomoże Ci tak szybko, jak to możliwe!\n\n' +
+            '⚠️ *Prosimy nie tworzyć zgłoszeń bez potrzeby – szanujmy swój czas.*'
+        )
+        .setTimestamp()
+        .setFooter({ text: 'PJN System Ticketów • Bezpieczna pomoc' });
+}
+
+// === AUTOMATYCZNE WYSYŁANIE / ODŚWIEŻANIE PANELU TICKETÓW NA KANALE DUSZKI ===
+async function setupTicketChannel() {
+    try {
+        const channel = await client.channels.fetch(ID_KANALU_DUSZKI).catch(() => null) as TextChannel;
+        if (!channel) return;
+
+        // Czyszczenie starego panelu/wiadomości bota na kanale duszki aby utrzymać czystość
+        const messages = await channel.messages.fetch({ limit: 10 }).catch(() => null);
+        if (messages) {
+            for (const [_, msg] of messages) {
+                if (msg.author.id === client.user?.id) {
+                    await msg.delete().catch(() => {});
+                }
+            }
+        }
+
+        const embed = createTicketPanelEmbed();
+        const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+            new ButtonBuilder()
+                .setCustomId('create_ticket')
+                .setLabel('Stwórz Ticket')
+                .setStyle(ButtonStyle.Success)
+                .setEmoji('🎫')
+        );
+
+        await channel.send({ embeds: [embed], components: [row] });
+    } catch (e) {
+        console.error('Błąd podczas inicjalizacji panelu ticketów:', e);
+    }
 }
 
 // === INSTRUKCJA GENERATORA MEMÓW ===
@@ -444,6 +493,7 @@ client.once('ready', async () => {
     console.log(`Zalogowano jako ${client.user?.tag}!`);
     await seedQuotesIfNeeded();
     await setupMemeChannelInstruction();
+    await setupTicketChannel(); // Inicjalizacja panelu ticketów
 
     const rest = new REST({ version: '10' }).setToken(token);
     try {
@@ -460,97 +510,96 @@ client.once('ready', async () => {
     startDailyQuotes();
 });
 
-client.on('messageCreate', async message => {
-    if (message.author.bot || !message.guild) return;
+// Zastąpienie starego eventu tekstowego duszki profesjonalnym systemem przycisków ticketów
+client.on('interactionCreate', async interaction => {
+    // Obsługa interakcji przycisków ticketów
+    if (interaction.isButton()) {
+        if (interaction.customId === 'create_ticket') {
+            await interaction.deferReply({ ephemeral: true });
+            const guild = interaction.guild;
+            if (!guild) return;
 
-    try {
-        let user = await UserModel.findOne({ userId: message.author.id });
-        if (!user) user = await UserModel.create({ userId: message.author.id });
+            const existingChannel = guild.channels.cache.find(
+                ch => ch.name === `ticket-${interaction.user.username.toLowerCase().replace(/[^a-z0-9]/g, '')}`
+            );
 
-        user.messageCount = (user.messageCount || 0) + 1;
-        user.balance += 1;
-        
-        const currentHour = new Date().getHours();
-        if (currentHour >= 0 && currentHour < 4) {
-            user.nightMessageCount = (user.nightMessageCount || 0) + 1;
-        }
-
-        const customEmojis = message.content.match(/<a?:\w+:\d+>/g);
-        if (customEmojis) user.emojiCount = (user.emojiCount || 0) + customEmojis.length;
-
-        await user.save();
-        await checkAndAwardBadges(user, message.member);
-
-        if (message.channelId === ID_KANALU_DUSZKI) {
-            const pings = `<@&${ID_RANGI_DUSZKOWIEC}> <@&${ID_RANGI_MODERATOR}> <@&${ID_RANGI_ADMIN}>`;
-            await message.reply({
-                content: `Cześć ${message.author}, dziękuję że jesteś, zawołam administrację!\n\n${pings}`,
-                allowedMentions: { roles: [ID_RANGI_DUSZKOWIEC, ID_RANGI_MODERATOR, ID_RANGI_ADMIN], users: [message.author.id] }
-            });
-        }
-    } catch (error) {}
-});
-
-const voiceTimestamps = new Map<string, number>();
-
-client.on('voiceStateUpdate', async (oldState, newState) => {
-    if (newState.member?.user.bot) return;
-    const userId = newState.id;
-    const now = Date.now();
-
-    if (!oldState.channelId && newState.channelId) {
-        voiceTimestamps.set(userId, now);
-    } else if (oldState.channelId && !newState.channelId) {
-        const joinTime = voiceTimestamps.get(userId);
-        if (joinTime) {
-            const minutesSpent = Math.floor((now - joinTime) / (1000 * 60));
-            if (minutesSpent > 0) {
-                try {
-                    let user = await UserModel.findOne({ userId });
-                    if (!user) user = await UserModel.create({ userId });
-                    user.voiceMinutes = (user.voiceMinutes || 0) + minutesSpent;
-                    user.balance += minutesSpent;
-                    await user.save();
-                    if (newState.member) await checkAndAwardBadges(user, newState.member);
-                } catch (e) {}
+            if (existingChannel) {
+                return interaction.editReply({ content: `❌ Masz już otwarty ticket: <#${existingChannel.id}>!` });
             }
-            voiceTimestamps.delete(userId);
+
+            try {
+                // Tworzenie prywatnego kanału dla użytkownika oraz ról wsparcia (Duszkowiec, Moderator, Admin/Streamer)
+                const ticketChannel = await guild.channels.create({
+                    name: `ticket-${interaction.user.username}`,
+                    type: ChannelType.GuildText,
+                    permissionOverwrites: [
+                        {
+                            id: guild.id,
+                            deny: [PermissionFlagsBits.ViewChannel],
+                        },
+                        {
+                            id: interaction.user.id,
+                            allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory],
+                        },
+                        {
+                            id: ID_RANGI_DUSZKOWIEC,
+                            allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory],
+                        },
+                        {
+                            id: ID_RANGI_MODERATOR,
+                            allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory],
+                        },
+                        {
+                            id: ID_RANGI_ADMIN,
+                            allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory],
+                        }
+                    ],
+                });
+
+                const welcomeEmbed = new EmbedBuilder()
+                    .setColor(0x2ECC71)
+                    .setTitle(`🎫 Ticket od: ${interaction.user.tag}`)
+                    .setDescription(
+                        `Witaj <@${interaction.user.id}>!\n\n` +
+                        `Opisz swój problem lub powód zgłoszenia. Administracja (<@&${ID_RANGI_DUSZKOWIEC}>, <@&${ID_RANGI_MODERATOR}>, <@&${ID_RANGI_ADMIN}>) została powiadomiona i wkrótce odpowie.\n\n` +
+                        `Kliknij przycisk **Zamknij Ticket**, gdy sprawa zostanie rozwiązana.`
+                    )
+                    .setTimestamp();
+
+                const closeRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+                    new ButtonBuilder()
+                        .setCustomId('close_ticket')
+                        .setLabel('Zamknij Ticket')
+                        .setStyle(ButtonStyle.Danger)
+                        .setEmoji('🔒')
+                );
+
+                await ticketChannel.send({
+                    content: `<@${interaction.user.id}> | <@&${ID_RANGI_DUSZKOWIEC}> <@&${ID_RANGI_MODERATOR}> <@&${ID_RANGI_ADMIN}>`,
+                    embeds: [welcomeEmbed],
+                    components: [closeRow]
+                });
+
+                await interaction.editReply({ content: `✅ Stworzono dla Ciebie prywatny ticket: <#${ticketChannel.id}>!` });
+            } catch (err) {
+                console.error(err);
+                await interaction.editReply({ content: '❌ Wystąpił błąd podczas tworzenia ticketu.' });
+            }
+            return;
+        }
+
+        if (interaction.customId === 'close_ticket') {
+            const channel = interaction.channel as TextChannel;
+            if (!channel) return;
+
+            await interaction.reply({ content: `🔒 Ticket zostanie zamknięty za 5 sekund...` });
+            setTimeout(async () => {
+                await channel.delete().catch(() => {});
+            }, 5000);
+            return;
         }
     }
-});
 
-// === POWITANIA ===
-client.on('guildMemberAdd', async member => {
-    try {
-        let user = await UserModel.findOne({ userId: member.id });
-        if (!user) user = await UserModel.create({ userId: member.id });
-        user.balance += 200;
-        await user.save();
-        await checkAndAwardBadges(user, member);
-
-        const channel = member.guild.channels.cache.find(ch => ch.isTextBased() && 'name' in ch && ch.name === CHANNEL_POWITANIA) as TextChannel;
-        if (channel) {
-            const embed = new EmbedBuilder()
-                .setColor(0x2ECC71)
-                .setDescription(
-                    `📌 **Skonfiguruj swój profil i sprawdź najważniejsze miejsca:**\n\n` +
-                    `• Wyberaj płeć: <#1532374188634144898>\n` +
-                    `• Dostosuj role: <#1532397673842217010>\n` +
-                    `• Wybierz swój sprzęt: <#1532398069524594708>\n\n` +
-                    `🎮 Informacje o grach: <#1534060343473475644>\n` +
-                    `👻 Darmowe duszki: <#1532977723843285112>`
-                )
-                .setThumbnail(member.user.displayAvatarURL());
-
-            await channel.send({
-                content: `👋 Witaj na serwerze PJN, <@${member.id}>! Cieszymy się, że jesteś z nami!🎉\n🎁 Na start otrzymujesz w prezencie **200 PJN-Coins**!`,
-                embeds: [embed]
-            });
-        }
-    } catch (e) {}
-});
-
-client.on('interactionCreate', async interaction => {
     // Obsługa podpowiedzi (Autocomplete) dla szablonów memów
     if (interaction.isAutocomplete()) {
         if (interaction.commandName === 'mem') {
@@ -1029,6 +1078,91 @@ client.on('interactionCreate', async interaction => {
     } catch (error) {
         console.error(error);
     }
+});
+
+client.on('messageCreate', async message => {
+    if (message.author.bot || !message.guild) return;
+
+    try {
+        let user = await UserModel.findOne({ userId: message.author.id });
+        if (!user) user = await UserModel.create({ userId: message.author.id });
+
+        user.messageCount = (user.messageCount || 0) + 1;
+        user.balance += 1;
+        
+        const currentHour = new Date().getHours();
+        if (currentHour >= 0 && currentHour < 4) {
+            user.nightMessageCount = (user.nightMessageCount || 0) + 1;
+        }
+
+        const customEmojis = message.content.match(/<a?:\w+:\d+>/g);
+        if (customEmojis) user.emojiCount = (user.emojiCount || 0) + customEmojis.length;
+
+        await user.save();
+        await checkAndAwardBadges(user, message.member);
+
+        // Uwaga: Usunięto stary, spamujący system odpowiedzi tekstowej na kanale duszki.
+        // Teraz kanał duszki obsługiwany jest czysto przez panel z przyciskiem ticketów!
+    } catch (error) {}
+});
+
+const voiceTimestamps = new Map<string, number>();
+
+client.on('voiceStateUpdate', async (oldState, newState) => {
+    if (newState.member?.user.bot) return;
+    const userId = newState.id;
+    const now = Date.now();
+
+    if (!oldState.channelId && newState.channelId) {
+        voiceTimestamps.set(userId, now);
+    } else if (oldState.channelId && !newState.channelId) {
+        const joinTime = voiceTimestamps.get(userId);
+        if (joinTime) {
+            const minutesSpent = Math.floor((now - joinTime) / (1000 * 60));
+            if (minutesSpent > 0) {
+                try {
+                    let user = await UserModel.findOne({ userId });
+                    if (!user) user = await UserModel.create({ userId });
+                    user.voiceMinutes = (user.voiceMinutes || 0) + minutesSpent;
+                    user.balance += minutesSpent;
+                    await user.save();
+                    if (newState.member) await checkAndAwardBadges(user, newState.member);
+                } catch (e) {}
+            }
+            voiceTimestamps.delete(userId);
+        }
+    }
+});
+
+// === POWITANIA ===
+client.on('guildMemberAdd', async member => {
+    try {
+        let user = await UserModel.findOne({ userId: member.id });
+        if (!user) user = await UserModel.create({ userId: member.id });
+        user.balance += 200;
+        await user.save();
+        await checkAndAwardBadges(user, member);
+
+        const channel = member.guild.channels.cache.find(ch => ch.isTextBased() && 'name' in ch && ch.name === CHANNEL_POWITANIA) as TextChannel;
+        if (channel) {
+            const embed = new EmbedBuilder()
+                .setColor(0x2ECC71)
+                .setDescription(
+                    `📌 **Skonfiguruj swój profil i sprawdź najważniejsze miejsca:**\n\n` +
+                    `• Wyberaj płeć: <#1532374188634144898>\n` +
+                    `• Dostosuj role: <#1532397673842217010>\n` +
+                    `• Wybierz swój sprzęt: <#1532398069524594708>\n\n` +
+                    `🎮 Informacje o grach: <#1534060343473475644>\n` +
+                    `👻 Darmowe duszki: <#1532977723843285112>`
+                )
+                .setThumbnail(member.user.displayAvatarURL());
+
+            await channel.send({
+                content: `👋 Witaj na serwerze PJN, <@${member.id}>! Cieszymy się, że jesteś z nami!🎉\n🎁 Na start otrzymujesz w prezencie **200 PJN-Coins**!`,
+                embeds: [embed]
+            });
+        }
+    } catch (e) {}
 });
 
 client.login(token);
