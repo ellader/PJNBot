@@ -210,8 +210,8 @@ function createTicketPanelEmbed() {
         .setColor(0x2ECC71)
         .setTitle('🎫 Centrum Pomocy i Zgłoszeń PJN')
         .setDescription(
-            'Potrzebujesz pomocy, chcesz zgłosić problem lub skontaktować się z administracją?\n\n' +
-            'Kliknij poniższy przycisk **"Stwórz Ticket"**, aby otworzyć prywatny kanał zgłoszeniowy. Nasza ekipa pomoże Ci tak szybko, jak to możliwe!\n\n' +
+            'Potrzebujesz pomocy z duszkami? Dobrze trafiłeś!\n\n' +
+            'Kliknij poniższy przycisk **"Stwórz Ticket"**, aby otworzyć prywatny kanał. Nasza ekipa pomoże Ci tak szybko, jak to możliwe!\n\n' +
             '⚠️ *Prosimy nie tworzyć zgłoszeń bez potrzeby – szanujmy swój czas.*'
         )
         .setTimestamp()
