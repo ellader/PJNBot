@@ -457,6 +457,7 @@ const commands = [
         .setName('daj-wszystkim')
         .setDescription('Rozdaje PJN-Coins absolutnie każdemu użytkownikowi w bazie (Admin)')
         .addIntegerOption(o => o.setName('ilosc').setDescription('Ile PJN-Coins ma otrzymać każdy').setRequired(true))
+        .addStringOption(o => o.setName('powod').setDescription('Powód przyznania bonusu').setRequired(false))
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
     new SlashCommandBuilder()
         .setName('nowości')
@@ -659,6 +660,7 @@ client.on('interactionCreate', async interaction => {
             if (!isAuthorized(interaction.user.id)) return interaction.reply({ content: '❌ Brak uprawnień!', ephemeral: true });
             
             const ilosc = interaction.options.getInteger('ilosc', true);
+            const powod = interaction.options.getString('powod') || 'Brak podanego powoda';
             if (ilosc <= 0) {
                 return interaction.reply({ content: '❌ Ilość punktów musi być większa od zera!', ephemeral: true });
             }
@@ -680,7 +682,7 @@ client.on('interactionCreate', async interaction => {
                                 embeds: [{
                                     color: 0x2ECC71,
                                     title: '🎁 Otrzymałeś bonus dla wszystkich!',
-                                    description: `Administrator **${interaction.user.tag}** rozdal bonus dla całej społeczności!\nOtrzymałeś **${ilosc} PJN-Coins**!`,
+                                    description: `Administrator **${interaction.user.tag}** rozdal bonus dla całej społeczności!\nOtrzymałeś **${ilosc} PJN-Coins**!\n\n📌 **Powód:** ${powod}`,
                                     timestamp: new Date().toISOString()
                                 }]
                             });
@@ -691,7 +693,7 @@ client.on('interactionCreate', async interaction => {
                 }
 
                 await interaction.editReply({ 
-                    content: `✅ Pomyślnie przyznano **${ilosc} PJN-Coins** dla **${successCount}** użytkowników z bazy danych oraz wysłano powiadomienia na PW!` 
+                    content: `✅ Pomyślnie przyznano **${ilosc} PJN-Coins** dla **${successCount}** użytkowników z bazy danych oraz wysłano powiadomienia na PW!\n📌 **Powód:** ${powod}` 
                 });
             } catch (err) {
                 console.error('Błąd w komendzie daj-wszystkim:', err);
