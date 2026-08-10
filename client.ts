@@ -224,7 +224,6 @@ async function setupTicketChannel() {
         const channel = await client.channels.fetch(ID_KANALU_DUSZKI).catch(() => null) as TextChannel;
         if (!channel) return;
 
-        // Czyszczenie starego panelu/wiadomości bota na kanale duszki aby utrzymać czystość
         const messages = await channel.messages.fetch({ limit: 10 }).catch(() => null);
         if (messages) {
             for (const [_, msg] of messages) {
@@ -455,6 +454,11 @@ const commands = [
     new SlashCommandBuilder().setName('quiz').setDescription('Odpowiedz na pytanie quizowe'),
     new SlashCommandBuilder().setName('odznaki').setDescription('Wyświetla profil z odznakami').addUserOption(o => o.setName('uzytkownik').setDescription('Użytkownik').setRequired(false)),
     new SlashCommandBuilder()
+        .setName('daj-wszystkim')
+        .setDescription('Rozdaje PJN-Coins absolutnie każdemu użytkownikowi w bazie (Admin)')
+        .addIntegerOption(o => o.setName('ilosc').setDescription('Ile PJN-Coins ma otrzymać każdy').setRequired(true))
+        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+    new SlashCommandBuilder()
         .setName('nowości')
         .setDescription('Wysyła ogłoszenie o nowościach na serwerze (Admin)')
         .addStringOption(o => o.setName('tytul').setDescription('Tytuł ogłoszenia (np. System Odznak)').setRequired(true))
@@ -493,7 +497,7 @@ client.once('ready', async () => {
     console.log(`Zalogowano jako ${client.user?.tag}!`);
     await seedQuotesIfNeeded();
     await setupMemeChannelInstruction();
-    await setupTicketChannel(); // Inicjalizacja panelu ticketów
+    await setupTicketChannel(); 
 
     const rest = new REST({ version: '10' }).setToken(token);
     try {
@@ -510,9 +514,7 @@ client.once('ready', async () => {
     startDailyQuotes();
 });
 
-// Zastąpienie starego eventu tekstowego duszki profesjonalnym systemem przycisków ticketów
 client.on('interactionCreate', async interaction => {
-    // Obsługa interakcji przycisków ticketów
     if (interaction.isButton()) {
         if (interaction.customId === 'create_ticket') {
             await interaction.deferReply({ ephemeral: true });
@@ -528,7 +530,6 @@ client.on('interactionCreate', async interaction => {
             }
 
             try {
-                // Tworzenie prywatnego kanału dla użytkownika oraz ról wsparcia (Duszkowiec, Moderator, Admin/Streamer)
                 const ticketChannel = await guild.channels.create({
                     name: `ticket-${interaction.user.username}`,
                     type: ChannelType.GuildText,
@@ -600,7 +601,6 @@ client.on('interactionCreate', async interaction => {
         }
     }
 
-    // Obsługa podpowiedzi (Autocomplete) dla szablonów memów
     if (interaction.isAutocomplete()) {
         if (interaction.commandName === 'mem') {
             const focusedValue = interaction.options.focusedOfType ? interaction.options.getFocused() : interaction.options.getFocused();
@@ -651,6 +651,51 @@ client.on('interactionCreate', async interaction => {
             if (sentMessage) {
                 await ConfigModel.findOneAndUpdate({ key: 'odznaki_info_msg' }, { channelId: interaction.channelId, messageId: sentMessage.id }, { upsert: true, new: true });
                 await interaction.editReply({ content: `✅ Ustawiono ten kanał jako centrum odznak.` });
+            }
+            return;
+        }
+
+        if (commandName === 'daj-wszystkim') {
+            if (!isAuthorized(interaction.user.id)) return interaction.reply({ content: '❌ Brak uprawnień!', ephemeral: true });
+            
+            const ilosc = interaction.options.getInteger('ilosc', true);
+            if (ilosc <= 0) {
+                return interaction.reply({ content: '❌ Ilość punktów musi być większa od zera!', ephemeral: true });
+            }
+
+            await interaction.deferReply({ ephemeral: true });
+
+            try {
+                const allUsers = await UserModel.find({});
+                let successCount = 0;
+
+                for (const userDoc of allUsers) {
+                    userDoc.balance = (userDoc.balance || 0) + ilosc;
+                    await userDoc.save();
+
+                    try {
+                        const targetUser = await client.users.fetch(userDoc.userId).catch(() => null);
+                        if (targetUser) {
+                            await targetUser.send({
+                                embeds: [{
+                                    color: 0x2ECC71,
+                                    title: '🎁 Otrzymałeś bonus dla wszystkich!',
+                                    description: `Administrator **${interaction.user.tag}** rozdal bonus dla całej społeczności!\nOtrzymałeś **${ilosc} PJN-Coins**!`,
+                                    timestamp: new Date().toISOString()
+                                }]
+                            });
+                        }
+                    } catch (err) {}
+
+                    successCount++;
+                }
+
+                await interaction.editReply({ 
+                    content: `✅ Pomyślnie przyznano **${ilosc} PJN-Coins** dla **${successCount}** użytkowników z bazy danych oraz wysłano powiadomienia na PW!` 
+                });
+            } catch (err) {
+                console.error('Błąd w komendzie daj-wszystkim:', err);
+                await interaction.editReply({ content: '❌ Wystąpił błąd podczas rozdawania punktów.' });
             }
             return;
         }
@@ -1100,9 +1145,6 @@ client.on('messageCreate', async message => {
 
         await user.save();
         await checkAndAwardBadges(user, message.member);
-
-        // Uwaga: Usunięto stary, spamujący system odpowiedzi tekstowej na kanale duszki.
-        // Teraz kanał duszki obsługiwany jest czysto przez panel z przyciskiem ticketów!
     } catch (error) {}
 });
 
