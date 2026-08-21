@@ -38,7 +38,10 @@ const userSchema = new mongoose.Schema({
     quotesAdded: { type: Number, default: 0 },
     helpCount: { type: Number, default: 0 },
     joinedAt: { type: Date, default: Date.now },
-    badges: { type: [String], default: [] }
+    badges: { type: [String], default: [] },
+    // === NOWE POLA DLA REPUTACJI TRADERA ===
+    reputation: { type: Number, default: 0 },
+    exp: { type: Number, default: 0 }
 });
 
 const UserModel = mongoose.model('User', userSchema);
@@ -56,6 +59,14 @@ const quoteSchema = new mongoose.Schema({
     addedBy: { type: String, default: null }
 });
 const QuoteModel = mongoose.model('Quote', quoteSchema);
+
+// === NOWY SCHEMAT DLA COOLDOWNU REPUTACJI (24H PER PARA) ===
+const repCooldownSchema = new mongoose.Schema({
+    giverId: { type: String, required: true },
+    receiverId: { type: String, required: true },
+    lastGiven: { type: Date, required: true }
+});
+const RepCooldownModel = mongoose.model('RepCooldown', repCooldownSchema);
 
 // === KONFIGURACJA BOTA DISCORD ===
 const token = process.env.DISCORD_BOT_TOKEN;
@@ -79,6 +90,13 @@ const ID_KANALU_DUSZKI = "1532977723843285112";
 const ID_RANGI_DUSZKOWIEC = "1532978703842283551";
 const ID_RANGI_MODERATOR = "1532321767857721344";
 const ID_RANGI_ADMIN = "1532324059470237857";
+
+// === NOWE ID KANAŁÓW I RANG REPUTACJI TRADERA ===
+const ID_KANAL_REPUTACJI = "1540233764477730908";
+const ID_ALEJA_SLAW_REPUTACJI = "1540238376278687754";
+const ID_RANGI_WZOROWY_TRADER = "1540235169653592084";   // +50 pkt (Złoty)
+const ID_RANGI_POZYTYWNY_TRADER = "1540251183892008970"; // +10 pkt (Jasny zielony)
+const ID_RANGI_NEGATYWNY_TRADER = "1540235296665239624"; // -5 pkt (Pomarańczowy)
 
 const LIVE_IMAGE_URL = "https://cdn.discordapp.com/attachments/1532321067731783684/1534837837374029914/IMG_20260806_094843.jpg?ex=6a7594a0&is=6a744320&hm=822597b60136cc08a4aac4b01d9684bcda8b7d6e388232f24a5c7f15ed3f9e5e&";
 
@@ -158,7 +176,6 @@ function createOgłoszenieEmbed() {
         .setFooter({ text: 'PJN System Ogłoszeń' });
 }
 
-// === CENTRUM INFORMACJI O ODZNACKACH (EMBED) ===
 function createBadgesInfoEmbed() {
     return new EmbedBuilder()
         .setColor(0x9B59B6)
@@ -204,7 +221,6 @@ function createBadgesInfoEmbed() {
         .setFooter({ text: 'PJN System Odznak • Automatycznie aktualizowany' });
 }
 
-// === SYSTEM TICKETÓW - EMBED PANELU ===
 function createTicketPanelEmbed() {
     return new EmbedBuilder()
         .setColor(0x2ECC71)
@@ -218,7 +234,6 @@ function createTicketPanelEmbed() {
         .setFooter({ text: 'PJN System Ticketów • Bezpieczna pomoc' });
 }
 
-// === AUTOMATYCZNE WYSYŁANIE / ODŚWIEŻANIE PANELU TICKETÓW NA KANALE DUSZKI ===
 async function setupTicketChannel() {
     try {
         const channel = await client.channels.fetch(ID_KANALU_DUSZKI).catch(() => null) as TextChannel;
@@ -248,7 +263,6 @@ async function setupTicketChannel() {
     }
 }
 
-// === INSTRUKCJA GENERATORA MEMÓW ===
 async function setupMemeChannelInstruction() {
     try {
         const channel = await client.channels.fetch(ID_KANALU_MEMOW).catch(() => null) as TextChannel;
@@ -285,7 +299,6 @@ async function setupMemeChannelInstruction() {
     }
 }
 
-// === INSTRUKCJA KANAŁU - PRZEDSTAW SIĘ (NOWA FUNKCJA) ===
 async function setupShowcaseChannelInstruction() {
     try {
         const channel = await client.channels.fetch('1536365057997283469').catch(() => null) as TextChannel;
@@ -322,7 +335,83 @@ async function setupShowcaseChannelInstruction() {
     }
 }
 
-// === KOMPLETNY SYSTEM SPRAWDZANIA ODZNAK ===
+// === INSTRUKCJA KANAŁU REPUTACJI TRADERÓW ===
+async function setupReputationChannelInstruction() {
+    try {
+        const channel = await client.channels.fetch(ID_KANAL_REPUTACJI).catch(() => null) as TextChannel;
+        if (!channel) return;
+
+        const messages = await channel.messages.fetch({ limit: 10 }).catch(() => null);
+        if (messages) {
+            for (const [_, msg] of messages) {
+                if (msg.author.id === client.user?.id) {
+                    await msg.delete().catch(() => {});
+                }
+            }
+        }
+
+        const embed = new EmbedBuilder()
+            .setColor(0xF1C40F)
+            .setTitle('⭐ System Reputacji i Bezpiecznych Wymian Duszków Fortnite')
+            .setDescription(
+                'Witaj w oficjalnym centrum reputacji handlowej serwera PJN! Ten kanał służy do oceniania rzetelności innych traderów po zakończonej wymianie.\n\n' +
+                '📜 **Zasady nadawania reputacji:**\n' +
+                '• Oceniaj wyłącznie osoby, z którymi faktycznie dokonałeś wymiany duszków w Fortnite.\n' +
+                '• Możesz ocenić tego samego użytkownika **maksymalnie raz na 24 godziny** (dla innych traderów limit nie obowiązuje – możesz dawać punkty od razu).\n' +
+                '• Fałszywe lub złośliwe punkty (próby zaniżania/zaniżania statystyk bez powodu) będą surowo karane przez administrację.\n\n' +
+                '🛠️ **Dostępne komendy na tym kanale:**\n' +
+                '• `+rep @użytkownik` — Przyznaje punkt pozytywny dla tradera.\n' +
+                '• `-rep @użytkownik` — Przyznaje punkt negatywny za nieudaną lub oszukaną wymianę.\n' +
+                '• `/reputacja` — Sprawdza Twój profil handlowy, punkty, exp oraz aktualną rangę tranzakcyjną.\n\n' +
+                '🛡️ **Progi rang handlowych:**\n' +
+                '• 🟡 **Wzorowy Trader** — Osiągnij +50 punktów reputacji\n' +
+                '• 🟢 **Pozytywny Trader** — Osiągnij +10 punktów reputacji\n' +
+                '• 🟠 **Negatywny Trader** — Spadek poniżej -5 punktów reputacji'
+            )
+            .setImage(LIVE_IMAGE_URL)
+            .setTimestamp()
+            .setFooter({ text: 'PJN System Reputacji • Handluj bezpiecznie' });
+
+        const sentMsg = await channel.send({ embeds: [embed] });
+        await sentMsg.pin().catch(() => {});
+    } catch (e) {
+        console.error('Błąd podczas ustawiania instrukcji kanału reputacji:', e);
+    }
+}
+
+// === ZARZĄDZANIE RANGAMI TRADERA ===
+async function updateTraderRoles(member: any, reputation: number) {
+    if (!member) return;
+    try {
+        const hasWzorowy = member.roles.cache.has(ID_RANGI_WZOROWY_TRADER);
+        const hasPozytywny = member.roles.cache.has(ID_RANGI_POZYTYWNY_TRADER);
+        const hasNegatywny = member.roles.cache.has(ID_RANGI_NEGATYWNY_TRADER);
+
+        // Wzorowy Trader (+50)
+        if (reputation >= 50 && !hasWzorowy) {
+            await member.roles.add(ID_RANGI_WZOROWY_TRADER).catch(() => {});
+        } else if (reputation < 50 && hasWzorowy) {
+            await member.roles.remove(ID_RANGI_WZOROWY_TRADER).catch(() => {});
+        }
+
+        // Pozytywny Trader (+10 do +49)
+        if (reputation >= 10 && reputation < 50 && !hasPozytywny) {
+            await member.roles.add(ID_RANGI_POZYTYWNY_TRADER).catch(() => {});
+        } else if ((reputation < 10 || reputation >= 50) && hasPozytywny) {
+            await member.roles.remove(ID_RANGI_POZYTYWNY_TRADER).catch(() => {});
+        }
+
+        // Negatywny Trader (-5 lub mniej)
+        if (reputation <= -5 && !hasNegatywny) {
+            await member.roles.add(ID_RANGI_NEGATYWNY_TRADER).catch(() => {});
+        } else if (reputation > -5 && hasNegatywny) {
+            await member.roles.remove(ID_RANGI_NEGATYWNY_TRADER).catch(() => {});
+        }
+    } catch (e) {
+        console.error('Błąd aktualizacji ról tradera:', e);
+    }
+}
+
 async function checkAndAwardBadges(user: any, memberOrUser: any) {
     const newBadges: string[] = [];
     const addBadge = (badgeName: string) => {
@@ -424,6 +513,46 @@ async function getTopEmbedData(guild: any) {
     };
 }
 
+// === RANKING TOP 5 REPUTACJI (ALEJA SŁAW) ===
+async function getReputationTopEmbedData(guild: any) {
+    const topUsers = await UserModel.find().sort({ reputation: -1 }).limit(5);
+    
+    if (topUsers.length === 0) {
+        return {
+            color: 0xF1C40F,
+            title: '🌟 Aleja Sław - TOP 5 Traderów Reputacji',
+            description: 'Brak danych w rankingu reputacji.'
+        };
+    }
+
+    let desc = 'Ranking najlepszych i najbezpieczniejszych traderów Fortnite na serwerze. Aktualizowany co 5 godzin.\n\n';
+    
+    for (let index = 0; index < topUsers.length; index++) {
+        const u = topUsers[index];
+        const medal = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `**${index + 1}.**`;
+        
+        let userName = `Użytkownik (${u.userId})`;
+        try {
+            if (guild) {
+                const member = await guild.members.fetch(u.userId).catch(() => null);
+                if (member) userName = member.displayName;
+            }
+        } catch (e) {}
+
+        const repValue = u.reputation || 0;
+        const sign = repValue > 0 ? '+' : '';
+        desc += `${medal} — **${userName}** — **${sign}${repValue} pkt** (Exp: ${u.exp || 0})\n`;
+    }
+
+    return {
+        color: 0xF1C40F,
+        title: '🌟 Aleja Sław - TOP 5 Traderów Reputacji',
+        description: desc,
+        timestamp: new Date().toISOString(),
+        footer: { text: 'PJN Aleja Sław • Bezpieczne Wymiany' }
+    };
+}
+
 async function startTopUpdater() {
     setInterval(async () => {
         try {
@@ -443,6 +572,30 @@ async function startTopUpdater() {
             await config.save();
         } catch (err) {}
     }, 5 * 60 * 1000);
+}
+
+// === AUTOMATYCZNE ODŚWIEŻANIE ALEI SŁAW REPUTACJI CO 5 GODZIN ===
+async function startReputationTopUpdater() {
+    setInterval(async () => {
+        try {
+            const channel = await client.channels.fetch(ID_ALEJA_SLAW_REPUTACJI).catch(() => null) as TextChannel;
+            if (!channel) return;
+
+            const messages = await channel.messages.fetch({ limit: 10 }).catch(() => null);
+            if (messages) {
+                for (const [_, msg] of messages) {
+                    if (msg.author.id === client.user?.id) {
+                        await msg.delete().catch(() => {});
+                    }
+                }
+            }
+
+            const embedData = await getReputationTopEmbedData(channel.guild);
+            await channel.send({ embeds: [embedData] });
+        } catch (err) {
+            console.error('Błąd aktualizacji alei sław reputacji:', err);
+        }
+    }, 5 * 60 * 60 * 1000);
 }
 
 async function startBadgesInfoUpdater() {
@@ -490,6 +643,11 @@ const commands = [
     new SlashCommandBuilder().setName('poker').setDescription('Poker').addStringOption(o => o.setName('tryb').setDescription('Tryb').setRequired(true).addChoices({name: 'Z ludźmi', value: 'ludzie'}, {name: 'Z botem', value: 'bot'})).addIntegerOption(o => o.setName('stawka').setDescription('Stawka').setRequired(true)),
     new SlashCommandBuilder().setName('quiz').setDescription('Odpowiedz na pytanie quizowe'),
     new SlashCommandBuilder().setName('odznaki').setDescription('Wyświetla profil z odznakami').addUserOption(o => o.setName('uzytkownik').setDescription('Użytkownik').setRequired(false)),
+    // === NOWA KOMENDA SLASH /reputacja ===
+    new SlashCommandBuilder()
+        .setName('reputacja')
+        .setDescription('Wyświetla profil handlowy, punkty reputacji i exp tradera')
+        .addUserOption(o => o.setName('uzytkownik').setDescription('Sprawdź profil innego użytkownika').setRequired(false)),
     new SlashCommandBuilder()
         .setName('daj-wszystkim')
         .setDescription('Rozdaje PJN-Coins absolutnie każdemu użytkownikowi w bazie (Admin)')
@@ -536,7 +694,8 @@ client.once('ready', async () => {
     await seedQuotesIfNeeded();
     await setupMemeChannelInstruction();
     await setupTicketChannel(); 
-    await setupShowcaseChannelInstruction(); // <-- NOWA LINIA DODANA TUTAJ
+    await setupShowcaseChannelInstruction();
+    await setupReputationChannelInstruction(); // <-- INICJALIZACJA INSTRUKCJI REPUTACJI
 
     const rest = new REST({ version: '10' }).setToken(token);
     try {
@@ -551,6 +710,7 @@ client.once('ready', async () => {
     startBadgesInfoUpdater();
     startHourlyAnnouncements();
     startDailyQuotes();
+    startReputationTopUpdater(); // <-- URUCHOMIENIE ODŚWIEŻANIA ALEI SŁAW CO 5H
 });
 
 client.on('interactionCreate', async interaction => {
@@ -691,6 +851,59 @@ client.on('interactionCreate', async interaction => {
                 await ConfigModel.findOneAndUpdate({ key: 'odznaki_info_msg' }, { channelId: interaction.channelId, messageId: sentMessage.id }, { upsert: true, new: true });
                 await interaction.editReply({ content: `✅ Ustawiono ten kanał jako centrum odznak.` });
             }
+            return;
+        }
+
+        // === OBSŁUGA KOMENDY SLASH /reputacja ===
+        if (commandName === 'reputacja') {
+            await interaction.deferReply();
+            const targetUser = interaction.options.getUser('uzytkownik') || interaction.user;
+            let user = await UserModel.findOne({ userId: targetUser.id });
+            if (!user) user = await UserModel.create({ userId: targetUser.id });
+
+            const rep = user.reputation || 0;
+            const exp = user.exp || 0;
+            const sign = rep > 0 ? '+' : '';
+
+            // Generowanie paska postępu Exp (np. co 100 exp do kolejnego poziomu)
+            const currentLevel = Math.floor(exp / 100) + 1;
+            const progressInLevel = exp % 100;
+            const filledBlocks = Math.floor(progressInLevel / 10);
+            const emptyBlocks = 10 - filledBlocks;
+            const progressBar = '█'.repeat(filledBlocks) + '░'.repeat(emptyBlocks);
+
+            // Sprawdzenie rangi tradera
+            let traderRankName = 'Brak rangi tradera';
+            let rankColor = 0x3498DB;
+            const member = await interaction.guild?.members.fetch(targetUser.id).catch(() => null);
+            
+            if (member) {
+                if (member.roles.cache.has(ID_RANGI_WZOROWY_TRADER)) {
+                    traderRankName = '🟡 Wzorowy Trader (+50 pkt)';
+                    rankColor = 0xF1C40F;
+                } else if (member.roles.cache.has(ID_RANGI_POZYTYWNY_TRADER)) {
+                    traderRankName = '🟢 Pozytywny Trader (+10 pkt)';
+                    rankColor = 0x2ECC71;
+                } else if (member.roles.cache.has(ID_RANGI_NEGATYWNY_TRADER)) {
+                    traderRankName = '🟠 Negatywny Trader (-5 pkt)';
+                    rankColor = 0xE67E22;
+                }
+            }
+
+            const embed = new EmbedBuilder()
+                .setColor(rankColor)
+                .setTitle(`⭐ Profil Handlowy • ${targetUser.tag}`)
+                .setThumbnail(targetUser.displayAvatarURL())
+                .setDescription(`Informacje o reputacji i wymianach duszków Fortnite użytkownika <@${targetUser.id}>.`)
+                .addFields(
+                    { name: '📊 Punkty Reputacji', value: `**${sign}${rep} pkt**`, inline: true },
+                    { name: '🎖️ Ranga Tradera', value: `**${traderRankName}**`, inline: true },
+                    { name: '⭐ Poziom Doświadczenia (Exp)', value: `Poziom **${currentLevel}** (${exp} XP)\n\`[${progressBar}]\` ${progressInLevel}/100 XP do następnego poziomu`, inline: false }
+                )
+                .setTimestamp()
+                .setFooter({ text: 'PJN System Reputacji Traderów' });
+
+            await interaction.editReply({ embeds: [embed] });
             return;
         }
 
@@ -1167,6 +1380,88 @@ client.on('interactionCreate', async interaction => {
 
 client.on('messageCreate', async message => {
     if (message.author.bot || !message.guild) return;
+
+    // === OBSŁUGA KOMEND TEKSTOWYCH +rep / -rep NA KANALE REPUTACJI ===
+    if (message.channel.id === ID_KANAL_REPUTACJI) {
+        const content = message.content.trim();
+        const isPlus = content.toLowerCase().startsWith('+rep');
+        const isMinus = content.toLowerCase().startsWith('-rep');
+
+        if (isPlus || isMinus) {
+            const mentionedUser = message.mentions.users.first();
+            if (!mentionedUser) {
+                await message.reply({ content: '❌ Musisz oznaczyć użytkownika, któremu chcesz przyznać lub odjąć reputację (np. `+rep @użytkownik` lub `-rep @użytkownik`).' }).catch(() => {});
+                return;
+            }
+
+            if (mentionedUser.id === message.author.id) {
+                await message.reply({ content: '❌ Nie możesz przyznać reputacji samemu sobie!' }).catch(() => {});
+                return;
+            }
+
+            const giverId = message.author.id;
+            const receiverId = mentionedUser.id;
+
+            // Sprawdzenie cooldownu 24h dla tej konkretnej pary (giver -> receiver)
+            const existingCooldown = await RepCooldownModel.findOne({ giverId, receiverId });
+            const now = new Date();
+
+            if (existingCooldown) {
+                const diffTime = now.getTime() - new Date(existingCooldown.lastGiven).getTime();
+                const twentyFourHours = 24 * 60 * 60 * 1000;
+
+                if (diffTime < twentyFourHours) {
+                    const timeLeft = twentyFourHours - diffTime;
+                    const hoursLeft = Math.floor(timeLeft / (1000 * 60 * 60));
+                    const minutesLeft = Math.floor((timeLeft % (1000 * 60 * 60)) / (1000 * 60));
+                    
+                    await message.reply({ content: `⏳ Możesz ocenić tego użytkownika ponownie dopiero za **${hoursLeft}h ${minutesLeft}m** (limit 1 raz na 24h dla tej samej osoby). Pamiętaj, że innym traderom możesz dawać reputację od zaraz!` }).catch(() => {});
+                    return;
+                }
+            }
+
+            // Aktualizacja lub stworzenie wpisu cooldownu
+            await RepCooldownModel.findOneAndUpdate(
+                { giverId, receiverId },
+                { lastGiven: now },
+                { upsert: true, new: true }
+            );
+
+            // Pobranie lub stworzenie odbiorcy w bazie
+            let receiverUser = await UserModel.findOne({ userId: receiverId });
+            if (!receiverUser) receiverUser = await UserModel.create({ userId: receiverId });
+
+            const pointsChange = isPlus ? 1 : -1;
+            const expChange = isPlus ? 15 : 5; // Dodatkowe punkty doświadczenia (exp) za aktywność handlową
+
+            receiverUser.reputation = (receiverUser.reputation || 0) + pointsChange;
+            receiverUser.exp = (receiverUser.exp || 0) + expChange;
+            await receiverUser.save();
+
+            // Aktualizacja ról tradera na serwerze
+            const receiverMember = await message.guild.members.fetch(receiverId).catch(() => null);
+            if (receiverMember) {
+                await updateTraderRoles(receiverMember, receiverUser.reputation);
+            }
+
+            const sign = receiverUser.reputation >= 0 ? `+${receiverUser.reputation}` : `${receiverUser.reputation}`;
+            const actionText = isPlus ? 'przyznał punkt pozytywny 🟢' : 'przyznał punkt negatywny 🟠';
+
+            const embed = new EmbedBuilder()
+                .setColor(isPlus ? 0x2ECC71 : 0xE67E22)
+                .setTitle(isPlus ? '🌟 Sukces! Przyznano Reputację' : '⚠️ Uwaga! Przyznano Punkt Negatywny')
+                .setDescription(`Użytkownik <@${giverId}> ${actionText} dla tradera <@${receiverId}>!`)
+                .addFields(
+                    { name: '📈 Aktualny bilans', value: `**${sign} pkt**`, inline: true },
+                    { name: '⭐ Zdobyty Exp', value: `**+${expChange} XP**`, inline: true }
+                )
+                .setTimestamp()
+                .setFooter({ text: 'PJN System Wymian Fortnite' });
+
+            await message.channel.send({ embeds: [embed] });
+            return;
+        }
+    }
 
     try {
         let user = await UserModel.findOne({ userId: message.author.id });
