@@ -14,6 +14,7 @@ import {
 } from 'discord.js';
 import mongoose from 'mongoose';
 import cron from 'node-cron';
+import Parser from 'rss-parser'; // <-- DODANE: Import biblioteki rss-parser z nowego kodu
 
 // === KONFIGURACJA BAZY DANYCH MONGOOSE ===
 const MONGO_URI = process.env.MONGO_URI;
@@ -81,6 +82,20 @@ const client = new Client({
         GatewayIntentBits.GuildMembers
     ]
 });
+
+// --- DODANE: Konfiguracja kanałów powiadomień twórców i logów z nowego kodu ---
+const NOTIF_CONFIG = {
+    languspjn: {
+        channelId: '1542101793171972146',
+        rssUrl: 'https://www.youtube.com/feeds/videos.xml?user=przyszloscjestnasza'
+    },
+    elladermusic: {
+        channelId: '1542101962185646111',
+        rssUrl: 'https://www.youtube.com/feeds/videos.xml?user=ellader'
+    },
+    leaveLogChannelId: '1542102521814712371'
+};
+const parser = new Parser();
 
 const ANNOUNCE_CHANNEL_ID = '1532399010785263799';
 const ID_KANALU_CYTATY = '1534780578912665653';
@@ -629,6 +644,49 @@ function startHourlyAnnouncements() {
     });
 }
 
+// --- DODANE: Funkcja wysyłania powiadomienia z nowego kodu ---
+async function sendNotification(targetKey: 'languspjn' | 'elladermusic', platform: 'youtube' | 'tiktok', title: string, url: string, customThumbnail?: string) {
+    const channelId = NOTIF_CONFIG[targetKey].channelId;
+    const channel = await client.channels.fetch(channelId) as TextChannel;
+    if (!channel) return;
+
+    const isYt = platform === 'youtube';
+    const color = isYt ? 0xFF0000 : 0x00F2FE;
+    const platformName = isYt ? 'YouTube 🎥' : 'TikTok 🎬';
+    
+    let thumbnail = customThumbnail;
+    if (isYt && url.includes('watch?v=')) {
+        const videoId = url.split('v=')[1]?.split('&')[0];
+        if (videoId) thumbnail = `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`;
+    } else if (isYt && url.includes('youtu.be/')) {
+        const videoId = url.split('youtu.be/')[1]?.split('?')[0];
+        if (videoId) thumbnail = `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`;
+    }
+
+    const embed = new EmbedBuilder()
+        .setColor(color)
+        .setTitle(`NOWY MATERIAŁ NA ${platformName.toUpperCase()}!`)
+        .setDescription(`Cześć społeczności! Właśnie pojawił się nowy film od **${targetKey === 'languspjn' ? 'LangusPJN' : 'elladerMusic'}**. Zostaw po sobie ślad! 👇\n\n**📌 ${title}**`)
+        .setImage(thumbnail || LIVE_IMAGE_URL)
+        .setTimestamp()
+        .setFooter({ text: `PJN & elladerMusic • System Powiadomień` });
+
+    const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+        new ButtonBuilder()
+            .setLabel(`Oglądaj na ${isYt ? 'YouTube' : 'TikTok'}`)
+            .setStyle(ButtonStyle.Link)
+            .setURL(url)
+            .setEmoji(isYt ? '▶️' : '🔥')
+    );
+
+    await channel.send({
+        content: '@everyone Nowy film jest już dostępny do obejrzenia!',
+        embeds: [embed],
+        components: [row],
+        allowedMentions: { parse: ['everyone'] }
+    });
+}
+
 // === KOMPONENTY / KOMENDY SLASH ===
 const commands = [
     new SlashCommandBuilder().setName('portfel').setDescription('Sprawdź stan swoich PJN-Coins w portfelu'),
@@ -668,6 +726,32 @@ const commands = [
     new SlashCommandBuilder()
         .setName('zakonczstream')
         .setDescription('Ogłasza zakończenie streama (Streamer/Admin)'),
+    // --- DODANA KOMENDA POWIADOMIENIA Z NOWEGO KODU ---
+    new SlashCommandBuilder()
+        .setName('powiadomienie')
+        .setDescription('Ręcznie wyślij powiadomienie o nowym filmie (YouTube / TikTok)')
+        .addStringOption(opt => 
+            opt.setName('tworca')
+                .setDescription('Wybierz twórcę')
+                .setRequired(true)
+                .addChoices(
+                    { name: 'LangusPJN', value: 'languspjn' },
+                    { name: 'elladerMusic', value: 'elladermusic' }
+                )
+        )
+        .addStringOption(opt => 
+            opt.setName('platforma')
+                .setDescription('Wybierz platformę')
+                .setRequired(true)
+                .addChoices(
+                    { name: 'YouTube 🎥', value: 'youtube' },
+                    { name: 'TikTok 🎬', value: 'tiktok' }
+                )
+        )
+        .addStringOption(opt => opt.setName('tytul').setDescription('Tytuł filmu').setRequired(true))
+        .addStringOption(opt => opt.setName('link').setDescription('Link do filmu').setRequired(true))
+        .addStringOption(opt => opt.setName('miniatura').setDescription('Link do miniatury (opcjonalnie)').setRequired(false))
+        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
     new SlashCommandBuilder().setName('daj-odznake').setDescription('Przyznaj odznakę (Admin)')
         .addUserOption(o => o.setName('uzytkownik').setDescription('Komu').setRequired(true))
         .addStringOption(o => o.setName('odznaka').setDescription('Wpisz pełną nazwę odznaki').setRequired(true)),
@@ -830,6 +914,25 @@ client.on('interactionCreate', async interaction => {
     const { commandName } = interaction;
 
     try {
+        // --- DODANA OBSŁUGA KOMENDY /powiadomienie Z NOWEGO KODU ---
+        if (commandName === 'powiadomienie') {
+            if (!isAuthorized(interaction.user.id)) {
+                return interaction.reply({ content: '❌ Nie masz uprawnień do tej komendy!', ephemeral: true });
+            }
+
+            await interaction.deferReply({ ephemeral: true });
+
+            const tworca = interaction.options.getString('tworca', true) as 'languspjn' | 'elladermusic';
+            const platforma = interaction.options.getString('platforma', true) as 'youtube' | 'tiktok';
+            const tytul = interaction.options.getString('tytul', true);
+            const link = interaction.options.getString('link', true);
+            const miniatura = interaction.options.getString('miniatura') || undefined;
+
+            await sendNotification(tworca, platforma, tytul, link, miniatura);
+            await interaction.editReply({ content: '✅ Pomyślnie wysłano powiadomienie na odpowiedni kanał!' });
+            return;
+        }
+
         if (commandName === 'ustaw-topke') {
             if (!isAuthorized(interaction.user.id)) return interaction.reply({ content: '❌ Brak uprawnień!', ephemeral: true });
             await interaction.deferReply({ ephemeral: true });
@@ -1540,6 +1643,33 @@ client.on('guildMemberAdd', async member => {
             });
         }
     } catch (e) {}
+});
+
+// --- DODANY SYSTEM LOGOWANIA OPUSZCZENIA SERWERA Z NOWEGO KODU ---
+client.on('guildMemberRemove', async member => {
+    try {
+        const logChannel = await member.guild.channels.fetch(NOTIF_CONFIG.leaveLogChannelId) as TextChannel;
+        if (!logChannel) return;
+
+        const embed = new EmbedBuilder()
+            .setColor(0xED4245)
+            .setTitle('📤 Użytkownik opuścił serwer')
+            .setDescription(`**${member.user.tag}** (` + '`' + member.id + '`' + `) zdecydował się opuścić naszą społeczność.`)
+            .setThumbnail(member.user.displayAvatarURL({ size: 256 }))
+            .addFields(
+                { name: '📅 Dołączył na serwer', value: member.joinedAt ? `<t:${Math.floor(member.joinedAt.getTime() / 1000)}:R>` : 'Brak danych', inline: true },
+                { name: '👥 Liczba członków', value: `${member.guild.memberCount}`, inline: true }
+            )
+            .setTimestamp()
+            .setFooter({ text: 'PJN Security • System Logów' });
+
+        await logChannel.send({
+            embeds: [embed],
+            allowedMentions: { parse: [] }
+        });
+    } catch (error) {
+        console.error('Błąd podczas wysyłania logu o opuszczeniu serwera:', error);
+    }
 });
 
 client.login(token);
