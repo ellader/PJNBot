@@ -10,11 +10,12 @@ import {
     ActionRowBuilder,
     ButtonBuilder,
     ButtonStyle,
-    ChannelType
+    ChannelType,
+    AuditLogEvent
 } from 'discord.js';
 import mongoose from 'mongoose';
 import cron from 'node-cron';
-import Parser from 'rss-parser'; // <-- DODANE: Import biblioteki rss-parser z nowego kodu
+import Parser from 'rss-parser';
 
 // === KONFIGURACJA BAZY DANYCH MONGOOSE ===
 const MONGO_URI = process.env.MONGO_URI;
@@ -40,7 +41,6 @@ const userSchema = new mongoose.Schema({
     helpCount: { type: Number, default: 0 },
     joinedAt: { type: Date, default: Date.now },
     badges: { type: [String], default: [] },
-    // === NOWE POLA DLA REPUTACJI TRADERA ===
     reputation: { type: Number, default: 0 },
     exp: { type: Number, default: 0 }
 });
@@ -61,7 +61,6 @@ const quoteSchema = new mongoose.Schema({
 });
 const QuoteModel = mongoose.model('Quote', quoteSchema);
 
-// === NOWY SCHEMAT DLA COOLDOWNU REPUTACJI (24H PER PARA) ===
 const repCooldownSchema = new mongoose.Schema({
     giverId: { type: String, required: true },
     receiverId: { type: String, required: true },
@@ -79,11 +78,11 @@ const client = new Client({
         GatewayIntentBits.GuildMessages,
         GatewayIntentBits.MessageContent,
         GatewayIntentBits.GuildVoiceStates,
-        GatewayIntentBits.GuildMembers
+        GatewayIntentBits.GuildMembers,
+        GatewayIntentBits.GuildModeration
     ]
 });
 
-// --- DODANE: Konfiguracja kanałów powiadomień twórców i logów z nowego kodu ---
 const NOTIF_CONFIG = {
     languspjn: {
         channelId: '1542101793171972146',
@@ -106,12 +105,11 @@ const ID_RANGI_DUSZKOWIEC = "1532978703842283551";
 const ID_RANGI_MODERATOR = "1532321767857721344";
 const ID_RANGI_ADMIN = "1532324059470237857";
 
-// === NOWE ID KANAŁÓW I RANG REPUTACJI TRADERA ===
 const ID_KANAL_REPUTACJI = "1540233764477730908";
 const ID_ALEJA_SLAW_REPUTACJI = "1540238376278687754";
-const ID_RANGI_WZOROWY_TRADER = "1540235169653592084";   // +50 pkt (Złoty)
-const ID_RANGI_POZYTYWNY_TRADER = "1540251183892008970"; // +10 pkt (Jasny zielony)
-const ID_RANGI_NEGATYWNY_TRADER = "1540235296665239624"; // -5 pkt (Pomarańczowy)
+const ID_RANGI_WZOROWY_TRADER = "1540235169653592084";   
+const ID_RANGI_POZYTYWNY_TRADER = "1540251183892008970"; 
+const ID_RANGI_NEGATYWNY_TRADER = "1540235296665239624"; 
 
 const LIVE_IMAGE_URL = "https://cdn.discordapp.com/attachments/1532321067731783684/1534837837374029914/IMG_20260806_094843.jpg?ex=6a7594a0&is=6a744320&hm=822597b60136cc08a4aac4b01d9684bcda8b7d6e388232f24a5c7f15ed3f9e5e&";
 
@@ -350,7 +348,6 @@ async function setupShowcaseChannelInstruction() {
     }
 }
 
-// === INSTRUKCJA KANAŁU REPUTACJI TRADERÓW ===
 async function setupReputationChannelInstruction() {
     try {
         const channel = await client.channels.fetch(ID_KANAL_REPUTACJI).catch(() => null) as TextChannel;
@@ -394,7 +391,6 @@ async function setupReputationChannelInstruction() {
     }
 }
 
-// === ZARZĄDZANIE RANGAMI TRADERA ===
 async function updateTraderRoles(member: any, reputation: number) {
     if (!member) return;
     try {
@@ -402,21 +398,18 @@ async function updateTraderRoles(member: any, reputation: number) {
         const hasPozytywny = member.roles.cache.has(ID_RANGI_POZYTYWNY_TRADER);
         const hasNegatywny = member.roles.cache.has(ID_RANGI_NEGATYWNY_TRADER);
 
-        // Wzorowy Trader (+50)
         if (reputation >= 50 && !hasWzorowy) {
             await member.roles.add(ID_RANGI_WZOROWY_TRADER).catch(() => {});
         } else if (reputation < 50 && hasWzorowy) {
             await member.roles.remove(ID_RANGI_WZOROWY_TRADER).catch(() => {});
         }
 
-        // Pozytywny Trader (+10 do +49)
         if (reputation >= 10 && reputation < 50 && !hasPozytywny) {
             await member.roles.add(ID_RANGI_POZYTYWNY_TRADER).catch(() => {});
         } else if ((reputation < 10 || reputation >= 50) && hasPozytywny) {
             await member.roles.remove(ID_RANGI_POZYTYWNY_TRADER).catch(() => {});
         }
 
-        // Negatywny Trader (-5 lub mniej)
         if (reputation <= -5 && !hasNegatywny) {
             await member.roles.add(ID_RANGI_NEGATYWNY_TRADER).catch(() => {});
         } else if (reputation > -5 && hasNegatywny) {
@@ -528,7 +521,6 @@ async function getTopEmbedData(guild: any) {
     };
 }
 
-// === RANKING TOP 5 REPUTACJI (ALEJA SŁAW) ===
 async function getReputationTopEmbedData(guild: any) {
     const topUsers = await UserModel.find().sort({ reputation: -1 }).limit(5);
     
@@ -589,7 +581,6 @@ async function startTopUpdater() {
     }, 5 * 60 * 1000);
 }
 
-// === AUTOMATYCZNE ODŚWIEŻANIE ALEI SŁAW REPUTACJI CO 5 GODZIN ===
 async function startReputationTopUpdater() {
     setInterval(async () => {
         try {
@@ -644,7 +635,6 @@ function startHourlyAnnouncements() {
     });
 }
 
-// --- DODANE: Funkcja wysyłania powiadomienia z nowego kodu ---
 async function sendNotification(targetKey: 'languspjn' | 'elladermusic', platform: 'youtube' | 'tiktok', title: string, url: string, customThumbnail?: string) {
     const channelId = NOTIF_CONFIG[targetKey].channelId;
     const channel = await client.channels.fetch(channelId) as TextChannel;
@@ -663,11 +653,13 @@ async function sendNotification(targetKey: 'languspjn' | 'elladermusic', platfor
         if (videoId) thumbnail = `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`;
     }
 
+    const TIKTOK_CUSTOM_IMAGE = "https://cdn.discordapp.com/attachments/1532321067731783684/1542116527858515978/1787739548463.png?ex=6a900f6f&is=6a8ebdef&hm=f6eee91b0b24c61805834c9b99ac1fa66fb9714f92edaeb93ef1ccb08baab79f&";
+
     const embed = new EmbedBuilder()
         .setColor(color)
         .setTitle(`NOWY MATERIAŁ NA ${platformName.toUpperCase()}!`)
         .setDescription(`Cześć społeczności! Właśnie pojawił się nowy film od **${targetKey === 'languspjn' ? 'LangusPJN' : 'elladerMusic'}**. Zostaw po sobie ślad! 👇\n\n**📌 ${title}**`)
-        .setImage(thumbnail || LIVE_IMAGE_URL)
+        .setImage(thumbnail || (!isYt ? TIKTOK_CUSTOM_IMAGE : LIVE_IMAGE_URL))
         .setTimestamp()
         .setFooter({ text: `PJN & elladerMusic • System Powiadomień` });
 
@@ -687,7 +679,6 @@ async function sendNotification(targetKey: 'languspjn' | 'elladermusic', platfor
     });
 }
 
-// === KOMPONENTY / KOMENDY SLASH ===
 const commands = [
     new SlashCommandBuilder().setName('portfel').setDescription('Sprawdź stan swoich PJN-Coins w portfelu'),
     new SlashCommandBuilder().setName('topka').setDescription('Zobacz ranking najbogatszych graczy'),
@@ -701,7 +692,6 @@ const commands = [
     new SlashCommandBuilder().setName('poker').setDescription('Poker').addStringOption(o => o.setName('tryb').setDescription('Tryb').setRequired(true).addChoices({name: 'Z ludźmi', value: 'ludzie'}, {name: 'Z botem', value: 'bot'})).addIntegerOption(o => o.setName('stawka').setDescription('Stawka').setRequired(true)),
     new SlashCommandBuilder().setName('quiz').setDescription('Odpowiedz na pytanie quizowe'),
     new SlashCommandBuilder().setName('odznaki').setDescription('Wyświetla profil z odznakami').addUserOption(o => o.setName('uzytkownik').setDescription('Użytkownik').setRequired(false)),
-    // === NOWA KOMENDA SLASH /reputacja ===
     new SlashCommandBuilder()
         .setName('reputacja')
         .setDescription('Wyświetla profil handlowy, punkty reputacji i exp tradera')
@@ -726,7 +716,6 @@ const commands = [
     new SlashCommandBuilder()
         .setName('zakonczstream')
         .setDescription('Ogłasza zakończenie streama (Streamer/Admin)'),
-    // --- DODANA KOMENDA POWIADOMIENIA Z NOWEGO KODU ---
     new SlashCommandBuilder()
         .setName('powiadomienie')
         .setDescription('Ręcznie wyślij powiadomienie o nowym filmie (YouTube / TikTok)')
@@ -779,7 +768,7 @@ client.once('ready', async () => {
     await setupMemeChannelInstruction();
     await setupTicketChannel(); 
     await setupShowcaseChannelInstruction();
-    await setupReputationChannelInstruction(); // <-- INICJALIZACJA INSTRUKCJI REPUTACJI
+    await setupReputationChannelInstruction();
 
     const rest = new REST({ version: '10' }).setToken(token);
     try {
@@ -794,7 +783,7 @@ client.once('ready', async () => {
     startBadgesInfoUpdater();
     startHourlyAnnouncements();
     startDailyQuotes();
-    startReputationTopUpdater(); // <-- URUCHOMIENIE ODŚWIEŻANIA ALEI SŁAW CO 5H
+    startReputationTopUpdater();
 });
 
 client.on('interactionCreate', async interaction => {
@@ -914,7 +903,6 @@ client.on('interactionCreate', async interaction => {
     const { commandName } = interaction;
 
     try {
-        // --- DODANA OBSŁUGA KOMENDY /powiadomienie Z NOWEGO KODU ---
         if (commandName === 'powiadomienie') {
             if (!isAuthorized(interaction.user.id)) {
                 return interaction.reply({ content: '❌ Nie masz uprawnień do tej komendy!', ephemeral: true });
@@ -957,7 +945,6 @@ client.on('interactionCreate', async interaction => {
             return;
         }
 
-        // === OBSŁUGA KOMENDY SLASH /reputacja ===
         if (commandName === 'reputacja') {
             await interaction.deferReply();
             const targetUser = interaction.options.getUser('uzytkownik') || interaction.user;
@@ -968,14 +955,12 @@ client.on('interactionCreate', async interaction => {
             const exp = user.exp || 0;
             const sign = rep > 0 ? '+' : '';
 
-            // Generowanie paska postępu Exp (np. co 100 exp do kolejnego poziomu)
             const currentLevel = Math.floor(exp / 100) + 1;
             const progressInLevel = exp % 100;
             const filledBlocks = Math.floor(progressInLevel / 10);
             const emptyBlocks = 10 - filledBlocks;
             const progressBar = '█'.repeat(filledBlocks) + '░'.repeat(emptyBlocks);
 
-            // Sprawdzenie rangi tradera
             let traderRankName = 'Brak rangi tradera';
             let rankColor = 0x3498DB;
             const member = await interaction.guild?.members.fetch(targetUser.id).catch(() => null);
@@ -1484,7 +1469,6 @@ client.on('interactionCreate', async interaction => {
 client.on('messageCreate', async message => {
     if (message.author.bot || !message.guild) return;
 
-    // === OBSŁUGA KOMEND TEKSTOWYCH +rep / -rep NA KANALE REPUTACJI ===
     if (message.channel.id === ID_KANAL_REPUTACJI) {
         const content = message.content.trim();
         const isPlus = content.toLowerCase().startsWith('+rep');
@@ -1505,7 +1489,6 @@ client.on('messageCreate', async message => {
             const giverId = message.author.id;
             const receiverId = mentionedUser.id;
 
-            // Sprawdzenie cooldownu 24h dla tej konkretnej pary (giver -> receiver)
             const existingCooldown = await RepCooldownModel.findOne({ giverId, receiverId });
             const now = new Date();
 
@@ -1523,25 +1506,22 @@ client.on('messageCreate', async message => {
                 }
             }
 
-            // Aktualizacja lub stworzenie wpisu cooldownu
             await RepCooldownModel.findOneAndUpdate(
                 { giverId, receiverId },
                 { lastGiven: now },
                 { upsert: true, new: true }
             );
 
-            // Pobranie lub stworzenie odbiorcy w bazie
             let receiverUser = await UserModel.findOne({ userId: receiverId });
             if (!receiverUser) receiverUser = await UserModel.create({ userId: receiverId });
 
             const pointsChange = isPlus ? 1 : -1;
-            const expChange = isPlus ? 15 : 5; // Dodatkowe punkty doświadczenia (exp) za aktywność handlową
+            const expChange = isPlus ? 15 : 5;
 
             receiverUser.reputation = (receiverUser.reputation || 0) + pointsChange;
             receiverUser.exp = (receiverUser.exp || 0) + expChange;
             await receiverUser.save();
 
-            // Aktualizacja ról tradera na serwerze
             const receiverMember = await message.guild.members.fetch(receiverId).catch(() => null);
             if (receiverMember) {
                 await updateTraderRoles(receiverMember, receiverUser.reputation);
@@ -1614,7 +1594,6 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
     }
 });
 
-// === POWITANIA ===
 client.on('guildMemberAdd', async member => {
     try {
         let user = await UserModel.findOne({ userId: member.id });
@@ -1645,16 +1624,50 @@ client.on('guildMemberAdd', async member => {
     } catch (e) {}
 });
 
-// --- DODANY SYSTEM LOGOWANIA OPUSZCZENIA SERWERA Z NOWEGO KODU ---
+// === ROZBUDOWANY SYSTEM LOGÓW (WYJŚCIE / KICK / BAN) ===
 client.on('guildMemberRemove', async member => {
     try {
         const logChannel = await member.guild.channels.fetch(NOTIF_CONFIG.leaveLogChannelId) as TextChannel;
         if (!logChannel) return;
 
+        let actionType = 'opuścił serwer';
+        let color = 0xED4245;
+        let title = '📤 Użytkownik opuścił serwer';
+        let description = `**${member.user.tag}** (` + '`' + member.id + '`' + `) zdecydował się opuścić naszą społeczność.`;
+
+        // Sprawdzenie uprawnień do odczytu audit logów
+        if (member.guild.members.me?.permissions.has(PermissionFlagsBits.ViewAuditLog)) {
+            const fetchedLogs = await member.guild.fetchAuditLogs({
+                limit: 1,
+                type: AuditLogEvent.MemberKick,
+            }).catch(() => null);
+
+            const kickLog = fetchedLogs?.entries.first();
+            
+            if (kickLog && kickLog.target?.id === member.id && (Date.now() - kickLog.createdTimestamp < 5000)) {
+                title = '👢 Użytkownik został wyrzucony (Kick)';
+                description = `**${member.user.tag}** (` + '`' + member.id + '`' + `) został wyrzucony z serwera przez **${kickLog.executor?.tag || 'Nieznany'}**.\n📌 **Powód:** ${kickLog.reason || 'Brak powoda'}`;
+                color = 0xF1C40F;
+            } else {
+                // Sprawdzenie czy użytkownik nie został zbanowany
+                const banLogs = await member.guild.fetchAuditLogs({
+                    limit: 1,
+                    type: AuditLogEvent.MemberBanAdd,
+                }).catch(() => null);
+
+                const banLog = banLogs?.entries.first();
+                if (banLog && banLog.target?.id === member.id && (Date.now() - banLog.createdTimestamp < 5000)) {
+                    title = '🔨 Użytkownik został zbanowany (Ban)';
+                    description = `**${member.user.tag}** (` + '`' + member.id + '`' + `) został zbanowany na serwerze przez **${banLog.executor?.tag || 'Nieznany'}**.\n📌 **Powód:** ${banLog.reason || 'Brak powoda'}`;
+                    color = 0x992D22;
+                }
+            }
+        }
+
         const embed = new EmbedBuilder()
-            .setColor(0xED4245)
-            .setTitle('📤 Użytkownik opuścił serwer')
-            .setDescription(`**${member.user.tag}** (` + '`' + member.id + '`' + `) zdecydował się opuścić naszą społeczność.`)
+            .setColor(color)
+            .setTitle(title)
+            .setDescription(description)
             .setThumbnail(member.user.displayAvatarURL({ size: 256 }))
             .addFields(
                 { name: '📅 Dołączył na serwer', value: member.joinedAt ? `<t:${Math.floor(member.joinedAt.getTime() / 1000)}:R>` : 'Brak danych', inline: true },
@@ -1668,7 +1681,7 @@ client.on('guildMemberRemove', async member => {
             allowedMentions: { parse: [] }
         });
     } catch (error) {
-        console.error('Błąd podczas wysyłania logu o opuszczeniu serwera:', error);
+        console.error('Błąd podczas wysyłania logu o opuszczeniu/wyrzuceniu/zbanowaniu użytkownika:', error);
     }
 });
 
