@@ -18,8 +18,8 @@ import cron from 'node-cron';
 import Parser from 'rss-parser';
 
 // === KONFIGURACJA BAZY DANYCH MONGOOSE ===
-const MONGO_URI = process.env.MONGO_URI;
-if (!MONGO_URI) throw new Error("Brak zmiennej środowiskowej MONGO_URI!");
+const MONGO_URI = process.env.MONGODB_URI;
+if (!MONGO_URI) throw new Error("Brak zmiennej środowiskowej MONGODB_URI!");
 
 mongoose.connect(MONGO_URI)
     .then(() => console.log('Połączono z bazą danych MongoDB!'))
