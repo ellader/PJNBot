@@ -99,7 +99,7 @@ const client = new Client({
 
 // === KONFIGURACJA GIER I RÓL DLA SYSTEMU LFG ===
 const LFG_CONFIG = {
-    CATEGORY_VOICE: '1545289592901468170', // Zaktualizowane ID kategorii dla kanałów głosowych LFG
+    CATEGORY_VOICE: '1545289592901468170', // Kategoria dla kanałów głosowych LFG
     GAMES: {
         fortnite: { name: 'Fortnite', roleId: '1532400998625181907', emoji: '🎮' },
         cs2: { name: 'Counter-Strike 2', roleId: '1532401066832822404', emoji: '🎯' },
@@ -126,7 +126,7 @@ const parser = new Parser();
 const ANNOUNCE_CHANNEL_ID = '1532399010785263799';
 const ID_KANALU_CYTATY = '1534780578912665653';
 const ID_KANALU_MEMOW = '1534833757335326810';
-const ID_KANALU_SZUKAM_DO_GRY = '1532449084559069214'; // Zaktualizowane ID kanału "szukam-do-gry"
+const ID_KANALU_SZUKAM_DO_GRY = '1532449084559069214'; // Kanał •szukam-do-gry
 const CHANNEL_POWITANIA = "witamy";
 const ID_KANALU_DUSZKI = "1532977723843285112"; 
 const ID_RANGI_DUSZKOWIEC = "1532978703842283551";
@@ -346,7 +346,6 @@ async function setupLfgChannelInstruction() {
         const channel = await client.channels.fetch(ID_KANALU_SZUKAM_DO_GRY).catch(() => null) as TextChannel;
         if (!channel) return;
 
-        // Czyszczenie starych wiadomości bota na tym kanale, żeby nie robić syfu
         const messages = await channel.messages.fetch({ limit: 10 }).catch(() => null);
         if (messages) {
             for (const [_, msg] of messages) {
@@ -369,14 +368,14 @@ async function setupLfgChannelInstruction() {
                 '👥 **Jak dołączyć do ekipy?**\n' +
                 '• Kliknij zielony przycisk **"Dołącz do ekipy"** pod wybranym ogłoszeniem.\n' +
                 '• Gdy skład się zapełni (lub autor kliknie utworzenie pokoju), bot **automatycznie utworzy dla Was prywatny kanał głosowy** z odpowiednimi uprawnieniami!\n' +
-                '• W każdej chwili możesz opuścić ekipę, klikając czerwony przycisk **"Opuść"**.'
+                '• W każdej chwili możesz opuścić ekipę, klikając czerwony przycisk **"Opuść"**, a jako autor możesz zamknąć ogłoszenie, jeśli się rozmyślisz.'
             )
             .setImage(LIVE_IMAGE_URL)
             .setTimestamp()
             .setFooter({ text: 'PJN System LFG • Znajdź swoją ekipę!' });
 
         const sentMsg = await channel.send({ embeds: [embed] });
-        await sentMsg.pin().catch(() => {}); // Przypinanie wiadomości na górze kanału
+        await sentMsg.pin().catch(() => {});
     } catch (e) {
         console.error('Błąd podczas ustawiania instrukcji LFG:', e);
     }
@@ -891,7 +890,7 @@ client.once('ready', async () => {
     console.log(`Zalogowano jako ${client.user?.tag}!`);
     await seedQuotesIfNeeded();
     await setupMemeChannelInstruction();
-    await setupLfgChannelInstruction(); // Wywołanie inicjalizacji instrukcji LFG wraz z pinem na kanale •szukam-do-gry
+    await setupLfgChannelInstruction(); 
     await setupTicketChannel(); 
     await setupShowcaseChannelInstruction();
     await setupReputationChannelInstruction();
@@ -999,7 +998,7 @@ client.on('interactionCreate', async interaction => {
             return;
         }
 
-        if (['lfg_join', 'lfg_leave', 'lfg_create_voice'].includes(interaction.customId)) {
+        if (['lfg_join', 'lfg_leave', 'lfg_create_voice', 'lfg_close'].includes(interaction.customId)) {
             await interaction.deferReply({ ephemeral: true });
             const lfgDoc = await LFGModel.findOne({ messageId: interaction.message.id });
 
@@ -1013,6 +1012,33 @@ client.on('interactionCreate', async interaction => {
 
             const userId = interaction.user.id;
             const gameInfo = LFG_CONFIG.GAMES[lfgDoc.game as keyof typeof LFG_CONFIG.GAMES];
+
+            // Obsługa zamknięcia ogłoszenia przez autora + automatyczne usuwanie kanału głosowego
+            if (interaction.customId === 'lfg_close') {
+                if (lfgDoc.authorId !== userId) {
+                    return interaction.editReply({ content: '❌ Tylko autor ogłoszenia może je zamknąć!' });
+                }
+
+                lfgDoc.status = 'closed';
+                await lfgDoc.save();
+
+                if (lfgDoc.voiceChannelId) {
+                    try {
+                        const guild = interaction.guild;
+                        if (guild) {
+                            const voiceChannel = await guild.channels.fetch(lfgDoc.voiceChannelId).catch(() => null);
+                            if (voiceChannel) {
+                                await voiceChannel.delete('Autor zamknął ogłoszenie LFG');
+                            }
+                        }
+                    } catch (err) {
+                        console.error('Błąd podczas usuwania kanału głosowego LFG:', err);
+                    }
+                }
+
+                await updateLFGMessage(interaction.message, lfgDoc);
+                return interaction.editReply({ content: '✅ Pomyślnie zamknięto ogłoszenie LFG i usunięto przypisany kanał głosowy.' });
+            }
 
             if (interaction.customId === 'lfg_join') {
                 if (lfgDoc.currentPlayers.includes(userId)) {
@@ -1071,7 +1097,7 @@ client.on('interactionCreate', async interaction => {
                 }
 
                 if (lfgDoc.authorId === userId) {
-                    return interaction.editReply({ content: '❌ Autor ogłoszenia nie może opuścić własnej ekipy. Może ją jedynie zamknąć lub usunąć.' });
+                    return interaction.editReply({ content: '❌ Autor ogłoszenia nie może opuścić własnej ekipy. Użyj przycisku "Zamknij ogłoszenie".' });
                 }
 
                 lfgDoc.currentPlayers = lfgDoc.currentPlayers.filter(id => id !== userId);
@@ -1189,7 +1215,7 @@ client.on('interactionCreate', async interaction => {
                 .setTimestamp()
                 .setFooter({ text: 'PJN System LFG • Dołącz do gry!' });
 
-            const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+            const row1 = new ActionRowBuilder<ButtonBuilder>().addComponents(
                 new ButtonBuilder()
                     .setCustomId('lfg_join')
                     .setLabel('Dołącz do ekipy')
@@ -1202,15 +1228,20 @@ client.on('interactionCreate', async interaction => {
                     .setEmoji('➖'),
                 new ButtonBuilder()
                     .setCustomId('lfg_create_voice')
-                    .setLabel('🎙️ Utwórz pokój teraz')
-                    .setStyle(ButtonStyle.Primary)
+                    .setLabel('🎙️ Utwórz pokój')
+                    .setStyle(ButtonStyle.Primary),
+                new ButtonBuilder()
+                    .setCustomId('lfg_close')
+                    .setLabel('Zamknij ogłoszenie')
+                    .setStyle(ButtonStyle.Secondary)
+                    .setEmoji('🔒')
             );
 
             const rolePing = gameInfo.roleId ? `<@&${gameInfo.roleId}>` : '';
             const sentMessage = await interaction.channel?.send({
                 content: `${rolePing} 🚨 **Nowe zgłoszenie LFG!** Użytkownik <@${authorId}> szuka ludzi do gry **${gameInfo.name}**!`,
                 embeds: [embed],
-                components: [row],
+                components: [row1],
                 allowedMentions: { roles: [gameInfo.roleId], users: [authorId] }
             });
 
@@ -1801,12 +1832,22 @@ async function updateLFGMessage(message: any, lfgDoc: any) {
         const gameInfo = LFG_CONFIG.GAMES[lfgDoc.game as keyof typeof LFG_CONFIG.GAMES];
         const playersListText = lfgDoc.currentPlayers.map((id: string) => `• <@${id}>`).join('\n');
 
+        let embedColor = 0x5865F2;
+        let statusText = `👥 **Skład:** ${lfgDoc.currentPlayers.length} / ${lfgDoc.maxPlayers} osób`;
+
+        if (lfgDoc.status === 'full') {
+            embedColor = 0xE67E22;
+        } else if (lfgDoc.status === 'closed') {
+            embedColor = 0xED4245;
+            statusText = `🔒 **OGŁOSZENIE ZAMKNIĘTE**`;
+        }
+
         const embed = new EmbedBuilder()
-            .setColor(lfgDoc.status === 'full' ? 0xE67E22 : 0x5865F2)
+            .setColor(embedColor)
             .setTitle(`${gameInfo.emoji} Szukanie Ekipy: ${gameInfo.name}`)
             .setDescription(
                 `👤 **Organizator:** <@${lfgDoc.authorId}>\n` +
-                `👥 **Skład:** ${lfgDoc.currentPlayers.length} / ${lfgDoc.maxPlayers} osób\n` +
+                `${statusText}\n` +
                 `📝 **Opis:** ${lfgDoc.description}\n\n` +
                 `📋 **Aktualni członkowie:**\n${playersListText}` +
                 (lfgDoc.voiceChannelId ? `\n\n🎙️ **Kanał Głosowy:** <#${lfgDoc.voiceChannelId}>` : '')
@@ -1814,7 +1855,32 @@ async function updateLFGMessage(message: any, lfgDoc: any) {
             .setTimestamp()
             .setFooter({ text: 'PJN System LFG • Dołącz do gry!' });
 
-        await message.edit({ embeds: [embed] });
+        if (lfgDoc.status === 'closed') {
+            await message.edit({ embeds: [embed], components: [] });
+        } else {
+            const row1 = new ActionRowBuilder<ButtonBuilder>().addComponents(
+                new ButtonBuilder()
+                    .setCustomId('lfg_join')
+                    .setLabel('Dołącz do ekipy')
+                    .setStyle(ButtonStyle.Success)
+                    .setEmoji('➕'),
+                new ButtonBuilder()
+                    .setCustomId('lfg_leave')
+                    .setLabel('Opuść')
+                    .setStyle(ButtonStyle.Danger)
+                    .setEmoji('➖'),
+                new ButtonBuilder()
+                    .setCustomId('lfg_create_voice')
+                    .setLabel('🎙️ Utwórz pokój')
+                    .setStyle(ButtonStyle.Primary),
+                new ButtonBuilder()
+                    .setCustomId('lfg_close')
+                    .setLabel('Zamknij ogłoszenie')
+                    .setStyle(ButtonStyle.Secondary)
+                    .setEmoji('🔒')
+            );
+            await message.edit({ embeds: [embed], components: [row1] });
+        }
     } catch (e) {
         console.error('Błąd aktualizacji wiadomości LFG:', e);
     }
