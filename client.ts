@@ -68,6 +68,20 @@ const repCooldownSchema = new mongoose.Schema({
 });
 const RepCooldownModel = mongoose.model('RepCooldown', repCooldownSchema);
 
+// === SCHEMAT BAZY DANYCH DLA SYSTEMU LFG ===
+const lfgSchema = new mongoose.Schema({
+    messageId: { type: String, required: true, unique: true },
+    channelId: { type: String, required: true },
+    authorId: { type: String, required: true },
+    game: { type: String, required: true },
+    maxPlayers: { type: Number, required: true },
+    currentPlayers: { type: [String], required: true },
+    description: { type: String, default: '' },
+    status: { type: String, default: 'active' }, // active, full, closed
+    voiceChannelId: { type: String, default: null }
+});
+const LFGModel = mongoose.model('LFG', lfgSchema);
+
 // === KONFIGURACJA BOTA DISCORD ===
 const token = process.env.DISCORD_BOT_TOKEN;
 if (!token) throw new Error("Brak tokena Discord bota!");
@@ -82,6 +96,19 @@ const client = new Client({
         GatewayIntentBits.GuildModeration
     ]
 });
+
+// === KONFIGURACJA GIER I RÓL DLA SYSTEMU LFG ===
+const LFG_CONFIG = {
+    CATEGORY_VOICE: '1532399011317477457', // ID kategorii, w której będą tworzone kanały głosowe
+    GAMES: {
+        fortnite: { name: 'Fortnite', roleId: '1532397673842217010', emoji: '🎮' },
+        cs2: { name: 'Counter-Strike 2', roleId: '1532397673842217010', emoji: '🎯' },
+        minecraft: { name: 'Minecraft', roleId: '1532397673842217010', emoji: '⛏️' },
+        gta: { name: 'GTA V / Online', roleId: '1532397673842217010', emoji: '🚗' },
+        valorant: { name: 'Valorant', roleId: '1532397673842217010', emoji: '⚡' },
+        lol: { name: 'League of Legends', roleId: '1532397673842217010', emoji: '⚔️' }
+    }
+};
 
 const NOTIF_CONFIG = {
     languspjn: {
@@ -99,6 +126,7 @@ const parser = new Parser();
 const ANNOUNCE_CHANNEL_ID = '1532399010785263799';
 const ID_KANALU_CYTATY = '1534780578912665653';
 const ID_KANALU_MEMOW = '1534833757335326810';
+const ID_KANALU_SZUKAM_DO_GRY = '1532399011317477458'; // Zmień na faktyczne ID kanału "Szukam_do_gry", jeśli się różni
 const CHANNEL_POWITANIA = "witamy";
 const ID_KANALU_DUSZKI = "1532977723843285112"; 
 const ID_RANGI_DUSZKOWIEC = "1532978703842283551";
@@ -309,6 +337,48 @@ async function setupMemeChannelInstruction() {
         await sentMsg.pin().catch(() => {});
     } catch (e) {
         console.error('Błąd podczas ustawiania instrukcji memów:', e);
+    }
+}
+
+// === NOWA FUNKCJA: INSTRUKCJA I PRZYPINANIE DLA KANAŁU SZUKAM_DO_GRY ===
+async function setupLfgChannelInstruction() {
+    try {
+        const channel = await client.channels.fetch(ID_KANALU_SZUKAM_DO_GRY).catch(() => null) as TextChannel;
+        if (!channel) return;
+
+        // Czyszczenie starych wiadomości bota na tym kanale, żeby nie robić syfu
+        const messages = await channel.messages.fetch({ limit: 10 }).catch(() => null);
+        if (messages) {
+            for (const [_, msg] of messages) {
+                if (msg.author.id === client.user?.id) {
+                    await msg.delete().catch(() => {});
+                }
+            }
+        }
+
+        const embed = new EmbedBuilder()
+            .setColor(0x5865F2)
+            .setTitle('🎮 Centrum LFG (Looking For Group) — Jak szukać ekipy do gry?')
+            .setDescription(
+                'Masz dosyć grania w pojedynkę? Chcesz znaleźć zgrany skład do ulubionej gry? Skorzystaj z naszego automatycznego systemu LFG!\n\n' +
+                '🛠️ **Jak stworzyć ogłoszenie o grze?**\n' +
+                '1. Wpisz w dowolnym kanale lub tutaj komendę: `/szukam`\n' +
+                '2. Wybierz grę z listy (Fortnite, CS2, Minecraft, GTA V, Valorant lub League of Legends).\n' +
+                '3. Podaj maksymalną liczbę osób w drużynie oraz dodaj opcjonalny opis (np. ranga, wymagany mikrofon, styl gry).\n' +
+                '4. Bot wygeneruje interaktywne ogłoszenie wraz z pingiem odpowiedniej roli!\n\n' +
+                '👥 **Jak dołączyć do ekipy?**\n' +
+                '• Kliknij zielony przycisk **"Dołącz do ekipy"** pod wybranym ogłoszeniem.\n' +
+                '• Gdy skład się zapełni (lub autor kliknie utworzenie pokoju), bot **automatycznie utworzy dla Was prywatny kanał głosowy** z odpowiednimi uprawnieniami!\n' +
+                '• W każdej chwili możesz opuścić ekipę, klikając czerwony przycisk **"Opuść"**.'
+            )
+            .setImage(LIVE_IMAGE_URL)
+            .setTimestamp()
+            .setFooter({ text: 'PJN System LFG • Znajdź swoją ekipę!' });
+
+        const sentMsg = await channel.send({ embeds: [embed] });
+        await sentMsg.pin().catch(() => {}); // Przypinanie wiadomości na górze kanału
+    } catch (e) {
+        console.error('Błąd podczas ustawiania instrukcji LFG:', e);
     }
 }
 
@@ -679,6 +749,36 @@ async function sendNotification(targetKey: 'languspjn' | 'elladermusic', platfor
     });
 }
 
+// === AUTOMATYCZNY SPRAWDZACZ RSS YOUTUBE ===
+const lastVideoIds: { [key: string]: string } = {};
+
+async function checkYouTubeRssFeeds() {
+    for (const key of ['languspjn', 'elladermusic'] as const) {
+        try {
+            const feed = await parser.parseURL(NOTIF_CONFIG[key].rssUrl);
+            if (feed && feed.items && feed.items.length > 0) {
+                const latestItem = feed.items[0];
+                const videoUrl = latestItem.link;
+                const videoTitle = latestItem.title || 'Nowy film na YouTube';
+
+                if (videoUrl && lastVideoIds[key] !== videoUrl) {
+                    if (lastVideoIds[key] !== undefined) {
+                        await sendNotification(key, 'youtube', videoTitle, videoUrl);
+                    }
+                    lastVideoIds[key] = videoUrl;
+                }
+            }
+        } catch (e) {
+            console.error(`Błąd podczas pobierania RSS YouTube dla ${key}:`, e);
+        }
+    }
+}
+
+function startYouTubeRssChecker() {
+    checkYouTubeRssFeeds();
+    setInterval(checkYouTubeRssFeeds, 5 * 60 * 1000);
+}
+
 const commands = [
     new SlashCommandBuilder().setName('portfel').setDescription('Sprawdź stan swoich PJN-Coins w portfelu'),
     new SlashCommandBuilder().setName('topka').setDescription('Zobacz ranking najbogatszych graczy'),
@@ -759,13 +859,39 @@ const commands = [
              .setAutocomplete(true)
         )
         .addStringOption(o => o.setName('gora').setDescription('Tekst na górze mema').setRequired(false))
-        .addStringOption(o => o.setName('dol').setDescription('Tekst na dole mema').setRequired(false))
+        .addStringOption(o => o.setName('dol').setDescription('Tekst na dole mema').setRequired(false)),
+    new SlashCommandBuilder()
+        .setName('szukam')
+        .setDescription('Stwórz ogłoszenie LFG (Looking For Group) do gry')
+        .addStringOption(option =>
+            option.setName('gra')
+                .setDescription('Wybierz grę')
+                .setRequired(true)
+                .addChoices(
+                    { name: 'Fortnite', value: 'fortnite' },
+                    { name: 'Counter-Strike 2', value: 'cs2' },
+                    { name: 'Minecraft', value: 'minecraft' },
+                    { name: 'GTA V / Online', value: 'gta' },
+                    { name: 'Valorant', value: 'valorant' },
+                    { name: 'League of Legends', value: 'lol' }
+                ))
+        .addIntegerOption(option =>
+            option.setName('osoby')
+                .setDescription('Maksymalna liczba osób w drużynie (łącznie z Tobą)')
+                .setRequired(true)
+                .setMinValue(2)
+                .setMaxValue(10))
+        .addStringOption(option =>
+            option.setName('opis')
+                .setDescription('Dodatkowy opis (np. ranga, mikrofon, styl gry)')
+                .setRequired(false))
 ].map(c => c.toJSON());
 
 client.once('ready', async () => {
     console.log(`Zalogowano jako ${client.user?.tag}!`);
     await seedQuotesIfNeeded();
     await setupMemeChannelInstruction();
+    await setupLfgChannelInstruction(); // Wywołanie inicjalizacji instrukcji LFG wraz z pinem
     await setupTicketChannel(); 
     await setupShowcaseChannelInstruction();
     await setupReputationChannelInstruction();
@@ -784,6 +910,7 @@ client.once('ready', async () => {
     startHourlyAnnouncements();
     startDailyQuotes();
     startReputationTopUpdater();
+    startYouTubeRssChecker();
 });
 
 client.on('interactionCreate', async interaction => {
@@ -871,6 +998,138 @@ client.on('interactionCreate', async interaction => {
             }, 5000);
             return;
         }
+
+        if (['lfg_join', 'lfg_leave', 'lfg_create_voice'].includes(interaction.customId)) {
+            await interaction.deferReply({ ephemeral: true });
+            const lfgDoc = await LFGModel.findOne({ messageId: interaction.message.id });
+
+            if (!lfgDoc) {
+                return interaction.editReply({ content: '❌ To ogłoszenie LFG jest już nieaktualne lub zostało usunięte z bazy.' });
+            }
+
+            if (lfgDoc.status === 'closed') {
+                return interaction.editReply({ content: '❌ Ta ekipa została już zamknięta.' });
+            }
+
+            const userId = interaction.user.id;
+            const gameInfo = LFG_CONFIG.GAMES[lfgDoc.game as keyof typeof LFG_CONFIG.GAMES];
+
+            if (interaction.customId === 'lfg_join') {
+                if (lfgDoc.currentPlayers.includes(userId)) {
+                    return interaction.editReply({ content: '⚠️ Jesteś już na liście tej ekipy!' });
+                }
+                if (lfgDoc.currentPlayers.length >= lfgDoc.maxPlayers) {
+                    return interaction.editReply({ content: '❌ Ta ekipa jest już w pełni zapełniona!' });
+                }
+
+                lfgDoc.currentPlayers.push(userId);
+                if (lfgDoc.currentPlayers.length >= lfgDoc.maxPlayers) {
+                    lfgDoc.status = 'full';
+                }
+                await lfgDoc.save();
+
+                if (lfgDoc.status === 'full' && !lfgDoc.voiceChannelId) {
+                    try {
+                        const guild = interaction.guild;
+                        if (guild) {
+                            const permissionOverwrites = [
+                                {
+                                    id: guild.id,
+                                    deny: [PermissionFlagsBits.ViewChannel],
+                                }
+                            ];
+
+                            for (const pId of lfgDoc.currentPlayers) {
+                                permissionOverwrites.push({
+                                    id: pId,
+                                    allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.Connect, PermissionFlagsBits.Speak]
+                                });
+                            }
+
+                            const voiceChan = await guild.channels.create({
+                                name: `🎮-${gameInfo?.name || 'Ekipa'}-${interaction.user.username}`,
+                                type: ChannelType.GuildVoice,
+                                parent: LFG_CONFIG.CATEGORY_VOICE,
+                                permissionOverwrites: permissionOverwrites
+                            });
+
+                            lfgDoc.voiceChannelId = voiceChan.id;
+                            await lfgDoc.save();
+                        }
+                    } catch (err) {
+                        console.error('Błąd tworzenia automatycznego kanału głosowego LFG:', err);
+                    }
+                }
+
+                await updateLFGMessage(interaction.message, lfgDoc);
+                return interaction.editReply({ content: '✅ Pomyślnie dołączyłeś do ekipy!' });
+            }
+
+            if (interaction.customId === 'lfg_leave') {
+                if (!lfgDoc.currentPlayers.includes(userId)) {
+                    return interaction.editReply({ content: '⚠️ Nie jesteś na liście tej ekipy.' });
+                }
+
+                if (lfgDoc.authorId === userId) {
+                    return interaction.editReply({ content: '❌ Autor ogłoszenia nie może opuścić własnej ekipy. Może ją jedynie zamknąć lub usunąć.' });
+                }
+
+                lfgDoc.currentPlayers = lfgDoc.currentPlayers.filter(id => id !== userId);
+                if (lfgDoc.status === 'full') {
+                    lfgDoc.status = 'active';
+                }
+                await lfgDoc.save();
+
+                await updateLFGMessage(interaction.message, lfgDoc);
+                return interaction.editReply({ content: '✅ Pomyślnie opuściłeś ekipę.' });
+            }
+
+            if (interaction.customId === 'lfg_create_voice') {
+                if (lfgDoc.authorId !== userId) {
+                    return interaction.editReply({ content: '❌ Tylko autor ogłoszenia może wymusić utworzenie pokoju głosowego!' });
+                }
+
+                if (lfgDoc.voiceChannelId) {
+                    return interaction.editReply({ content: `⚠️ Kanał głosowy został już utworzony: <#${lfgDoc.voiceChannelId}>!` });
+                }
+
+                try {
+                    const guild = interaction.guild;
+                    if (guild) {
+                        const permissionOverwrites = [
+                            {
+                                id: guild.id,
+                                deny: [PermissionFlagsBits.ViewChannel],
+                            }
+                        ];
+
+                        for (const pId of lfgDoc.currentPlayers) {
+                            permissionOverwrites.push({
+                                id: pId,
+                                allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.Connect, PermissionFlagsBits.Speak]
+                            });
+                        }
+
+                        const voiceChan = await guild.channels.create({
+                            name: `🎮-${gameInfo?.name || 'Ekipa'}-${interaction.user.username}`,
+                            type: ChannelType.GuildVoice,
+                            parent: LFG_CONFIG.CATEGORY_VOICE,
+                            permissionOverwrites: permissionOverwrites
+                        });
+
+                        lfgDoc.voiceChannelId = voiceChan.id;
+                        await lfgDoc.save();
+
+                        await updateLFGMessage(interaction.message, lfgDoc);
+                        return interaction.editReply({ content: `✅ Pomyślnie utworzono prywatny kanał głosowy: <#${voiceChan.id}>!` });
+                    }
+                } catch (err) {
+                    console.error('Błąd ręcznego tworzenia kanału LFG:', err);
+                    return interaction.editReply({ content: '❌ Wystąpił błąd podczas tworzenia kanału głosowego.' });
+                }
+            }
+            return;
+        }
     }
 
     if (interaction.isAutocomplete()) {
@@ -903,6 +1162,77 @@ client.on('interactionCreate', async interaction => {
     const { commandName } = interaction;
 
     try {
+        if (commandName === 'szukam') {
+            await interaction.deferReply();
+
+            const graKey = interaction.options.getString('gra', true);
+            const maxPlayers = interaction.options.getInteger('osoby', true);
+            const opis = interaction.options.getString('opis') || 'Brak dodatkowego opisu.';
+
+            const gameInfo = LFG_CONFIG.GAMES[graKey as keyof typeof LFG_CONFIG.GAMES];
+            if (!gameInfo) {
+                return interaction.editReply({ content: '❌ Wybrano nieobsługiwaną grę.' });
+            }
+
+            const authorId = interaction.user.id;
+            const currentPlayers = [authorId];
+
+            const embed = new EmbedBuilder()
+                .setColor(0x5865F2)
+                .setTitle(`${gameInfo.emoji} Szukanie Ekipy: ${gameInfo.name}`)
+                .setDescription(
+                    `👤 **Organizator:** <@${authorId}>\n` +
+                    `👥 **Skład:** 1 / ${maxPlayers} osób\n` +
+                    `📝 **Opis:** ${opis}\n\n` +
+                    `📋 **Aktualni członkowie:**\n• <@${authorId}>`
+                )
+                .setTimestamp()
+                .setFooter({ text: 'PJN System LFG • Dołącz do gry!' });
+
+            const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+                new ButtonBuilder()
+                    .setCustomId('lfg_join')
+                    .setLabel('Dołącz do ekipy')
+                    .setStyle(ButtonStyle.Success)
+                    .setEmoji('➕'),
+                new ButtonBuilder()
+                    .setCustomId('lfg_leave')
+                    .setLabel('Opuść')
+                    .setStyle(ButtonStyle.Danger)
+                    .setEmoji('➖'),
+                new ButtonBuilder()
+                    .setCustomId('lfg_create_voice')
+                    .setLabel('🎙️ Utwórz pokój teraz')
+                    .setStyle(ButtonStyle.Primary)
+            );
+
+            const rolePing = gameInfo.roleId ? `<@&${gameInfo.roleId}>` : '';
+            const sentMessage = await interaction.channel?.send({
+                content: `${rolePing} 🚨 **Nowe zgłoszenie LFG!** Użytkownik <@${authorId}> szuka ludzi do gry **${gameInfo.name}**!`,
+                embeds: [embed],
+                components: [row],
+                allowedMentions: { roles: [gameInfo.roleId], users: [authorId] }
+            });
+
+            if (sentMessage) {
+                await LFGModel.create({
+                    messageId: sentMessage.id,
+                    channelId: interaction.channelId,
+                    authorId: authorId,
+                    game: graKey,
+                    maxPlayers: maxPlayers,
+                    currentPlayers: currentPlayers,
+                    description: opis,
+                    status: 'active'
+                });
+
+                await interaction.editReply({ content: `✅ Pomyślnie utworzono ogłoszenie LFG!` });
+            } else {
+                await interaction.editReply({ content: `❌ Nie udało się wysłać ogłoszenia na kanał.` });
+            }
+            return;
+        }
+
         if (commandName === 'powiadomienie') {
             if (!isAuthorized(interaction.user.id)) {
                 return interaction.reply({ content: '❌ Nie masz uprawnień do tej komendy!', ephemeral: true });
@@ -1466,6 +1796,30 @@ client.on('interactionCreate', async interaction => {
     }
 });
 
+async function updateLFGMessage(message: any, lfgDoc: any) {
+    try {
+        const gameInfo = LFG_CONFIG.GAMES[lfgDoc.game as keyof typeof LFG_CONFIG.GAMES];
+        const playersListText = lfgDoc.currentPlayers.map((id: string) => `• <@${id}>`).join('\n');
+
+        const embed = new EmbedBuilder()
+            .setColor(lfgDoc.status === 'full' ? 0xE67E22 : 0x5865F2)
+            .setTitle(`${gameInfo.emoji} Szukanie Ekipy: ${gameInfo.name}`)
+            .setDescription(
+                `👤 **Organizator:** <@${lfgDoc.authorId}>\n` +
+                `👥 **Skład:** ${lfgDoc.currentPlayers.length} / ${lfgDoc.maxPlayers} osób\n` +
+                `📝 **Opis:** ${lfgDoc.description}\n\n` +
+                `📋 **Aktualni członkowie:**\n${playersListText}` +
+                (lfgDoc.voiceChannelId ? `\n\n🎙️ **Kanał Głosowy:** <#${lfgDoc.voiceChannelId}>` : '')
+            )
+            .setTimestamp()
+            .setFooter({ text: 'PJN System LFG • Dołącz do gry!' });
+
+        await message.edit({ embeds: [embed] });
+    } catch (e) {
+        console.error('Błąd aktualizacji wiadomości LFG:', e);
+    }
+}
+
 client.on('messageCreate', async message => {
     if (message.author.bot || !message.guild) return;
 
@@ -1624,7 +1978,6 @@ client.on('guildMemberAdd', async member => {
     } catch (e) {}
 });
 
-// === ROZBUDOWANY SYSTEM LOGÓW (WYJŚCIE / KICK / BAN) ===
 client.on('guildMemberRemove', async member => {
     try {
         const logChannel = await member.guild.channels.fetch(NOTIF_CONFIG.leaveLogChannelId) as TextChannel;
@@ -1635,7 +1988,6 @@ client.on('guildMemberRemove', async member => {
         let title = '📤 Użytkownik opuścił serwer';
         let description = `**${member.user.tag}** (` + '`' + member.id + '`' + `) zdecydował się opuścić naszą społeczność.`;
 
-        // Sprawdzenie uprawnień do odczytu audit logów
         if (member.guild.members.me?.permissions.has(PermissionFlagsBits.ViewAuditLog)) {
             const fetchedLogs = await member.guild.fetchAuditLogs({
                 limit: 1,
@@ -1649,7 +2001,6 @@ client.on('guildMemberRemove', async member => {
                 description = `**${member.user.tag}** (` + '`' + member.id + '`' + `) został wyrzucony z serwera przez **${kickLog.executor?.tag || 'Nieznany'}**.\n📌 **Powód:** ${kickLog.reason || 'Brak powoda'}`;
                 color = 0xF1C40F;
             } else {
-                // Sprawdzenie czy użytkownik nie został zbanowany
                 const banLogs = await member.guild.fetchAuditLogs({
                     limit: 1,
                     type: AuditLogEvent.MemberBanAdd,
@@ -1696,6 +2047,5 @@ const PORT = process.env.PORT || 10000;
 server.listen(PORT, () => {
   console.log(`Serwer HTTP nasłuchuje na porcie ${PORT}`);
 });
-
 
 client.login(token);
