@@ -362,7 +362,7 @@ async function setupLfgChannelInstruction() {
             .setDescription(
                 'Masz dosyć grania w pojedynkę? Chcesz znaleźć zgrany skład do ulubionej gry? Skorzystaj z naszego automatycznego systemu LFG!\n\n' +
                 '🛠️ **Jak stworzyć ogłoszenie o grze?**\n' +
-                '1. Wpisz w dowolnym kanale lub tutaj komendę: `/szukam`\n' +
+                `1. Wpisz na tym kanale (<#${ID_KANALU_SZUKAM_DO_GRY}>) komendę: \`/szukam\`\n` +
                 '2. Wybierz grę z listy (Fortnite, CS2, Minecraft, GTA V, Valorant lub League of Legends).\n' +
                 '3. Podaj maksymalną liczbę osób w drużynie oraz dodaj opcjonalny opis (np. ranga, wymagany mikrofon, styl gry).\n' +
                 '4. Bot wygeneruje interaktywne ogłoszenie wraz z pingiem odpowiedniej roli!\n\n' +
@@ -695,7 +695,7 @@ async function startBadgesInfoUpdater() {
     }, 10 * 60 * 1000);
 }
 
-// === FUNKCJA AUTOMATYCZNGO ZAMYKANIA PRZETERMINOWANYCH LFG (CO 1 MINUTE) ===
+// === FUNKCJA AUTOMATYCZNEGO ZAMYKANIA PRZETERMINOWANYCH LFG (CO 1 MINUTE) ===
 function startLfgAutoCloser() {
     setInterval(async () => {
         try {
@@ -1241,6 +1241,13 @@ client.on('interactionCreate', async interaction => {
 
     try {
         if (commandName === 'szukam') {
+            if (interaction.channelId !== ID_KANALU_SZUKAM_DO_GRY) {
+                return interaction.reply({ 
+                    content: `❌ Komendy \`/szukam\` można używać wyłącznie na dedykowanym kanale: <#${ID_KANALU_SZUKAM_DO_GRY}>!`, 
+                    ephemeral: true 
+                });
+            }
+
             await interaction.deferReply();
 
             const graKey = interaction.options.getString('gra', true);
