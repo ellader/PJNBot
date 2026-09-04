@@ -113,11 +113,11 @@ const LFG_CONFIG = {
 
 const NOTIF_CONFIG = {
     languspjn: {
-        channelId: '1542101793171972146',
+        channelId: 'UCTHaiWkHAgH_hN7K20Fq60g',
         rssUrl: 'https://www.youtube.com/feeds/videos.xml?user=przyszloscjestnasza'
     },
     elladermusic: {
-        channelId: '1542101962185646111',
+        channelId: 'UCY62qkAfdTNvg-ZiMBIPzUA',
         rssUrl: 'https://www.youtube.com/feeds/videos.xml?user=ellader'
     },
     leaveLogChannelId: '1542102521814712371'
