@@ -99,14 +99,14 @@ const client = new Client({
 
 // === KONFIGURACJA GIER I RÓL DLA SYSTEMU LFG ===
 const LFG_CONFIG = {
-    CATEGORY_VOICE: '1532399011317477457', // ID kategorii, w której będą tworzone kanały głosowe
+    CATEGORY_VOICE: '1545289592901468170', // Zaktualizowane ID kategorii dla kanałów głosowych LFG
     GAMES: {
-        fortnite: { name: 'Fortnite', roleId: '1532397673842217010', emoji: '🎮' },
-        cs2: { name: 'Counter-Strike 2', roleId: '1532397673842217010', emoji: '🎯' },
-        minecraft: { name: 'Minecraft', roleId: '1532397673842217010', emoji: '⛏️' },
-        gta: { name: 'GTA V / Online', roleId: '1532397673842217010', emoji: '🚗' },
-        valorant: { name: 'Valorant', roleId: '1532397673842217010', emoji: '⚡' },
-        lol: { name: 'League of Legends', roleId: '1532397673842217010', emoji: '⚔️' }
+        fortnite: { name: 'Fortnite', roleId: '1532400998625181907', emoji: '🎮' },
+        cs2: { name: 'Counter-Strike 2', roleId: '1532401066832822404', emoji: '🎯' },
+        minecraft: { name: 'Minecraft', roleId: '1532401160596750398', emoji: '⛏️' },
+        gta: { name: 'GTA V / Online', roleId: '1545290821568438352', emoji: '🚗' },
+        valorant: { name: 'Valorant', roleId: '1545290283787354113', emoji: '⚡' },
+        lol: { name: 'League of Legends', roleId: '1545290424904843284', emoji: '⚔️' }
     }
 };
 
@@ -126,7 +126,7 @@ const parser = new Parser();
 const ANNOUNCE_CHANNEL_ID = '1532399010785263799';
 const ID_KANALU_CYTATY = '1534780578912665653';
 const ID_KANALU_MEMOW = '1534833757335326810';
-const ID_KANALU_SZUKAM_DO_GRY = '1532399011317477458'; // Zmień na faktyczne ID kanału "Szukam_do_gry", jeśli się różni
+const ID_KANALU_SZUKAM_DO_GRY = '1532449084559069214'; // Zaktualizowane ID kanału "szukam-do-gry"
 const CHANNEL_POWITANIA = "witamy";
 const ID_KANALU_DUSZKI = "1532977723843285112"; 
 const ID_RANGI_DUSZKOWIEC = "1532978703842283551";
@@ -340,7 +340,7 @@ async function setupMemeChannelInstruction() {
     }
 }
 
-// === NOWA FUNKCJA: INSTRUKCJA I PRZYPINANIE DLA KANAŁU SZUKAM_DO_GRY ===
+// === FUNKCJA INSTRUKCJI I PRZYPINANIA DLA KANAŁU SZUKAM_DO_GRY ===
 async function setupLfgChannelInstruction() {
     try {
         const channel = await client.channels.fetch(ID_KANALU_SZUKAM_DO_GRY).catch(() => null) as TextChannel;
@@ -891,7 +891,7 @@ client.once('ready', async () => {
     console.log(`Zalogowano jako ${client.user?.tag}!`);
     await seedQuotesIfNeeded();
     await setupMemeChannelInstruction();
-    await setupLfgChannelInstruction(); // Wywołanie inicjalizacji instrukcji LFG wraz z pinem
+    await setupLfgChannelInstruction(); // Wywołanie inicjalizacji instrukcji LFG wraz z pinem na kanale •szukam-do-gry
     await setupTicketChannel(); 
     await setupShowcaseChannelInstruction();
     await setupReputationChannelInstruction();
