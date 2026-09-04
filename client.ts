@@ -78,7 +78,8 @@ const lfgSchema = new mongoose.Schema({
     currentPlayers: { type: [String], required: true },
     description: { type: String, default: '' },
     status: { type: String, default: 'active' }, // active, full, closed
-    voiceChannelId: { type: String, default: null }
+    voiceChannelId: { type: String, default: null },
+    createdAt: { type: Date, default: Date.now } // Data utworzenia do automatycznego wygaszania
 });
 const LFGModel = mongoose.model('LFG', lfgSchema);
 
@@ -368,7 +369,7 @@ async function setupLfgChannelInstruction() {
                 '👥 **Jak dołączyć do ekipy?**\n' +
                 '• Kliknij zielony przycisk **"Dołącz do ekipy"** pod wybranym ogłoszeniem.\n' +
                 '• Gdy skład się zapełni (lub autor kliknie utworzenie pokoju), bot **automatycznie utworzy dla Was prywatny kanał głosowy** z odpowiednimi uprawnieniami!\n' +
-                '• W każdej chwili możesz opuścić ekipę, klikając czerwony przycisk **"Opuść"**, a jako autor możesz zamknąć ogłoszenie, jeśli się rozmyślisz.'
+                '• W każdej chwili możesz opuścić ekipę, klikając czerwony przycisk **"Opuść"**, a jako autor możesz zamknąć ogłoszenie, jeśli się rozmyślisz. (Ogłoszenia zamykają się też automatycznie po 30 minutach bezczynności).'
             )
             .setImage(LIVE_IMAGE_URL)
             .setTimestamp()
@@ -694,6 +695,57 @@ async function startBadgesInfoUpdater() {
     }, 10 * 60 * 1000);
 }
 
+// === FUNKCJA AUTOMATYCZNGO ZAMYKANIA PRZETERMINOWANYCH LFG (CO 1 MINUTE) ===
+function startLfgAutoCloser() {
+    setInterval(async () => {
+        try {
+            const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000);
+            const expiredLfgDocs = await LFGModel.find({
+                status: { $ne: 'closed' },
+                createdAt: { $lte: thirtyMinutesAgo }
+            });
+
+            for (const lfgDoc of expiredLfgDocs) {
+                lfgDoc.status = 'closed';
+                await lfgDoc.save();
+
+                // Usunięcie powiązanego kanału głosowego
+                if (lfgDoc.voiceChannelId) {
+                    try {
+                        for (const [_, guild] of client.guilds.cache) {
+                            const voiceChannel = await guild.channels.fetch(lfgDoc.voiceChannelId).catch(() => null);
+                            if (voiceChannel) {
+                                await voiceChannel.delete('Automatyczne zamknięcie LFG po 30 minutach');
+                                break;
+                            }
+                        }
+                    } catch (err) {
+                        console.error('Błąd usuwania kanału głosowego automatycznego LFG:', err);
+                    }
+                }
+
+                // Edycja wiadomości na czacie
+                try {
+                    for (const [_, guild] of client.guilds.cache) {
+                        const channel = await guild.channels.fetch(lfgDoc.channelId).catch(() => null) as TextChannel;
+                        if (channel) {
+                            const message = await channel.messages.fetch(lfgDoc.messageId).catch(() => null);
+                            if (message) {
+                                await updateLFGMessage(message, lfgDoc);
+                                break;
+                            }
+                        }
+                    }
+                } catch (err) {
+                    console.error('Błąd aktualizacji wiadomości LFG przy automatycznym zamknięciu:', err);
+                }
+            }
+        } catch (err) {
+            console.error('Błąd w zadaniu automatycznego zamykania LFG:', err);
+        }
+    }, 60 * 1000);
+}
+
 function startHourlyAnnouncements() {
     cron.schedule('0 * * * *', async () => {
         try {
@@ -910,6 +962,7 @@ client.once('ready', async () => {
     startDailyQuotes();
     startReputationTopUpdater();
     startYouTubeRssChecker();
+    startLfgAutoCloser(); // Uruchomienie automatycznego zamykania LFG po 30 minutach
 });
 
 client.on('interactionCreate', async interaction => {
@@ -1013,7 +1066,6 @@ client.on('interactionCreate', async interaction => {
             const userId = interaction.user.id;
             const gameInfo = LFG_CONFIG.GAMES[lfgDoc.game as keyof typeof LFG_CONFIG.GAMES];
 
-            // Obsługa zamknięcia ogłoszenia przez autora + automatyczne usuwanie kanału głosowego
             if (interaction.customId === 'lfg_close') {
                 if (lfgDoc.authorId !== userId) {
                     return interaction.editReply({ content: '❌ Tylko autor ogłoszenia może je zamknąć!' });
@@ -1254,7 +1306,8 @@ client.on('interactionCreate', async interaction => {
                     maxPlayers: maxPlayers,
                     currentPlayers: currentPlayers,
                     description: opis,
-                    status: 'active'
+                    status: 'active',
+                    createdAt: new Date()
                 });
 
                 await interaction.editReply({ content: `✅ Pomyślnie utworzono ogłoszenie LFG!` });
