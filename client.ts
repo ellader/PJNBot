@@ -2281,7 +2281,6 @@ client.on('guildMemberAdd', async member => {
                 .setFooter({ text: 'PJN System Powitań' });
 
             const textContent = 
-                `👋 Witaj, <@${member.id}>!\n\n` +
                 `🎉 **Witamy na serwerze PJN!**\n` +
                 `Witaj <@${member.id}>! Cieszymy się, że dołączyłeś do naszej społeczności. 🚀\n\n` +
                 `🎁 **Na start otrzymujesz w prezencie 200 PJN-Coins!**`;
