@@ -2158,7 +2158,7 @@ client.on('messageCreate', async message => {
                 return;
             }
             if (mentionedUser.id === message.author.id) {
-                await message.reply({ content: '❌ Nie możesz przyznać reputacji samemu sobie!' }).catch(() => {});
+                await message.reply({ content: '❌ Не możesz przyznać reputacji samemu sobie!' }).catch(() => {});
                 return;
             }
 
@@ -2272,19 +2272,22 @@ client.on('guildMemberAdd', async member => {
                 .setTitle('🎉 Witamy na serwerze PJN!')
                 .setDescription(
                     `Witaj <@${member.id}>! Cieszymy się, że dołączyłeś do naszej społeczności. 🚀\n\n` +
-                    `🎁 **Na start otrzymujesz w prezencie 200 PJN-Coins!**\n\n` +
-                    `📌 **Skonfiguruj swój profil i sprawdź najważniejsze miejsca:**\n` +
-                    `• Wybierz płeć: <#1532374188634144898>\n` +
-                    `• Dostosuj role: <#1532397673842217010>\n` +
-                    `• Wybierz swój sprzęt: <#1532398069524594708>\n` +
-                    `• Szukaj do gry: <#1532449084559069214>`
+                    `🎁 **Na start otrzymujesz w prezencie 200 PJN-Coins!**`
                 )
                 .setThumbnail(member.user.displayAvatarURL({ dynamic: true }))
                 .setImage(LIVE_IMAGE_URL)
                 .setTimestamp()
                 .setFooter({ text: 'PJN System Powitań' });
 
-            await channel.send({ content: `👋 Witaj, <@${member.id}>!`, embeds: [embed] });
+            const textContent = 
+                `👋 Witaj, <@${member.id}>!\n\n` +
+                `📌 **Od tego możesz zacząć ⬇️**\n` +
+                `• Wybierz płeć: <#1532374188634144898>\n` +
+                `• Dostosuj role: <#1532397673842217010>\n` +
+                `• Wybierz swój sprzęt: <#1532398069524594708>\n` +
+                `• Szukaj do gry: <#1532449084559069214>`;
+
+            await channel.send({ content: textContent, embeds: [embed] });
         }
     } catch (e) {}
 });
