@@ -44,7 +44,6 @@ const userSchema = new mongoose.Schema({
     badges: { type: [String], default: [] },
     reputation: { type: Number, default: 0 },
     exp: { type: Number, default: 0 },
-    // Dodatkowe pola aktywne ze sklepu
     doubleChanceUntil: { type: Date, default: null }, 
     dailyBoostUntil: { type: Date, default: null },     
     customRoleExpiresAt: { type: Date, default: null }, 
@@ -54,7 +53,6 @@ const userSchema = new mongoose.Schema({
 
 const UserModel = mongoose.model('User', userSchema);
 
-// Schemat historii zakupów w sklepie
 const shopHistorySchema = new mongoose.Schema({
     userId: { type: String, required: true },
     itemName: { type: String, required: true },
@@ -84,7 +82,6 @@ const repCooldownSchema = new mongoose.Schema({
 });
 const RepCooldownModel = mongoose.model('RepCooldown', repCooldownSchema);
 
-// === SCHEMAT BAZY DANYCH DLA SYSTEMU LFG ===
 const lfgSchema = new mongoose.Schema({
     messageId: { type: String, required: true, unique: true },
     channelId: { type: String, required: true },
@@ -99,7 +96,6 @@ const lfgSchema = new mongoose.Schema({
 });
 const LFGModel = mongoose.model('LFG', lfgSchema);
 
-// === KONFIGURACJA BOTA DISCORD ===
 const token = process.env.DISCORD_BOT_TOKEN;
 if (!token) throw new Error("Brak tokena Discord bota!");
 
@@ -114,7 +110,6 @@ const client = new Client({
     ]
 });
 
-// === KONFIGURACJA GIER I RÓL DLA SYSTEMU LFG ===
 const LFG_CONFIG = {
     CATEGORY_VOICE: '1545289592901468170', 
     GAMES: {
@@ -156,7 +151,6 @@ const ID_RANGI_WZOROWY_TRADER = "1540235169653592084";
 const ID_RANGI_POZYTYWNY_TRADER = "1540251183892008970"; 
 const ID_RANGI_NEGATYWNY_TRADER = "1540235296665239624"; 
 
-// === KONFIGURACJA SKLEPU I ADMINISTRACJI ===
 const ID_KANAL_SKLEPU = "1545690716309553212";
 const ID_ROLI_VIP = "1545691786289221632";
 const ADMIN_LOG_CHANNEL_ID = "1532399010785263799"; 
@@ -1132,16 +1126,29 @@ client.on('interactionCreate', async interaction => {
             }
             await user.save();
 
-            const member = interaction.member || await interaction.guild?.members.fetch(interaction.user.id).catch(() => null);
+            // Bezpieczne pobranie obiektu member bezpośrednio z serwera z uwzględnieniem uprawnień
+            const member = await interaction.guild?.members.fetch(interaction.user.id).catch(() => null);
 
             // Logika przyznawania nagrody
             if (item.type === 'vip') {
-                if (member && member.roles) {
+                if (member) {
                     try {
                         await member.roles.add(ID_ROLI_VIP);
                         console.log(`[SKLEP] Pomyślnie nadano rolę VIP użytkownikowi ${interaction.user.tag}`);
+                        
+                        // Wysyłanie powiadomienia na PW (DM) o nadaniu rangi VIP
+                        await interaction.user.send({
+                            embeds: [
+                                new EmbedBuilder()
+                                    .setColor(0xF1C40F)
+                                    .setTitle('🎉 Gratulacje! Otrzymałeś rangę VIP')
+                                    .setDescription(`Twoja transakcja w sklepie serwera **PJN** została pomyślnie zrealizowana!\n\n🟡 Ranga **VIP** została właśnie automatycznie przypisana do Twojego konta na serwerze **${interaction.guild?.name}**.\n\nCiesz się ze swoich nowych przywilejów! 🚀`)
+                                    .setTimestamp()
+                            ]
+                        }).catch(() => {});
+
                     } catch (err) {
-                        console.error('[SKLEP] Błąd podczas nadawania roli VIP:', err);
+                        console.error('[SKLEP] Błąd podczas nadawania roli VIP (sprawdź uprawnienia bota i pozycję roli VIP):', err);
                     }
                 } else {
                     console.log(`[SKLEP] Nie udało się pobrać obiektu member dla ${interaction.user.id}`);
@@ -1169,7 +1176,6 @@ client.on('interactionCreate', async interaction => {
 
             await interaction.editReply({ content: `🎉 Dziękuję za zakup przedmiotu **${item.name}**! Pomyślnie pobrano **${item.price} PJN-Coins** z Twojego portfela.` });
 
-            // Powiadomienie dla administracji
             try {
                 const adminChannel = await interaction.guild?.channels.fetch(ADMIN_LOG_CHANNEL_ID).catch(() => null) as TextChannel;
                 if (adminChannel) {
@@ -1367,7 +1373,6 @@ client.on('interactionCreate', async interaction => {
         }
     }
 
-    // 3. Obsługa autouzupełniania (Autocomplete)
     if (interaction.isAutocomplete()) {
         if (interaction.commandName === 'mem') {
             const focusedValue = interaction.options.getFocused();
@@ -1387,7 +1392,6 @@ client.on('interactionCreate', async interaction => {
         return;
     }
 
-    // 4. Obsługa komend tekstowych (Slash Commands)
     if (!interaction.isChatInputCommand()) return;
     const { commandName } = interaction;
 
@@ -1422,7 +1426,7 @@ client.on('interactionCreate', async interaction => {
                 return `Pozostało: **${days} dni, ${hours} godz.** (<t:${Math.floor(new Date(date).getTime() / 1000)}:R>)`;
             };
 
-            const member = interaction.member || await interaction.guild?.members.fetch(interaction.user.id).catch(() => null);
+            const member = await interaction.guild?.members.fetch(interaction.user.id).catch(() => null);
             const hasVip = member?.roles?.cache?.has(ID_ROLI_VIP);
             if (hasVip) {
                 activeCount++;
@@ -1720,13 +1724,13 @@ client.on('interactionCreate', async interaction => {
             sender.totalDonated = (sender.totalDonated || 0) + kwota;
             await sender.save();
             await receiver.save();
-            await checkAndAwardBadges(sender, interaction.member);
+            const memberObj = await interaction.guild?.members.fetch(interaction.user.id).catch(() => null);
+            await checkAndAwardBadges(sender, memberObj);
 
             await interaction.editReply({ content: `✅ Przelano ${kwota} PJN-Coins dla <@${targetUser.id}>!` });
             return;
         }
 
-        // --- KASYNO Z UWZGLĘDNIENIEM VIP ORAZ PODWÓJNEJ SZANSY ---
         const getCasinoMultiplier = async (userId: string, member: any) => {
             let winChance = 0.4; 
             let user = await UserModel.findOne({ userId });
@@ -1749,7 +1753,8 @@ client.on('interactionCreate', async interaction => {
             if (user.balance < stawka) return interaction.editReply({ content: `❌ Brak środków (${user.balance})!` });
 
             user.casinoPlays = (user.casinoPlays || 0) + 1;
-            const winChance = await getCasinoMultiplier(interaction.user.id, interaction.member);
+            const memberObj = await interaction.guild?.members.fetch(interaction.user.id).catch(() => null);
+            const winChance = await getCasinoMultiplier(interaction.user.id, memberObj);
             const won = Math.random() < winChance;
 
             if (won) {
@@ -1757,14 +1762,14 @@ client.on('interactionCreate', async interaction => {
                 user.consecutiveWins = (user.consecutiveWins || 0) + 1;
                 user.consecutiveLosses = 0;
                 await user.save();
-                await checkAndAwardBadges(user, interaction.member);
+                await checkAndAwardBadges(user, memberObj);
                 return interaction.editReply({ content: `🎲 Wygrana w kościach! Wygrywasz **${stawka} PJN-Coins** (Stan: **${user.balance}**).` });
             } else {
                 user.balance -= stawka;
                 user.consecutiveLosses = (user.consecutiveLosses || 0) + 1;
                 user.consecutiveWins = 0;
                 await user.save();
-                await checkAndAwardBadges(user, interaction.member);
+                await checkAndAwardBadges(user, memberObj);
                 return interaction.editReply({ content: `🎲 Przegrana w kościach. Tracisz **${stawka} PJN-Coins** (Stan: **${user.balance}**).` });
             }
         }
@@ -1780,7 +1785,8 @@ client.on('interactionCreate', async interaction => {
             if (user.balance < stawka) return interaction.editReply({ content: `❌ Brak środków (${user.balance})!` });
 
             user.casinoPlays = (user.casinoPlays || 0) + 1;
-            const winChance = await getCasinoMultiplier(interaction.user.id, interaction.member);
+            const memberObj = await interaction.guild?.members.fetch(interaction.user.id).catch(() => null);
+            const winChance = await getCasinoMultiplier(interaction.user.id, memberObj);
             const wynik = Math.random() < 0.5 ? 'orzel' : 'reszka';
             const guessed = (wybor === wynik) || (Math.random() < winChance && Math.random() < 0.3);
 
@@ -1789,14 +1795,14 @@ client.on('interactionCreate', async interaction => {
                 user.consecutiveWins = (user.consecutiveWins || 0) + 1;
                 user.consecutiveLosses = 0;
                 await user.save();
-                await checkAndAwardBadges(user, interaction.member);
+                await checkAndAwardBadges(user, memberObj);
                 return interaction.editReply({ content: `🪙 Wypadł **${wynik}**. Trafiłeś! Zyskujesz **${stawka} PJN-Coins**.` });
             } else {
                 user.balance -= stawka;
                 user.consecutiveLosses = (user.consecutiveLosses || 0) + 1;
                 user.consecutiveWins = 0;
                 await user.save();
-                await checkAndAwardBadges(user, interaction.member);
+                await checkAndAwardBadges(user, memberObj);
                 return interaction.editReply({ content: `🪙 Wypadł **${wynik}**. Przegrywasz **${stawka} PJN-Coins**.` });
             }
         }
@@ -1812,7 +1818,8 @@ client.on('interactionCreate', async interaction => {
 
             user.casinoPlays = (user.casinoPlays || 0) + 1;
             const symbols = ['🍎', '🍋', '🍒', '🔔', '💎'];
-            const winChance = await getCasinoMultiplier(interaction.user.id, interaction.member);
+            const memberObj = await interaction.guild?.members.fetch(interaction.user.id).catch(() => null);
+            const winChance = await getCasinoMultiplier(interaction.user.id, memberObj);
             
             let s1 = symbols[Math.floor(Math.random() * symbols.length)];
             let s2 = symbols[Math.floor(Math.random() * symbols.length)];
@@ -1828,21 +1835,21 @@ client.on('interactionCreate', async interaction => {
                 user.consecutiveWins = (user.consecutiveWins || 0) + 1;
                 user.consecutiveLosses = 0;
                 await user.save();
-                await checkAndAwardBadges(user, interaction.member);
+                await checkAndAwardBadges(user, memberObj);
                 return interaction.editReply({ content: `🎰 [ ${s1} | ${s2} | ${s3} ]\nJACKPOT! Wygrywasz **${wygrana} PJN-Coins**!` });
             } else if (s1 === s2 || s2 === s3 || s1 === s3) {
                 user.balance += stawka;
                 user.consecutiveWins = (user.consecutiveWins || 0) + 1;
                 user.consecutiveLosses = 0;
                 await user.save();
-                await checkAndAwardBadges(user, interaction.member);
+                await checkAndAwardBadges(user, memberObj);
                 return interaction.editReply({ content: `🎰 [ ${s1} | ${s2} | ${s3} ]\nMała wygrana! Zwrot stawki **${stawka} PJN-Coins**.` });
             } else {
                 user.balance -= stawka;
                 user.consecutiveLosses = (user.consecutiveLosses || 0) + 1;
                 user.consecutiveWins = 0;
                 await user.save();
-                await checkAndAwardBadges(user, interaction.member);
+                await checkAndAwardBadges(user, memberObj);
                 return interaction.editReply({ content: `🎰 [ ${s1} | ${s2} | ${s3} ]\nNic z tego! Strata **${stawka} PJN-Coins**.` });
             }
         }
@@ -1858,7 +1865,8 @@ client.on('interactionCreate', async interaction => {
             if (user.balance < stawka) return interaction.editReply({ content: `❌ Brak środków (${user.balance})!` });
 
             user.casinoPlays = (user.casinoPlays || 0) + 1;
-            const winChance = await getCasinoMultiplier(interaction.user.id, interaction.member);
+            const memberObj = await interaction.guild?.members.fetch(interaction.user.id).catch(() => null);
+            const winChance = await getCasinoMultiplier(interaction.user.id, memberObj);
             const wygrana = Math.random() < (winChance + 0.1) ? stawka * 2 : -stawka;
 
             user.balance += wygrana;
@@ -1870,7 +1878,7 @@ client.on('interactionCreate', async interaction => {
                 user.consecutiveWins = 0;
             }
             await user.save();
-            await checkAndAwardBadges(user, interaction.member);
+            await checkAndAwardBadges(user, memberObj);
 
             if (wygrana > 0) {
                 return interaction.editReply({ content: `🃏 [Poker - ${tryb}] Wygrywasz **${wygrana} PJN-Coins**!` });
@@ -1945,7 +1953,6 @@ client.on('interactionCreate', async interaction => {
             return;
         }
 
-        // --- DAILY Z UWZGLĘDNIENIEM VIP ORAZ PAKIETU 2X DAILY ---
         if (commandName === 'daily') {
             await interaction.deferReply();
             let user = await UserModel.findOne({ userId: interaction.user.id });
@@ -1964,7 +1971,8 @@ client.on('interactionCreate', async interaction => {
             }
 
             let dailyAmount = 100;
-            const hasVipRole = interaction.member?.roles?.cache?.has(ID_ROLI_VIP);
+            const memberObj = await interaction.guild?.members.fetch(interaction.user.id).catch(() => null);
+            const hasVipRole = memberObj?.roles?.cache?.has(ID_ROLI_VIP);
             const hasDailyBoost = user.dailyBoostUntil && new Date(user.dailyBoostUntil) > new Date();
 
             if (hasVipRole || hasDailyBoost) {
@@ -1974,7 +1982,7 @@ client.on('interactionCreate', async interaction => {
             user.balance += dailyAmount;
             user.lastDaily = now;
             await user.save();
-            await checkAndAwardBadges(user, interaction.member);
+            await checkAndAwardBadges(user, memberObj);
 
             await interaction.editReply({ content: `🎁 Otrzymałeś codzienne **${dailyAmount} PJN-Coins**!` });
             return;
@@ -2018,7 +2026,8 @@ client.on('interactionCreate', async interaction => {
             if (!user) user = await UserModel.create({ userId: interaction.user.id });
             user.quotesAdded = (user.quotesAdded || 0) + 1;
             await user.save();
-            await checkAndAwardBadges(user, interaction.member);
+            const memberObj = await interaction.guild?.members.fetch(interaction.user.id).catch(() => null);
+            await checkAndAwardBadges(user, memberObj);
             await interaction.editReply({ content: `✅ Dodano cytat!` });
             return;
         }
