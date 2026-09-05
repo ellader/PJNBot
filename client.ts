@@ -1305,7 +1305,6 @@ client.on('interactionCreate', async interaction => {
             return;
         }
 
-        // === NAPRAWIONE SPRAWDŻANIE AKTYWNYCH PRZEDMIOTÓW (Z UWZGLĘDNIENIEM BAZY I RANGI) ===
         if (commandName === 'moje-przedmioty') {
             await interaction.deferReply({ ephemeral: true });
             let user = await UserModel.findOne({ userId: interaction.user.id });
@@ -1326,7 +1325,6 @@ client.on('interactionCreate', async interaction => {
             const member = await interaction.guild?.members.fetch(interaction.user.id).catch(() => null);
             const hasVipRoleOnServer = member?.roles?.cache?.has(ID_ROLI_VIP);
 
-            // Jeśli ma rolę w bazie LUB fizycznie na serwerze (a w bazie wygasło/brak), uwzględniamy VIP
             if ((user.vipExpiresAt && new Date(user.vipExpiresAt) > now) || hasVipRoleOnServer) {
                 activeCount++;
                 const timeText = user.vipExpiresAt ? formatTimeLeft(user.vipExpiresAt) : 'Aktywna na serwerze (stały dostęp)';
@@ -1350,7 +1348,6 @@ client.on('interactionCreate', async interaction => {
 
             if (user.customVoiceExpiresAt && new Date(user.customVoiceExpiresAt) > now) {
                 activeCount++;
-                desc++;
                 desc += `🎙️ **Własny kanał głosowy**\n> ${formatTimeLeft(user.customVoiceExpiresAt)}\n\n`;
             }
 
@@ -1368,7 +1365,6 @@ client.on('interactionCreate', async interaction => {
             return;
         }
 
-        // === NOWA KOMENDA ADMINISTRACYJNA DO NAPRAWY VIP PO RESTARCIE ===
         if (commandName === 'napraw-vip') {
             if (!isAuthorized(interaction.user.id)) return interaction.reply({ content: '❌ Brak uprawnień!', ephemeral: true });
             await interaction.deferReply({ ephemeral: true });
@@ -1377,7 +1373,6 @@ client.on('interactionCreate', async interaction => {
             let user = await UserModel.findOne({ userId: targetUser.id });
             if (!user) user = await UserModel.create({ userId: targetUser.id });
 
-            // Ustawiamy pełne 30 dni od teraz w bazie
             user.vipExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
             await user.save();
 
