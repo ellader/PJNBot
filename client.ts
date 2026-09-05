@@ -45,10 +45,10 @@ const userSchema = new mongoose.Schema({
     reputation: { type: Number, default: 0 },
     exp: { type: Number, default: 0 },
     // Dodatkowe pola aktywne ze sklepu
-    doubleChanceUntil: { type: Date, default: null }, // Podwójna szansa w kasynie
-    dailyBoostUntil: { type: Date, default: null },     // 2x Daily na tydzień
-    customRoleExpiresAt: { type: Date, default: null }, // Własna rola na 30 dni
-    customVoiceExpiresAt: { type: Date, default: null },// Własny kanał głosowy na 30 dni
+    doubleChanceUntil: { type: Date, default: null }, 
+    dailyBoostUntil: { type: Date, default: null },     
+    customRoleExpiresAt: { type: Date, default: null }, 
+    customVoiceExpiresAt: { type: Date, default: null },
     customRoleId: { type: String, default: null }
 });
 
@@ -159,7 +159,7 @@ const ID_RANGI_NEGATYWNY_TRADER = "1540235296665239624";
 // === KONFIGURACJA SKLEPU I ADMINISTRACJI ===
 const ID_KANAL_SKLEPU = "1545690716309553212";
 const ID_ROLI_VIP = "1545691786289221632";
-const ADMIN_LOG_CHANNEL_ID = "1532399010785263799"; // Kanał powiadomień dla administracji (możesz zmienić na ID logów adm)
+const ADMIN_LOG_CHANNEL_ID = "1532399010785263799"; 
 
 const SHOP_ITEMS = [
     { id: 'vip_role', name: '🟡 Rola VIP (Stała/Dostęp)', price: 15000, description: 'Zwiększona szansa w kasynie, dostęp do zablokowanych kanałów + 2x PJN-Coins za wiadomości!', type: 'vip' },
@@ -373,7 +373,6 @@ async function setupMemeChannelInstruction() {
     }
 }
 
-// === FUNKCJA AUTOMATYCZNEGO PANELU SKLEPU NA KANALE ===
 async function setupShopChannel() {
     try {
         const channel = await client.channels.fetch(ID_KANAL_SKLEPU).catch(() => null) as TextChannel;
@@ -1009,7 +1008,7 @@ client.once('ready', async () => {
     await setupTicketChannel(); 
     await setupShowcaseChannelInstruction();
     await setupReputationChannelInstruction();
-    await setupShopChannel(); // Automatyczny stały panel sklepu
+    await setupShopChannel();
 
     const rest = new REST({ version: '10' }).setToken(token);
     try {
@@ -1029,8 +1028,9 @@ client.once('ready', async () => {
     startLfgAutoCloser();
 });
 
+// === CENTRALNA OBSŁUGA INTERAKCJI ===
 client.on('interactionCreate', async interaction => {
-    // Obsługa menu wyboru ze sklepu
+    // 1. Obsługa menu wyboru ze sklepu
     if (interaction.isStringSelectMenu()) {
         if (interaction.customId === 'shop_select') {
             await interaction.deferReply({ ephemeral: true });
@@ -1053,7 +1053,7 @@ client.on('interactionCreate', async interaction => {
                     `💼 **Twój stan portfela:** ${user.balance} PJN-Coins\n\n` +
                     (canAfford 
                         ? `✅ **Status:** Stać Cię na ten zakup! Kliknij przycisk poniżej, aby sfinalizować transakcję.` 
-                        : `❌ **Status:** Brakuje Ci jeszcze **${diff} PJN-Coins**! Aktywność na czacie pomoże Ci je zdobyć.`)
+                        : `❌ **Status:** Brakuje Ci jeszcze **${diff} PJN-Coins**!`)
                 );
 
             const components = [];
@@ -1073,8 +1073,9 @@ client.on('interactionCreate', async interaction => {
         }
     }
 
+    // 2. Obsługa przycisków
     if (interaction.isButton()) {
-        // Obsługa zakupów ze sklepu
+        // Poprawiona obsługa zakupu ze sklepu
         if (interaction.customId.startsWith('shop_buy_')) {
             await interaction.deferReply({ ephemeral: true });
             const itemId = interaction.customId.replace('shop_buy_', '');
@@ -1106,14 +1107,13 @@ client.on('interactionCreate', async interaction => {
                     await member.roles.add(ID_ROLI_VIP).catch(() => {});
                 }
             } else if (item.type === 'double_chance') {
-                const expires = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 dni buffa kasynowego
-                user.doubleChanceUntil = expires;
+                user.doubleChanceUntil = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
                 await user.save();
             } else if (item.type === 'custom_role') {
                 user.customRoleExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
                 await user.save();
             } else if (item.type === 'priority_ghost') {
-                // Informacyjnie dla duszka
+                // Obsługa biletu
             } else if (item.type === 'badge') {
                 if (!user.badges.includes(item.badgeName)) {
                     user.badges.push(item.badgeName);
@@ -1123,11 +1123,11 @@ client.on('interactionCreate', async interaction => {
                 user.customVoiceExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
                 await user.save();
             } else if (item.type === 'daily_boost') {
-                user.dailyBoostUntil = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 dni 2x daily
+                user.dailyBoostUntil = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
                 await user.save();
             }
 
-            await interaction.editReply({ content: `🎉 Pomyślnie zakupiono **${item.name}** za **${item.price} PJN-Coins**!` });
+            await interaction.editReply({ content: `🎉 Dziękuję za zakup przedmiotu **${item.name}**! Pomyślnie pobrano **${item.price} PJN-Coins** z Twojego portfela.` });
 
             // Powiadomienie dla administracji
             try {
@@ -1176,8 +1176,8 @@ client.on('interactionCreate', async interaction => {
                     .setTitle(`🎫 Ticket od: ${interaction.user.tag}`)
                     .setDescription(
                         `Witaj <@${interaction.user.id}>!\n\n` +
-                        `Napisz jakiego duszka potrzebujesz, ktoś z ekipy wejdzie i od razu zobaczy Twoją wiadomość (<@&${ID_RANGI_DUSZKOWIEC}>, <@&${ID_RANGI_MODERATOR}>, <@&${ID_RANGI_ADMIN}>) została powiadomiona i wkrótce odpowie.\n\n` +
-                        `Kliknij przycisk **Zamknij Ticket**, gdy juz otrzymasz duszka.`
+                        `Napisz jakiego duszka potrzebujesz, ktoś z ekipy wejdzie i od razu zobaczy Twoją wiadomość.\n\n` +
+                        `Kliknij przycisk **Zamknij Ticket**, gdy już otrzymasz duszka.`
                     )
                     .setTimestamp();
 
@@ -1327,6 +1327,7 @@ client.on('interactionCreate', async interaction => {
         }
     }
 
+    // 3. Obsługa autouzupełniania (Autocomplete)
     if (interaction.isAutocomplete()) {
         if (interaction.commandName === 'mem') {
             const focusedValue = interaction.options.getFocused();
@@ -1346,6 +1347,7 @@ client.on('interactionCreate', async interaction => {
         return;
     }
 
+    // 4. Obsługa komend tekstowych (Slash Commands)
     if (!interaction.isChatInputCommand()) return;
     const { commandName } = interaction;
 
@@ -1628,13 +1630,13 @@ client.on('interactionCreate', async interaction => {
 
         // --- KASYNO Z UWZGLĘDNIENIEM VIP ORAZ PODWÓJNEJ SZANSY ---
         const getCasinoMultiplier = async (userId: string, member: any) => {
-            let winChance = 0.4; // Bazowa szansa ok 40%
+            let winChance = 0.4; 
             let user = await UserModel.findOne({ userId });
             const hasVipRole = member?.roles?.cache?.has(ID_ROLI_VIP);
             const hasDoubleChance = user?.doubleChanceUntil && new Date(user.doubleChanceUntil) > new Date();
 
             if (hasVipRole || hasDoubleChance) {
-                winChance = 0.65; // Zwiększona szansa
+                winChance = 0.65; 
             }
             return winChance;
         };
@@ -1682,7 +1684,7 @@ client.on('interactionCreate', async interaction => {
             user.casinoPlays = (user.casinoPlays || 0) + 1;
             const winChance = await getCasinoMultiplier(interaction.user.id, interaction.member);
             const wynik = Math.random() < 0.5 ? 'orzel' : 'reszka';
-            const guessed = (wybor === wynik) || (Math.random() < winChance && Math.random() < 0.3); // Dodatkowy bonus szansy
+            const guessed = (wybor === wynik) || (Math.random() < winChance && Math.random() < 0.3);
 
             if (guessed) {
                 user.balance += stawka;
@@ -1719,7 +1721,7 @@ client.on('interactionCreate', async interaction => {
             let s3 = symbols[Math.floor(Math.random() * symbols.length)];
 
             if (Math.random() < winChance) {
-                s1 = s2 = symbols[Math.floor(Math.random() * symbols.length)]; // Wymuszenie wygranej z boostem
+                s1 = s2 = symbols[Math.floor(Math.random() * symbols.length)];
             }
 
             if (s1 === s2 && s2 === s3) {
@@ -1868,7 +1870,7 @@ client.on('interactionCreate', async interaction => {
             const hasDailyBoost = user.dailyBoostUntil && new Date(user.dailyBoostUntil) > new Date();
 
             if (hasVipRole || hasDailyBoost) {
-                dailyAmount *= 2; // Podwojone daily
+                dailyAmount *= 2; 
             }
 
             user.balance += dailyAmount;
@@ -1953,48 +1955,6 @@ client.on('interactionCreate', async interaction => {
 
     } catch (error) {
         console.error(error);
-    }
-});
-
-// Obsługa interaktywnego panelu sklepu (Menu wyboru)
-client.on('interactionCreate', async interaction => {
-    if (interaction.isStringSelectMenu() && interaction.customId === 'shop_select') {
-        await interaction.deferReply({ ephemeral: true });
-        const itemId = interaction.values[0];
-        const item = SHOP_ITEMS.find(i => i.id === itemId);
-        if (!item) return;
-
-        let user = await UserModel.findOne({ userId: interaction.user.id });
-        if (!user) user = await UserModel.create({ userId: interaction.user.id });
-
-        const canAfford = user.balance >= item.price;
-        const diff = item.price - user.balance;
-
-        const previewEmbed = new EmbedBuilder()
-            .setColor(canAfford ? 0x2ECC71 : 0xE74C3C)
-            .setTitle(`🛒 Podgląd przedmiotu: ${item.name}`)
-            .setDescription(
-                `📝 **Opis:** ${item.description}\n` +
-                `💰 **Cena:** ${item.price} PJN-Coins\n` +
-                `💼 **Twój stan portfela:** ${user.balance} PJN-Coins\n\n` +
-                (canAfford 
-                    ? `✅ **Status:** Stać Cię na ten zakup! Kliknij przycisk poniżej, aby sfinalizować transakcję.` 
-                    : `❌ **Status:** Brakuje Ci jeszcze **${diff} PJN-Coins**!`)
-            );
-
-        const components = [];
-        if (canAfford) {
-            const buyButtonRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
-                new ButtonBuilder()
-                    .setCustomId(`shop_buy_${item.id}`)
-                    .setLabel('Potwierdź zakup')
-                    .setStyle(ButtonStyle.Success)
-                    .setEmoji('🛍️')
-            );
-            components.push(buyButtonRow);
-        }
-
-        await interaction.editReply({ embeds: [previewEmbed], components: components });
     }
 });
 
@@ -2102,7 +2062,6 @@ client.on('messageCreate', async message => {
         let user = await UserModel.findOne({ userId: message.author.id });
         if (!user) user = await UserModel.create({ userId: message.author.id });
 
-        // Sprawdzenie bonusu 2x PJN-Coins za wiadomości (dla roli VIP)
         const hasVipRole = message.member?.roles?.cache?.has(ID_ROLI_VIP);
         const coinsEarned = hasVipRole ? 2 : 1;
 
