@@ -2298,13 +2298,74 @@ client.on('guildMemberRemove', async member => {
         const logChannel = await member.guild.channels.fetch(NOTIF_CONFIG.leaveLogChannelId) as TextChannel;
         if (!logChannel) return;
 
-        let color = 0xED4245;
-        let title = '📤 Użytkownik opuścił serwer';
-        let description = `**${member.user.tag}** opuścił naszą społeczność.`;
+        // Sprawdzenie czy użytkownik został wyrzucony lub zbanowany (Audyt logi)
+        const fetchedKickLogs = await member.guild.fetchAuditLogs({
+            limit: 1,
+            type: AuditLogEvent.MemberKick,
+        }).catch(() => null);
+        
+        const kickLog = fetchedKickLogs?.entries.first();
+        let actionType = 'leave';
+        let executor = null;
+        let reason = 'Brak powód';
 
-        const embed = new EmbedBuilder().setColor(color).setTitle(title).setDescription(description).setTimestamp();
+        if (kickLog && kickLog.target && kickLog.target.id === member.id && (Date.now() - kickLog.createdTimestamp < 5000)) {
+            actionType = 'kick';
+            executor = kickLog.executor;
+            reason = kickLog.reason || 'Brak powód';
+        } else {
+            const fetchedBanLogs = await member.guild.fetchAuditLogs({
+                limit: 1,
+                type: AuditLogEvent.MemberBanAdd,
+            }).catch(() => null);
+            const banLog = fetchedBanLogs?.entries.first();
+            if (banLog && banLog.target && banLog.target.id === member.id && (Date.now() - banLog.createdTimestamp < 5000)) {
+                actionType = 'ban';
+                executor = banLog.executor;
+                reason = banLog.reason || 'Brak powód';
+            }
+        }
+
+        const joinedAtTimestamp = member.joinedTimestamp ? Math.floor(member.joinedTimestamp / 1000) : null;
+        const joinedAtText = joinedAtTimestamp ? `<t:${joinedAtTimestamp}:R>` : 'Nieznana';
+        const memberCount = member.guild.memberCount;
+
+        const embed = new EmbedBuilder()
+            .setThumbnail(member.user.displayAvatarURL({ dynamic: true }))
+            .setTimestamp();
+
+        if (actionType === 'kick') {
+            embed.setColor(0xE67E22)
+                 .setTitle('🥾 Użytkownik został wyrzucony (Kick)')
+                 .setDescription(
+                     `**${member.user.tag}**\n\`(${member.id})\`\nzostał wyrzucony z serwera przez **${executor ? executor.tag : 'Nieznany'}**.\n` +
+                     `📌 **Powód:** ${reason}\n\n` +
+                     `📅 **Dołączył na serwer**\n${joinedAtText}\n\n` +
+                     `👥 **Liczba członków**\n${memberCount}`
+                 );
+        } else if (actionType === 'ban') {
+            embed.setColor(0xED4245)
+                 .setTitle('🔨 Użytkownik został zbanowany (Ban)')
+                 .setDescription(
+                     `**${member.user.tag}**\n\`(${member.id})\`\nzostał zbanowany na serwerze przez **${executor ? executor.tag : 'Nieznany'}**.\n` +
+                     `📌 **Powód:** ${reason}\n\n` +
+                     `📅 **Dołączył na serwer**\n${joinedAtText}\n\n` +
+                     `👥 **Liczba członków**\n${memberCount}`
+                 );
+        } else {
+            embed.setColor(0xED4245)
+                 .setTitle('📤 Użytkownik opuścił serwer')
+                 .setDescription(
+                     `**${member.user.tag}**\n\`(${member.id})\`\nopuścił naszą społeczność.\n\n` +
+                     `📅 **Dołączył na serwer**\n${joinedAtText}\n\n` +
+                     `👥 **Liczba członków**\n${memberCount}`
+                 );
+        }
+
         await logChannel.send({ embeds: [embed] });
-    } catch (error) {}
+    } catch (error) {
+        console.error('Błąd w systemie logów wyjść/wyrzuceń:', error);
+    }
 });
 
 import http from 'http';
