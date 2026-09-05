@@ -163,7 +163,7 @@ const ADMIN_LOG_CHANNEL_ID = "1532399010785263799";
 
 const SHOP_ITEMS = [
     { id: 'vip_role', name: '🟡 Rola VIP (Stała/Dostęp)', price: 15000, description: 'Zwiększona szansa w kasynie, dostęp do zablokowanych kanałów + 2x PJN-Coins za wiadomości!', type: 'vip' },
-    { id: 'double_chance', name: '🍀 Podwójna szansa w kasynie', price: 5000, description: 'Zwiększa szansę na wygraną w grach kasynowych.', type: 'double_chance' },
+    { id: 'double_chance', name: '🍀 Podwójna szansa w kasynie (30 dni)', price: 5000, description: 'Zwiększa szansę na wygraną w grach kasynowych.', type: 'double_chance' },
     { id: 'custom_role', name: '✨ Własna rola na 30 dni', price: 10000, description: 'Możliwość posiadania spersonalizowanej rangi na serwerze.', type: 'custom_role' },
     { id: 'priority_ghost', name: '👻 Bilet po duszka poza kolejką', price: 7000, description: 'Odbiór dowolnego duszka poza kolejką podczas streama.', type: 'priority_ghost' },
     { id: 'badge_client', name: '🏷️ Odznaka "Klient sklepu PJN"', price: 1000, description: 'Unikalna odznaka w profilu.', type: 'badge', badgeName: '🏷️ **Klient sklepu PJN**' },
@@ -172,7 +172,7 @@ const SHOP_ITEMS = [
     { id: 'daily_boost', name: '🎁 Pakiet "2x Daily" na tydzień', price: 8000, description: 'Podwójna ilość PJN-Coins z komendy /daily przez 7 dni.', type: 'daily_boost' }
 ];
 
-const LIVE_IMAGE_URL = "https://cdn.discordapp.com/attachments/1532321067731783684/1534837837374029914/IMG_20260806_094843.jpg?ex=6a7594a0&is=6a744320&hm=822597b60136cc08a4aac4b01d9684bcda8b7d6e388232f24a5c7f15ed3f9e5e&";
+const LIVE_IMAGE_URL = "https://cdn.discordapp.com/attachments/1532321067731783684/1545708586108325898/IMG_20260905_101345.jpg?ex=6a9d20cc&is=6a9bcf4c&hm=a3a2a62e8f092f637ca72db6600ba805fb1a84a709595a77073021274e250a3e&";
 
 function isAuthorized(userId: string): boolean {
     const adminIds = ['1175798371995361343', '1493928957408448563'];
@@ -273,7 +273,7 @@ function createBadgesInfoEmbed() {
                 inline: false
             },
             {
-                name: '💰 Gospodarka, Kasyno i Społeczność',
+                name: '💰 Gospodarka, Kasyno, Sklep i Społeczność',
                 value: 
                     '• 💰 **Kapitalista** — 5 000 PJN-Coins\n' +
                     '• 💎 **Magnat Finansowy** — 10 000 PJN-Coins\n' +
@@ -283,6 +283,8 @@ function createBadgesInfoEmbed() {
                     '• 🎰 **Ryzykant** — 100 gier w kasynie\n' +
                     '• 🍀 **Ulubieniec Fortuna** — 3 wygrane z rzędu w kasynie\n' +
                     '• 🎯 **Czarna Seria** — 5 przegranych z rzędu w kasynie\n' +
+                    '• 🏷️ **Klient sklepu PJN** — Zakup w oficjalnym sklepie serwera\n' +
+                    '• 🎖️ **Zaawansowany klient** — Zakup zaawansowanego przedmiotu w sklepie\n' +
                     '• 💡 **Filozof** — Dodanie 5 cytatów\n' +
                     '• 🤝 **Pomocna Dłoń** — 10 akcji pomocy\n' +
                     '• ⏳ **Weteran Półrocza / Weteran** — Staż na serwerze (6 miesięcy / rok)\n' +
@@ -424,10 +426,11 @@ async function setupLfgChannelInstruction() {
         const channel = await client.channels.fetch(ID_KANALU_SZUKAM_DO_GRY).catch(() => null) as TextChannel;
         if (!channel) return;
 
-        const messages = await channel.messages.fetch({ limit: 10 }).catch(() => null);
+        // Bezpieczne czyszczenie – usuwamy TYLKO starą wiadomość instrukcji bota, pozostawiając ogłoszenia graczy netknięte
+        const messages = await channel.messages.fetch({ limit: 20 }).catch(() => null);
         if (messages) {
             for (const [_, msg] of messages) {
-                if (msg.author.id === client.user?.id) {
+                if (msg.author.id === client.user?.id && msg.embeds[0]?.title?.includes('Centrum LFG')) {
                     await msg.delete().catch(() => {});
                 }
             }
@@ -441,7 +444,7 @@ async function setupLfgChannelInstruction() {
                 '🛠️ **Jak stworzyć ogłoszenie o grze?**\n' +
                 `1. Wpisz na tym kanale (<#${ID_KANALU_SZUKAM_DO_GRY}>) komendę: \`/szukam\`\n` +
                 '2. Wybierz grę z listy (Fortnite, CS2, Minecraft, GTA V, Valorant lub League of Legends).\n' +
-                '3. Podaj maksymalną liczbę osób w drużynie oraz dodaj opcjonalny opis (np. ranga, mikrofon, styl gry).\n' +
+                '3. Podaj maksymalną liczbę osób w drużynie oraz dodaj opcjonalny opis (np. ranga, mikrofon, styl gry).\n` +
                 '4. Bot wygeneruje interaktywne ogłoszenie wraz z pingiem odpowiedniej roli!\n\n' +
                 '👥 **Jak dołączyć do ekipy?**\n' +
                 '• Kliknij zielony przycisk **"Dołącz do ekipy"** pod wybranym ogłoszeniem.\n' +
@@ -807,6 +810,27 @@ function startLfgAutoCloser() {
     }, 60 * 1000);
 }
 
+async function cleanupOrphanedLfgVoices() {
+    try {
+        const activeLfgWithVoice = await LFGModel.find({ status: { $ne: 'closed' }, voiceChannelId: { $ne: null } });
+        for (const [_, guild] of client.guilds.cache) {
+            const category = guild.channels.cache.get(LFG_CONFIG.CATEGORY_VOICE);
+            if (category && category.type === ChannelType.GuildCategory) {
+                for (const [_, channel] of category.children.cache) {
+                    if (channel.type === ChannelType.GuildVoice) {
+                        const isRegisteredInDb = activeLfgWithVoice.some(doc => doc.voiceChannelId === channel.id);
+                        if (!isRegisteredInDb) {
+                            await channel.delete('Usuwanie osieroconego kanału głosowego LFG po resecie bota').catch(() => {});
+                        }
+                    }
+                }
+            }
+        }
+    } catch (e) {
+        console.error('Błąd podczas czyszczenia kanałów głosowych LFG:', e);
+    }
+}
+
 function startHourlyAnnouncements() {
     cron.schedule('0 * * * *', async () => {
         try {
@@ -893,6 +917,7 @@ function startYouTubeRssChecker() {
 const commands = [
     new SlashCommandBuilder().setName('portfel').setDescription('Sprawdź stan swoich PJN-Coins w portfelu'),
     new SlashCommandBuilder().setName('sklep').setDescription('Otwórz podgląd sklepu i sprawdź swoje środki'),
+    new SlashCommandBuilder().setName('moje-przedmioty').setDescription('Sprawdź swoje aktywne przedmioty z sklepu i czas ich wygaśnięcia'),
     new SlashCommandBuilder().setName('historia-sklepu').setDescription('Wyświetl historię zakupów (Admin)').setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
     new SlashCommandBuilder().setName('topka').setDescription('Zobacz ranking najbogatszych graczy'),
     new SlashCommandBuilder().setName('ustaw-topke').setDescription('Ustaw ten kanał jako ranking (Admin)').setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
@@ -1009,6 +1034,7 @@ client.once('ready', async () => {
     await setupShowcaseChannelInstruction();
     await setupReputationChannelInstruction();
     await setupShopChannel();
+    await cleanupOrphanedLfgVoices();
 
     const rest = new REST({ version: '10' }).setToken(token);
     try {
@@ -1075,7 +1101,6 @@ client.on('interactionCreate', async interaction => {
 
     // 2. Obsługa przycisków
     if (interaction.isButton()) {
-        // Poprawiona obsługa zakupu ze sklepu
         if (interaction.customId.startsWith('shop_buy_')) {
             await interaction.deferReply({ ephemeral: true });
             const itemId = interaction.customId.replace('shop_buy_', '');
@@ -1099,12 +1124,28 @@ client.on('interactionCreate', async interaction => {
                 price: item.price
             });
 
-            const member = interaction.guild?.members.cache.get(interaction.user.id) || await interaction.guild?.members.fetch(interaction.user.id).catch(() => null);
+            // Automatyczne przyznanie odznaki podstawowej lub zaawansowanej przy zakupie
+            if (!user.badges.includes('🏷️ **Klient sklepu PJN**')) {
+                user.badges.push('🏷️ **Klient sklepu PJN**');
+            }
+            if ((item.price >= 5000 || item.type === 'vip' || item.type === 'custom_role') && !user.badges.includes('🎖️ **Zaawansowany klient sklepu PJN**')) {
+                user.badges.push('🎖️ **Zaawansowany klient sklepu PJN**');
+            }
+            await user.save();
+
+            const member = interaction.member || await interaction.guild?.members.fetch(interaction.user.id).catch(() => null);
 
             // Logika przyznawania nagrody
             if (item.type === 'vip') {
-                if (member) {
-                    await member.roles.add(ID_ROLI_VIP).catch(() => {});
+                if (member && member.roles) {
+                    try {
+                        await member.roles.add(ID_ROLI_VIP);
+                        console.log(`[SKLEP] Pomyślnie nadano rolę VIP użytkownikowi ${interaction.user.tag}`);
+                    } catch (err) {
+                        console.error('[SKLEP] Błąd podczas nadawania roli VIP:', err);
+                    }
+                } else {
+                    console.log(`[SKLEP] Nie udało się pobrać obiektu member dla ${interaction.user.id}`);
                 }
             } else if (item.type === 'double_chance') {
                 user.doubleChanceUntil = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
@@ -1361,6 +1402,64 @@ client.on('interactionCreate', async interaction => {
                 .setColor(0xF1C40F)
                 .setTitle('🛒 Podgląd Portfela i Sklepu PJN')
                 .setDescription(`💰 Twój aktualny stan portfela: **${user.balance} PJN-Coins**\n\nPrzejdź na kanał <#${ID_KANAL_SKLEPU}>, aby dokonać zakupów z interaktywnego panelu!`);
+            await interaction.editReply({ embeds: [embed] });
+            return;
+        }
+
+        if (commandName === 'moje-przedmioty') {
+            await interaction.deferReply({ ephemeral: true });
+            let user = await UserModel.findOne({ userId: interaction.user.id });
+            if (!user) user = await UserModel.create({ userId: interaction.user.id });
+
+            const now = new Date();
+            let desc = `📦 **Aktywne usługi i przedmioty użytkownika <@${interaction.user.id}>:**\n\n`;
+            let activeCount = 0;
+
+            const formatTimeLeft = (date: Date) => {
+                const diff = new Date(date).getTime() - now.getTime();
+                if (diff <= 0) return 'Wygasło';
+                const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+                const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+                return `Pozostało: **${days} dni, ${hours} godz.** (<t:${Math.floor(new Date(date).getTime() / 1000)}:R>)`;
+            };
+
+            const member = interaction.member || await interaction.guild?.members.fetch(interaction.user.id).catch(() => null);
+            const hasVip = member?.roles?.cache?.has(ID_ROLI_VIP);
+            if (hasVip) {
+                activeCount++;
+                desc += `🟡 **Rola VIP**\n> Status: Aktywna (Stały dostęp / korzyści)\n\n`;
+            }
+
+            if (user.doubleChanceUntil && new Date(user.doubleChanceUntil) > now) {
+                activeCount++;
+                desc += `🍀 **Podwójna szansa w kasynie**\n> ${formatTimeLeft(user.doubleChanceUntil)}\n\n`;
+            }
+
+            if (user.dailyBoostUntil && new Date(user.dailyBoostUntil) > now) {
+                activeCount++;
+                desc += `🎁 **Pakiet "2x Daily"**\n> ${formatTimeLeft(user.dailyBoostUntil)}\n\n`;
+            }
+
+            if (user.customRoleExpiresAt && new Date(user.customRoleExpiresAt) > now) {
+                activeCount++;
+                desc += `✨ **Własna rola na serwerze**\n> ${formatTimeLeft(user.customRoleExpiresAt)}\n\n`;
+            }
+
+            if (user.customVoiceExpiresAt && new Date(user.customVoiceExpiresAt) > now) {
+                activeCount++;
+                desc += `🎙️ **Własny kanał głosowy**\n> ${formatTimeLeft(user.customVoiceExpiresAt)}\n\n`;
+            }
+
+            if (activeCount === 0) {
+                desc += `*Nie masz obecnie żadnych aktywnych usług czasowych ani VIP ze sklepu.*`;
+            }
+
+            const embed = new EmbedBuilder()
+                .setColor(0x3498DB)
+                .setTitle('⏳ Twoje Aktywne Przedmioty w Sklepie')
+                .setDescription(desc)
+                .setTimestamp();
+
             await interaction.editReply({ embeds: [embed] });
             return;
         }
