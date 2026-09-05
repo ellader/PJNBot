@@ -426,7 +426,6 @@ async function setupLfgChannelInstruction() {
         const channel = await client.channels.fetch(ID_KANALU_SZUKAM_DO_GRY).catch(() => null) as TextChannel;
         if (!channel) return;
 
-        // Bezpieczne czyszczenie – usuwamy TYLKO starą wiadomość instrukcji bota, pozostawiając ogłoszenia graczy netknięte
         const messages = await channel.messages.fetch({ limit: 20 }).catch(() => null);
         if (messages) {
             for (const [_, msg] of messages) {
@@ -444,7 +443,7 @@ async function setupLfgChannelInstruction() {
                 '🛠️ **Jak stworzyć ogłoszenie o grze?**\n' +
                 `1. Wpisz na tym kanale (<#${ID_KANALU_SZUKAM_DO_GRY}>) komendę: \`/szukam\`\n` +
                 '2. Wybierz grę z listy (Fortnite, CS2, Minecraft, GTA V, Valorant lub League of Legends).\n' +
-                '3. Podaj maksymalną liczbę osób w drużynie oraz dodaj opcjonalny opis (np. ranga, mikrofon, styl gry).\n` +
+                '3. Podaj maksymalną liczbę osób w drużynie oraz dodaj opcjonalny opis (np. ranga, mikrofon, styl gry).\n' +
                 '4. Bot wygeneruje interaktywne ogłoszenie wraz z pingiem odpowiedniej roli!\n\n' +
                 '👥 **Jak dołączyć do ekipy?**\n' +
                 '• Kliknij zielony przycisk **"Dołącz do ekipy"** pod wybranym ogłoszeniem.\n' +
