@@ -11,7 +11,8 @@ import {
     ButtonBuilder,
     ButtonStyle,
     ChannelType,
-    AuditLogEvent
+    AuditLogEvent,
+    StringSelectMenuBuilder
 } from 'discord.js';
 import mongoose from 'mongoose';
 import cron from 'node-cron';
@@ -42,10 +43,25 @@ const userSchema = new mongoose.Schema({
     joinedAt: { type: Date, default: Date.now },
     badges: { type: [String], default: [] },
     reputation: { type: Number, default: 0 },
-    exp: { type: Number, default: 0 }
+    exp: { type: Number, default: 0 },
+    // Dodatkowe pola aktywne ze sklepu
+    doubleChanceUntil: { type: Date, default: null }, // Podwójna szansa w kasynie
+    dailyBoostUntil: { type: Date, default: null },     // 2x Daily na tydzień
+    customRoleExpiresAt: { type: Date, default: null }, // Własna rola na 30 dni
+    customVoiceExpiresAt: { type: Date, default: null },// Własny kanał głosowy na 30 dni
+    customRoleId: { type: String, default: null }
 });
 
 const UserModel = mongoose.model('User', userSchema);
+
+// Schemat historii zakupów w sklepie
+const shopHistorySchema = new mongoose.Schema({
+    userId: { type: String, required: true },
+    itemName: { type: String, required: true },
+    price: { type: Number, required: true },
+    purchasedAt: { type: Date, default: Date.now }
+});
+const ShopHistoryModel = mongoose.model('ShopHistory', shopHistorySchema);
 
 const configSchema = new mongoose.Schema({
     key: { type: String, required: true, unique: true },
@@ -77,9 +93,9 @@ const lfgSchema = new mongoose.Schema({
     maxPlayers: { type: Number, required: true },
     currentPlayers: { type: [String], required: true },
     description: { type: String, default: '' },
-    status: { type: String, default: 'active' }, // active, full, closed
+    status: { type: String, default: 'active' }, 
     voiceChannelId: { type: String, default: null },
-    createdAt: { type: Date, default: Date.now } // Data utworzenia do automatycznego wygaszania
+    createdAt: { type: Date, default: Date.now } 
 });
 const LFGModel = mongoose.model('LFG', lfgSchema);
 
@@ -100,7 +116,7 @@ const client = new Client({
 
 // === KONFIGURACJA GIER I RÓL DLA SYSTEMU LFG ===
 const LFG_CONFIG = {
-    CATEGORY_VOICE: '1545289592901468170', // Kategoria dla kanałów głosowych LFG
+    CATEGORY_VOICE: '1545289592901468170', 
     GAMES: {
         fortnite: { name: 'Fortnite', roleId: '1532400998625181907', emoji: '🎮' },
         cs2: { name: 'Counter-Strike 2', roleId: '1532401066832822404', emoji: '🎯' },
@@ -113,12 +129,12 @@ const LFG_CONFIG = {
 
 const NOTIF_CONFIG = {
     languspjn: {
-        channelId: 'UCTHaiWkHAgH_hN7K20Fq60g',
-        rssUrl: 'https://www.youtube.com/feeds/videos.xml?user=przyszloscjestnasza'
+        channelId: '1542101793171972146',
+        rssUrl: 'https://www.youtube.com/feeds/videos.xml?channel_id=TUTAJ_WKLEJ_ID_LANGUSPJN'
     },
     elladermusic: {
-        channelId: 'UCY62qkAfdTNvg-ZiMBIPzUA',
-        rssUrl: 'https://www.youtube.com/feeds/videos.xml?user=ellader'
+        channelId: '1542101962185646111',
+        rssUrl: 'https://www.youtube.com/feeds/videos.xml?channel_id=TUTAJ_WKLEJ_ID_ELLADER'
     },
     leaveLogChannelId: '1542102521814712371'
 };
@@ -127,7 +143,7 @@ const parser = new Parser();
 const ANNOUNCE_CHANNEL_ID = '1532399010785263799';
 const ID_KANALU_CYTATY = '1534780578912665653';
 const ID_KANALU_MEMOW = '1534833757335326810';
-const ID_KANALU_SZUKAM_DO_GRY = '1532449084559069214'; // Kanał •szukam-do-gry
+const ID_KANALU_SZUKAM_DO_GRY = '1532449084559069214'; 
 const CHANNEL_POWITANIA = "witamy";
 const ID_KANALU_DUSZKI = "1532977723843285112"; 
 const ID_RANGI_DUSZKOWIEC = "1532978703842283551";
@@ -139,6 +155,22 @@ const ID_ALEJA_SLAW_REPUTACJI = "1540238376278687754";
 const ID_RANGI_WZOROWY_TRADER = "1540235169653592084";   
 const ID_RANGI_POZYTYWNY_TRADER = "1540251183892008970"; 
 const ID_RANGI_NEGATYWNY_TRADER = "1540235296665239624"; 
+
+// === KONFIGURACJA SKLEPU I ADMINISTRACJI ===
+const ID_KANAL_SKLEPU = "1545690716309553212";
+const ID_ROLI_VIP = "1545691786289221632";
+const ADMIN_LOG_CHANNEL_ID = "1532399010785263799"; // Kanał powiadomień dla administracji (możesz zmienić na ID logów adm)
+
+const SHOP_ITEMS = [
+    { id: 'vip_role', name: '🟡 Rola VIP (Stała/Dostęp)', price: 15000, description: 'Zwiększona szansa w kasynie, dostęp do zablokowanych kanałów + 2x PJN-Coins za wiadomości!', type: 'vip' },
+    { id: 'double_chance', name: '🍀 Podwójna szansa w kasynie', price: 5000, description: 'Zwiększa szansę na wygraną w grach kasynowych.', type: 'double_chance' },
+    { id: 'custom_role', name: '✨ Własna rola na 30 dni', price: 10000, description: 'Możliwość posiadania spersonalizowanej rangi na serwerze.', type: 'custom_role' },
+    { id: 'priority_ghost', name: '👻 Bilet po duszka poza kolejką', price: 7000, description: 'Odbiór dowolnego duszka poza kolejką podczas streama.', type: 'priority_ghost' },
+    { id: 'badge_client', name: '🏷️ Odznaka "Klient sklepu PJN"', price: 1000, description: 'Unikalna odznaka w profilu.', type: 'badge', badgeName: '🏷️ **Klient sklepu PJN**' },
+    { id: 'badge_advanced', name: '🎖️ Odznaka "Zaawansowany klient"', price: 5000, description: 'Ekskluzywna zaawansowana odznaka w profilu.', type: 'badge', badgeName: '🎖️ **Zaawansowany klient sklepu PJN**' },
+    { id: 'custom_voice', name: '🎙️ Własny kanał głosowy na 30 dni', price: 6000, description: 'Prywatny pokój głosowy na okres 30 dni.', type: 'custom_voice' },
+    { id: 'daily_boost', name: '🎁 Pakiet "2x Daily" na tydzień', price: 8000, description: 'Podwójna ilość PJN-Coins z komendy /daily przez 7 dni.', type: 'daily_boost' }
+];
 
 const LIVE_IMAGE_URL = "https://cdn.discordapp.com/attachments/1532321067731783684/1534837837374029914/IMG_20260806_094843.jpg?ex=6a7594a0&is=6a744320&hm=822597b60136cc08a4aac4b01d9684bcda8b7d6e388232f24a5c7f15ed3f9e5e&";
 
@@ -341,7 +373,53 @@ async function setupMemeChannelInstruction() {
     }
 }
 
-// === FUNKCJA INSTRUKCJI I PRZYPINANIA DLA KANAŁU SZUKAM_DO_GRY ===
+// === FUNKCJA AUTOMATYCZNEGO PANELU SKLEPU NA KANALE ===
+async function setupShopChannel() {
+    try {
+        const channel = await client.channels.fetch(ID_KANAL_SKLEPU).catch(() => null) as TextChannel;
+        if (!channel) return;
+
+        const messages = await channel.messages.fetch({ limit: 10 }).catch(() => null);
+        if (messages) {
+            for (const [_, msg] of messages) {
+                if (msg.author.id === client.user?.id) {
+                    await msg.delete().catch(() => {});
+                }
+            }
+        }
+
+        let desc = 'Witaj w oficjalnym sklepie serwera PJN! Wydawaj swoje PJN-Coins na unikalne przedmioty, role i usługi.\n\n**📋 Dostępny asortyment:**\n\n';
+        SHOP_ITEMS.forEach((item, index) => {
+            desc += `**${index + 1}. ${item.name}** — 💰 **${item.price} PJN-Coins**\n> *${item.description}*\n\n`;
+        });
+
+        const embed = new EmbedBuilder()
+            .setColor(0xF1C40F)
+            .setTitle('🛒 Oficjalny Sklep Serwera PJN')
+            .setDescription(desc)
+            .setImage(LIVE_IMAGE_URL)
+            .setTimestamp()
+            .setFooter({ text: 'PJN System Ekonomii • Wybierz przedmiot poniżej' });
+
+        const selectMenu = new StringSelectMenuBuilder()
+            .setCustomId('shop_select')
+            .setPlaceholder('Wybierz przedmiot, który chcesz kupić...')
+            .addOptions(
+                SHOP_ITEMS.map(item => ({
+                    label: item.name.substring(0, 25),
+                    description: `Cena: ${item.price} PJN-Coins`,
+                    value: item.id
+                }))
+            );
+
+        const row = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(selectMenu);
+        const sentMsg = await channel.send({ embeds: [embed], components: [row] });
+        await sentMsg.pin().catch(() => {});
+    } catch (e) {
+        console.error('Błąd inicjalizacji kanału sklepu:', e);
+    }
+}
+
 async function setupLfgChannelInstruction() {
     try {
         const channel = await client.channels.fetch(ID_KANALU_SZUKAM_DO_GRY).catch(() => null) as TextChannel;
@@ -364,12 +442,12 @@ async function setupLfgChannelInstruction() {
                 '🛠️ **Jak stworzyć ogłoszenie o grze?**\n' +
                 `1. Wpisz na tym kanale (<#${ID_KANALU_SZUKAM_DO_GRY}>) komendę: \`/szukam\`\n` +
                 '2. Wybierz grę z listy (Fortnite, CS2, Minecraft, GTA V, Valorant lub League of Legends).\n' +
-                '3. Podaj maksymalną liczbę osób w drużynie oraz dodaj opcjonalny opis (np. ranga, wymagany mikrofon, styl gry).\n' +
+                '3. Podaj maksymalną liczbę osób w drużynie oraz dodaj opcjonalny opis (np. ranga, mikrofon, styl gry).\n' +
                 '4. Bot wygeneruje interaktywne ogłoszenie wraz z pingiem odpowiedniej roli!\n\n' +
                 '👥 **Jak dołączyć do ekipy?**\n' +
                 '• Kliknij zielony przycisk **"Dołącz do ekipy"** pod wybranym ogłoszeniem.\n' +
                 '• Gdy skład się zapełni (lub autor kliknie utworzenie pokoju), bot **automatycznie utworzy dla Was prywatny kanał głosowy** z odpowiednimi uprawnieniami!\n' +
-                '• W każdej chwili możesz opuścić ekipę, klikając czerwony przycisk **"Opuść"**, a jako autor możesz zamknąć ogłoszenie, jeśli się rozmyślisz. (Ogłoszenia zamykają się też automatycznie po 30 minutach bezczynności).'
+                '• W każdej chwili możesz opuścić ekipę, klikając czerwony przycisk **"Opuść"**, a jako autor możesz zamknąć ogłoszenie, jeśli się rozmyślisz.'
             )
             .setImage(LIVE_IMAGE_URL)
             .setTimestamp()
@@ -404,8 +482,7 @@ async function setupShowcaseChannelInstruction() {
                 '✨ **Co możesz tutaj wrzucić?**\n' +
                 '• Swoje zdjęcie (lub zdjęcie pasji/zwierzaka, jeśli wolisz zachować prywatność) 📷\n' +
                 '• Kilka słów o sobie: czym się interesujesz, jakiej słuchasz muzyki, w co grasz? 🎧🎮\n' +
-                '• Pozdrowienia dla całej ekipy PJN! 👋\n\n' +
-                '⚠️ *Pamiętaj, aby wszystkie publikowane materiały były zgodne z regulaminem serwera oraz zasadami bezpieczeństwa w internecie.*'
+                '• Pozdrowienia dla całej ekipy PJN! 👋'
             )
             .setImage(LIVE_IMAGE_URL)
             .setTimestamp()
@@ -439,16 +516,8 @@ async function setupReputationChannelInstruction() {
                 'Witaj w oficjalnym centrum reputacji handlowej serwera PJN! Ten kanał służy do oceniania rzetelności innych traderów po zakończonej wymianie.\n\n' +
                 '📜 **Zasady nadawania reputacji:**\n' +
                 '• Oceniaj wyłącznie osoby, z którymi faktycznie dokonałeś wymiany duszków w Fortnite.\n' +
-                '• Możesz ocenić tego samego użytkownika **maksymalnie raz na 24 godziny** (dla innych traderów limit nie obowiązuje – możesz dawać punkty od razu).\n' +
-                '• Fałszywe lub złośliwe punkty (próby zaniżania/zaniżania statystyk bez powodu) będą surowo karane przez administrację.\n\n' +
-                '🛠️ **Dostępne komendy na tym kanale:**\n' +
-                '• `+rep @użytkownik` — Przyznaje punkt pozytywny dla tradera.\n' +
-                '• `-rep @użytkownik` — Przyznaje punkt negatywny za nieudaną lub oszukaną wymianę.\n' +
-                '• `/reputacja` — Sprawdza Twój profil handlowy, punkty, exp oraz aktualną rangę tranzakcyjną.\n\n' +
-                '🛡️ **Progi rang handlowych:**\n' +
-                '• 🟡 **Wzorowy Trader** — Osiągnij +50 punktów reputacji\n' +
-                '• 🟢 **Pozytywny Trader** — Osiągnij +10 punktów reputacji\n' +
-                '• 🟠 **Negatywny Trader** — Spadek poniżej -5 punktów reputacji'
+                '• Możesz ocenić tego samego użytkownika **maksymalnie raz na 24 godziny**.\n' +
+                '• Komendy: `+rep @użytkownik`, `-rep @użytkownik`, `/reputacja`.'
             )
             .setImage(LIVE_IMAGE_URL)
             .setTimestamp()
@@ -695,7 +764,6 @@ async function startBadgesInfoUpdater() {
     }, 10 * 60 * 1000);
 }
 
-// === FUNKCJA AUTOMATYCZNEGO ZAMYKANIA PRZETERMINOWANYCH LFG (CO 1 MINUTE) ===
 function startLfgAutoCloser() {
     setInterval(async () => {
         try {
@@ -709,7 +777,6 @@ function startLfgAutoCloser() {
                 lfgDoc.status = 'closed';
                 await lfgDoc.save();
 
-                // Usunięcie powiązanego kanału głosowego
                 if (lfgDoc.voiceChannelId) {
                     try {
                         for (const [_, guild] of client.guilds.cache) {
@@ -724,7 +791,6 @@ function startLfgAutoCloser() {
                     }
                 }
 
-                // Edycja wiadomości na czacie
                 try {
                     for (const [_, guild] of client.guilds.cache) {
                         const channel = await guild.channels.fetch(lfgDoc.channelId).catch(() => null) as TextChannel;
@@ -736,13 +802,9 @@ function startLfgAutoCloser() {
                             }
                         }
                     }
-                } catch (err) {
-                    console.error('Błąd aktualizacji wiadomości LFG przy automatycznym zamknięciu:', err);
-                }
+                } catch (err) {}
             }
-        } catch (err) {
-            console.error('Błąd w zadaniu automatycznego zamykania LFG:', err);
-        }
+        } catch (err) {}
     }, 60 * 1000);
 }
 
@@ -800,7 +862,6 @@ async function sendNotification(targetKey: 'languspjn' | 'elladermusic', platfor
     });
 }
 
-// === AUTOMATYCZNY SPRAWDZACZ RSS YOUTUBE ===
 const lastVideoIds: { [key: string]: string } = {};
 
 async function checkYouTubeRssFeeds() {
@@ -832,6 +893,8 @@ function startYouTubeRssChecker() {
 
 const commands = [
     new SlashCommandBuilder().setName('portfel').setDescription('Sprawdź stan swoich PJN-Coins w portfelu'),
+    new SlashCommandBuilder().setName('sklep').setDescription('Otwórz podgląd sklepu i sprawdź swoje środki'),
+    new SlashCommandBuilder().setName('historia-sklepu').setDescription('Wyświetl historię zakupów (Admin)').setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
     new SlashCommandBuilder().setName('topka').setDescription('Zobacz ranking najbogatszych graczy'),
     new SlashCommandBuilder().setName('ustaw-topke').setDescription('Ustaw ten kanał jako ranking (Admin)').setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
     new SlashCommandBuilder().setName('ustaw-odznaki').setDescription('Ustaw ten kanał jako centrum odznak (Admin)').setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
@@ -946,6 +1009,7 @@ client.once('ready', async () => {
     await setupTicketChannel(); 
     await setupShowcaseChannelInstruction();
     await setupReputationChannelInstruction();
+    await setupShopChannel(); // Automatyczny stały panel sklepu
 
     const rest = new REST({ version: '10' }).setToken(token);
     try {
@@ -962,11 +1026,125 @@ client.once('ready', async () => {
     startDailyQuotes();
     startReputationTopUpdater();
     startYouTubeRssChecker();
-    startLfgAutoCloser(); // Uruchomienie automatycznego zamykania LFG po 30 minutach
+    startLfgAutoCloser();
 });
 
 client.on('interactionCreate', async interaction => {
+    // Obsługa menu wyboru ze sklepu
+    if (interaction.isStringSelectMenu()) {
+        if (interaction.customId === 'shop_select') {
+            await interaction.deferReply({ ephemeral: true });
+            const itemId = interaction.values[0];
+            const item = SHOP_ITEMS.find(i => i.id === itemId);
+            if (!item) return;
+
+            let user = await UserModel.findOne({ userId: interaction.user.id });
+            if (!user) user = await UserModel.create({ userId: interaction.user.id });
+
+            const canAfford = user.balance >= item.price;
+            const diff = item.price - user.balance;
+
+            const previewEmbed = new EmbedBuilder()
+                .setColor(canAfford ? 0x2ECC71 : 0xE74C3C)
+                .setTitle(`🛒 Podgląd przedmiotu: ${item.name}`)
+                .setDescription(
+                    `📝 **Opis:** ${item.description}\n` +
+                    `💰 **Cena:** ${item.price} PJN-Coins\n` +
+                    `💼 **Twój stan portfela:** ${user.balance} PJN-Coins\n\n` +
+                    (canAfford 
+                        ? `✅ **Status:** Stać Cię na ten zakup! Kliknij przycisk poniżej, aby sfinalizować transakcję.` 
+                        : `❌ **Status:** Brakuje Ci jeszcze **${diff} PJN-Coins**! Aktywność na czacie pomoże Ci je zdobyć.`)
+                );
+
+            const components = [];
+            if (canAfford) {
+                const buyButtonRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+                    new ButtonBuilder()
+                        .setCustomId(`shop_buy_${item.id}`)
+                        .setLabel('Potwierdź zakup')
+                        .setStyle(ButtonStyle.Success)
+                        .setEmoji('🛍️')
+                );
+                components.push(buyButtonRow);
+            }
+
+            await interaction.editReply({ embeds: [previewEmbed], components: components });
+            return;
+        }
+    }
+
     if (interaction.isButton()) {
+        // Obsługa zakupów ze sklepu
+        if (interaction.customId.startsWith('shop_buy_')) {
+            await interaction.deferReply({ ephemeral: true });
+            const itemId = interaction.customId.replace('shop_buy_', '');
+            const item = SHOP_ITEMS.find(i => i.id === itemId);
+            if (!item) return interaction.editReply({ content: '❌ Nie znaleziono takiego przedmiotu.' });
+
+            let user = await UserModel.findOne({ userId: interaction.user.id });
+            if (!user) user = await UserModel.create({ userId: interaction.user.id });
+
+            if (user.balance < item.price) {
+                return interaction.editReply({ content: `❌ Nie masz wystarczająco środków! Posiadasz **${user.balance} PJN-Coins**.` });
+            }
+
+            // Pobranie środków i zapis w historii
+            user.balance -= item.price;
+            await user.save();
+
+            await ShopHistoryModel.create({
+                userId: interaction.user.id,
+                itemName: item.name,
+                price: item.price
+            });
+
+            const member = interaction.guild?.members.cache.get(interaction.user.id) || await interaction.guild?.members.fetch(interaction.user.id).catch(() => null);
+
+            // Logika przyznawania nagrody
+            if (item.type === 'vip') {
+                if (member) {
+                    await member.roles.add(ID_ROLI_VIP).catch(() => {});
+                }
+            } else if (item.type === 'double_chance') {
+                const expires = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 dni buffa kasynowego
+                user.doubleChanceUntil = expires;
+                await user.save();
+            } else if (item.type === 'custom_role') {
+                user.customRoleExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+                await user.save();
+            } else if (item.type === 'priority_ghost') {
+                // Informacyjnie dla duszka
+            } else if (item.type === 'badge') {
+                if (!user.badges.includes(item.badgeName)) {
+                    user.badges.push(item.badgeName);
+                    await user.save();
+                }
+            } else if (item.type === 'custom_voice') {
+                user.customVoiceExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+                await user.save();
+            } else if (item.type === 'daily_boost') {
+                user.dailyBoostUntil = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 dni 2x daily
+                await user.save();
+            }
+
+            await interaction.editReply({ content: `🎉 Pomyślnie zakupiono **${item.name}** za **${item.price} PJN-Coins**!` });
+
+            // Powiadomienie dla administracji
+            try {
+                const adminChannel = await interaction.guild?.channels.fetch(ADMIN_LOG_CHANNEL_ID).catch(() => null) as TextChannel;
+                if (adminChannel) {
+                    const logEmbed = new EmbedBuilder()
+                        .setColor(0xE67E22)
+                        .setTitle('🛒 Nowy zakup w sklepie serwerowym!')
+                        .setDescription(`Użytkownik <@${interaction.user.id}> właśnie dokonał zakupu.\n\n📦 **Przedmiot:** ${item.name}\n💰 **Cena:** ${item.price} PJN-Coins`)
+                        .setTimestamp();
+                    await adminChannel.send({ embeds: [logEmbed] });
+                }
+            } catch (e) {}
+
+            return;
+        }
+
         if (interaction.customId === 'create_ticket') {
             await interaction.deferReply({ ephemeral: true });
             const guild = interaction.guild;
@@ -985,26 +1163,11 @@ client.on('interactionCreate', async interaction => {
                     name: `ticket-${interaction.user.username}`,
                     type: ChannelType.GuildText,
                     permissionOverwrites: [
-                        {
-                            id: guild.id,
-                            deny: [PermissionFlagsBits.ViewChannel],
-                        },
-                        {
-                            id: interaction.user.id,
-                            allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory],
-                        },
-                        {
-                            id: ID_RANGI_DUSZKOWIEC,
-                            allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory],
-                        },
-                        {
-                            id: ID_RANGI_MODERATOR,
-                            allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory],
-                        },
-                        {
-                            id: ID_RANGI_ADMIN,
-                            allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory],
-                        }
+                        { id: guild.id, deny: [PermissionFlagsBits.ViewChannel] },
+                        { id: interaction.user.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] },
+                        { id: ID_RANGI_DUSZKOWIEC, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] },
+                        { id: ID_RANGI_MODERATOR, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] },
+                        { id: ID_RANGI_ADMIN, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] }
                     ],
                 });
 
@@ -1019,11 +1182,7 @@ client.on('interactionCreate', async interaction => {
                     .setTimestamp();
 
                 const closeRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
-                    new ButtonBuilder()
-                        .setCustomId('close_ticket')
-                        .setLabel('Zamknij Ticket')
-                        .setStyle(ButtonStyle.Danger)
-                        .setEmoji('🔒')
+                    new ButtonBuilder().setCustomId('close_ticket').setLabel('Zamknij Ticket').setStyle(ButtonStyle.Danger).setEmoji('🔒')
                 );
 
                 await ticketChannel.send({
@@ -1034,7 +1193,6 @@ client.on('interactionCreate', async interaction => {
 
                 await interaction.editReply({ content: `✅ Stworzono dla Ciebie prywatny ticket: <#${ticketChannel.id}>!` });
             } catch (err) {
-                console.error(err);
                 await interaction.editReply({ content: '❌ Wystąpił błąd podczas tworzenia ticketu.' });
             }
             return;
@@ -1043,11 +1201,8 @@ client.on('interactionCreate', async interaction => {
         if (interaction.customId === 'close_ticket') {
             const channel = interaction.channel as TextChannel;
             if (!channel) return;
-
             await interaction.reply({ content: `🔒 Ticket zostanie zamknięty za 5 sekund...` });
-            setTimeout(async () => {
-                await channel.delete().catch(() => {});
-            }, 5000);
+            setTimeout(async () => { await channel.delete().catch(() => {}); }, 5000);
             return;
         }
 
@@ -1079,13 +1234,9 @@ client.on('interactionCreate', async interaction => {
                         const guild = interaction.guild;
                         if (guild) {
                             const voiceChannel = await guild.channels.fetch(lfgDoc.voiceChannelId).catch(() => null);
-                            if (voiceChannel) {
-                                await voiceChannel.delete('Autor zamknął ogłoszenie LFG');
-                            }
+                            if (voiceChannel) await voiceChannel.delete('Autor zamknął ogłoszenie LFG');
                         }
-                    } catch (err) {
-                        console.error('Błąd podczas usuwania kanału głosowego LFG:', err);
-                    }
+                    } catch (err) {}
                 }
 
                 await updateLFGMessage(interaction.message, lfgDoc);
@@ -1101,42 +1252,27 @@ client.on('interactionCreate', async interaction => {
                 }
 
                 lfgDoc.currentPlayers.push(userId);
-                if (lfgDoc.currentPlayers.length >= lfgDoc.maxPlayers) {
-                    lfgDoc.status = 'full';
-                }
+                if (lfgDoc.currentPlayers.length >= lfgDoc.maxPlayers) lfgDoc.status = 'full';
                 await lfgDoc.save();
 
                 if (lfgDoc.status === 'full' && !lfgDoc.voiceChannelId) {
                     try {
                         const guild = interaction.guild;
                         if (guild) {
-                            const permissionOverwrites = [
-                                {
-                                    id: guild.id,
-                                    deny: [PermissionFlagsBits.ViewChannel],
-                                }
-                            ];
-
+                            const permissionOverwrites = [{ id: guild.id, deny: [PermissionFlagsBits.ViewChannel] }];
                             for (const pId of lfgDoc.currentPlayers) {
-                                permissionOverwrites.push({
-                                    id: pId,
-                                    allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.Connect, PermissionFlagsBits.Speak]
-                                });
+                                permissionOverwrites.push({ id: pId, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.Connect, PermissionFlagsBits.Speak] });
                             }
-
                             const voiceChan = await guild.channels.create({
                                 name: `🎮-${gameInfo?.name || 'Ekipa'}-${interaction.user.username}`,
                                 type: ChannelType.GuildVoice,
                                 parent: LFG_CONFIG.CATEGORY_VOICE,
                                 permissionOverwrites: permissionOverwrites
                             });
-
                             lfgDoc.voiceChannelId = voiceChan.id;
                             await lfgDoc.save();
                         }
-                    } catch (err) {
-                        console.error('Błąd tworzenia automatycznego kanału głosowego LFG:', err);
-                    }
+                    } catch (err) {}
                 }
 
                 await updateLFGMessage(interaction.message, lfgDoc);
@@ -1147,15 +1283,12 @@ client.on('interactionCreate', async interaction => {
                 if (!lfgDoc.currentPlayers.includes(userId)) {
                     return interaction.editReply({ content: '⚠️ Nie jesteś na liście tej ekipy.' });
                 }
-
                 if (lfgDoc.authorId === userId) {
                     return interaction.editReply({ content: '❌ Autor ogłoszenia nie może opuścić własnej ekipy. Użyj przycisku "Zamknij ogłoszenie".' });
                 }
 
                 lfgDoc.currentPlayers = lfgDoc.currentPlayers.filter(id => id !== userId);
-                if (lfgDoc.status === 'full') {
-                    lfgDoc.status = 'active';
-                }
+                if (lfgDoc.status === 'full') lfgDoc.status = 'active';
                 await lfgDoc.save();
 
                 await updateLFGMessage(interaction.message, lfgDoc);
@@ -1166,7 +1299,6 @@ client.on('interactionCreate', async interaction => {
                 if (lfgDoc.authorId !== userId) {
                     return interaction.editReply({ content: '❌ Tylko autor ogłoszenia może wymusić utworzenie pokoju głosowego!' });
                 }
-
                 if (lfgDoc.voiceChannelId) {
                     return interaction.editReply({ content: `⚠️ Kanał głosowy został już utworzony: <#${lfgDoc.voiceChannelId}>!` });
                 }
@@ -1174,37 +1306,22 @@ client.on('interactionCreate', async interaction => {
                 try {
                     const guild = interaction.guild;
                     if (guild) {
-                        const permissionOverwrites = [
-                            {
-                                id: guild.id,
-                                deny: [PermissionFlagsBits.ViewChannel],
-                            }
-                        ];
-
+                        const permissionOverwrites = [{ id: guild.id, deny: [PermissionFlagsBits.ViewChannel] }];
                         for (const pId of lfgDoc.currentPlayers) {
-                            permissionOverwrites.push({
-                                id: pId,
-                                allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.Connect, PermissionFlagsBits.Speak]
-                            });
+                            permissionOverwrites.push({ id: pId, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.Connect, PermissionFlagsBits.Speak] });
                         }
-
                         const voiceChan = await guild.channels.create({
                             name: `🎮-${gameInfo?.name || 'Ekipa'}-${interaction.user.username}`,
                             type: ChannelType.GuildVoice,
                             parent: LFG_CONFIG.CATEGORY_VOICE,
                             permissionOverwrites: permissionOverwrites
                         });
-
                         lfgDoc.voiceChannelId = voiceChan.id;
                         await lfgDoc.save();
-
                         await updateLFGMessage(interaction.message, lfgDoc);
                         return interaction.editReply({ content: `✅ Pomyślnie utworzono prywatny kanał głosowy: <#${voiceChan.id}>!` });
                     }
-                } catch (err) {
-                    console.error('Błąd ręcznego tworzenia kanału LFG:', err);
-                    return interaction.editReply({ content: '❌ Wystąpił błąd podczas tworzenia kanału głosowego.' });
-                }
+                } catch (err) {}
             }
             return;
         }
@@ -1212,20 +1329,13 @@ client.on('interactionCreate', async interaction => {
 
     if (interaction.isAutocomplete()) {
         if (interaction.commandName === 'mem') {
-            const focusedValue = interaction.options.focusedOfType ? interaction.options.getFocused() : interaction.options.getFocused();
+            const focusedValue = interaction.options.getFocused();
             try {
                 const response = await fetch('https://api.imgflip.com/get_memes');
                 const data = await response.json() as any;
-                
                 if (data && data.success && data.data && data.data.memes) {
-                    const memes = data.data.memes;
-                    const filtered = memes
-                        .filter((m: any) => m.name.toLowerCase().includes(focusedValue.toLowerCase()))
-                        .slice(0, 25);
-
-                    await interaction.respond(
-                        filtered.map((m: any) => ({ name: m.name, value: m.id }))
-                    );
+                    const filtered = data.data.memes.filter((m: any) => m.name.toLowerCase().includes(focusedValue.toLowerCase())).slice(0, 25);
+                    await interaction.respond(filtered.map((m: any) => ({ name: m.name, value: m.id })));
                 } else {
                     await interaction.respond([]);
                 }
@@ -1240,6 +1350,43 @@ client.on('interactionCreate', async interaction => {
     const { commandName } = interaction;
 
     try {
+        if (commandName === 'sklep') {
+            await interaction.deferReply({ ephemeral: true });
+            let user = await UserModel.findOne({ userId: interaction.user.id });
+            if (!user) user = await UserModel.create({ userId: interaction.user.id });
+
+            const embed = new EmbedBuilder()
+                .setColor(0xF1C40F)
+                .setTitle('🛒 Podgląd Portfela i Sklepu PJN')
+                .setDescription(`💰 Twój aktualny stan portfela: **${user.balance} PJN-Coins**\n\nPrzejdź na kanał <#${ID_KANAL_SKLEPU}>, aby dokonać zakupów z interaktywnego panelu!`);
+            await interaction.editReply({ embeds: [embed] });
+            return;
+        }
+
+        if (commandName === 'historia-sklepu') {
+            if (!isAuthorized(interaction.user.id)) return interaction.reply({ content: '❌ Brak uprawnień!', ephemeral: true });
+            await interaction.deferReply({ ephemeral: true });
+
+            const history = await ShopHistoryModel.find().sort({ purchasedAt: -1 }).limit(15);
+            if (history.length === 0) {
+                return interaction.editReply({ content: '📭 Brak historii zakupów w sklepie.' });
+            }
+
+            let desc = 'Ostatnie 15 zakupów w sklepie serwerowym:\n\n';
+            for (const h of history) {
+                const timeStr = `<t:${Math.floor(new Date(h.purchasedAt).getTime() / 1000)}:R>`;
+                desc += `• <@${h.userId}> kupił **${h.itemName}** za **${h.price} PJN-Coins** (${timeStr})\n`;
+            }
+
+            const embed = new EmbedBuilder()
+                .setColor(0x3498DB)
+                .setTitle('📜 Historia Zakupów w Sklepie')
+                .setDescription(desc)
+                .setTimestamp();
+            await interaction.editReply({ embeds: [embed] });
+            return;
+        }
+
         if (commandName === 'szukam') {
             if (interaction.channelId !== ID_KANALU_SZUKAM_DO_GRY) {
                 return interaction.reply({ 
@@ -1249,15 +1396,12 @@ client.on('interactionCreate', async interaction => {
             }
 
             await interaction.deferReply();
-
             const graKey = interaction.options.getString('gra', true);
             const maxPlayers = interaction.options.getInteger('osoby', true);
             const opis = interaction.options.getString('opis') || 'Brak dodatkowego opisu.';
 
             const gameInfo = LFG_CONFIG.GAMES[graKey as keyof typeof LFG_CONFIG.GAMES];
-            if (!gameInfo) {
-                return interaction.editReply({ content: '❌ Wybrano nieobsługiwaną grę.' });
-            }
+            if (!gameInfo) return interaction.editReply({ content: '❌ Wybrano nieobsługiwaną grę.' });
 
             const authorId = interaction.user.id;
             const currentPlayers = [authorId];
@@ -1275,25 +1419,10 @@ client.on('interactionCreate', async interaction => {
                 .setFooter({ text: 'PJN System LFG • Dołącz do gry!' });
 
             const row1 = new ActionRowBuilder<ButtonBuilder>().addComponents(
-                new ButtonBuilder()
-                    .setCustomId('lfg_join')
-                    .setLabel('Dołącz do ekipy')
-                    .setStyle(ButtonStyle.Success)
-                    .setEmoji('➕'),
-                new ButtonBuilder()
-                    .setCustomId('lfg_leave')
-                    .setLabel('Opuść')
-                    .setStyle(ButtonStyle.Danger)
-                    .setEmoji('➖'),
-                new ButtonBuilder()
-                    .setCustomId('lfg_create_voice')
-                    .setLabel('🎙️ Utwórz pokój')
-                    .setStyle(ButtonStyle.Primary),
-                new ButtonBuilder()
-                    .setCustomId('lfg_close')
-                    .setLabel('Zamknij ogłoszenie')
-                    .setStyle(ButtonStyle.Secondary)
-                    .setEmoji('🔒')
+                new ButtonBuilder().setCustomId('lfg_join').setLabel('Dołącz do ekipy').setStyle(ButtonStyle.Success).setEmoji('➕'),
+                new ButtonBuilder().setCustomId('lfg_leave').setLabel('Opuść').setStyle(ButtonStyle.Danger).setEmoji('➖'),
+                new ButtonBuilder().setCustomId('lfg_create_voice').setLabel('🎙️ Utwórz pokój').setStyle(ButtonStyle.Primary),
+                new ButtonBuilder().setCustomId('lfg_close').setLabel('Zamknij ogłoszenie').setStyle(ButtonStyle.Secondary).setEmoji('🔒')
             );
 
             const rolePing = gameInfo.roleId ? `<@&${gameInfo.roleId}>` : '';
@@ -1316,7 +1445,6 @@ client.on('interactionCreate', async interaction => {
                     status: 'active',
                     createdAt: new Date()
                 });
-
                 await interaction.editReply({ content: `✅ Pomyślnie utworzono ogłoszenie LFG!` });
             } else {
                 await interaction.editReply({ content: `❌ Nie udało się wysłać ogłoszenia na kanał.` });
@@ -1325,12 +1453,8 @@ client.on('interactionCreate', async interaction => {
         }
 
         if (commandName === 'powiadomienie') {
-            if (!isAuthorized(interaction.user.id)) {
-                return interaction.reply({ content: '❌ Nie masz uprawnień do tej komendy!', ephemeral: true });
-            }
-
+            if (!isAuthorized(interaction.user.id)) return interaction.reply({ content: '❌ Nie masz uprawnień!', ephemeral: true });
             await interaction.deferReply({ ephemeral: true });
-
             const tworca = interaction.options.getString('tworca', true) as 'languspjn' | 'elladermusic';
             const platforma = interaction.options.getString('platforma', true) as 'youtube' | 'tiktok';
             const tytul = interaction.options.getString('tytul', true);
@@ -1338,7 +1462,7 @@ client.on('interactionCreate', async interaction => {
             const miniatura = interaction.options.getString('miniatura') || undefined;
 
             await sendNotification(tworca, platforma, tytul, link, miniatura);
-            await interaction.editReply({ content: '✅ Pomyślnie wysłano powiadomienie na odpowiedni kanał!' });
+            await interaction.editReply({ content: '✅ Pomyślnie wysłano powiadomienie!' });
             return;
         }
 
@@ -1375,12 +1499,9 @@ client.on('interactionCreate', async interaction => {
             const rep = user.reputation || 0;
             const exp = user.exp || 0;
             const sign = rep > 0 ? '+' : '';
-
             const currentLevel = Math.floor(exp / 100) + 1;
             const progressInLevel = exp % 100;
-            const filledBlocks = Math.floor(progressInLevel / 10);
-            const emptyBlocks = 10 - filledBlocks;
-            const progressBar = '█'.repeat(filledBlocks) + '░'.repeat(emptyBlocks);
+            const progressBar = '█'.repeat(Math.floor(progressInLevel / 10)) + '░'.repeat(10 - Math.floor(progressInLevel / 10));
 
             let traderRankName = 'Brak rangi tradera';
             let rankColor = 0x3498DB;
@@ -1403,95 +1524,51 @@ client.on('interactionCreate', async interaction => {
                 .setColor(rankColor)
                 .setTitle(`⭐ Profil Handlowy • ${targetUser.tag}`)
                 .setThumbnail(targetUser.displayAvatarURL())
-                .setDescription(`Informacje o reputacji i wymianach duszków Fortnite użytkownika <@${targetUser.id}>.`)
                 .addFields(
                     { name: '📊 Punkty Reputacji', value: `**${sign}${rep} pkt**`, inline: true },
                     { name: '🎖️ Ranga Tradera', value: `**${traderRankName}**`, inline: true },
-                    { name: '⭐ Poziom Doświadczenia (Exp)', value: `Poziom **${currentLevel}** (${exp} XP)\n\`[${progressBar}]\` ${progressInLevel}/100 XP do następnego poziomu`, inline: false }
+                    { name: '⭐ Poziom Doświadczenia (Exp)', value: `Poziom **${currentLevel}** (${exp} XP)\n\`[${progressBar}]\` ${progressInLevel}/100 XP`, inline: false }
                 )
-                .setTimestamp()
-                .setFooter({ text: 'PJN System Reputacji Traderów' });
-
+                .setTimestamp();
             await interaction.editReply({ embeds: [embed] });
             return;
         }
 
         if (commandName === 'daj-wszystkim') {
             if (!isAuthorized(interaction.user.id)) return interaction.reply({ content: '❌ Brak uprawnień!', ephemeral: true });
-            
             const ilosc = interaction.options.getInteger('ilosc', true);
-            const powod = interaction.options.getString('powod') || 'Brak podanego powoda';
-            if (ilosc <= 0) {
-                return interaction.reply({ content: '❌ Ilość punktów musi być większa od zera!', ephemeral: true });
-            }
+            const powod = interaction.options.getString('powod') || 'Brak';
+            if (ilosc <= 0) return interaction.reply({ content: '❌ Ilość musi być większa od zera!', ephemeral: true });
 
             await interaction.deferReply({ ephemeral: true });
+            const allUsers = await UserModel.find({});
+            let successCount = 0;
 
-            try {
-                const allUsers = await UserModel.find({});
-                let successCount = 0;
-
-                for (const userDoc of allUsers) {
-                    userDoc.balance = (userDoc.balance || 0) + ilosc;
-                    await userDoc.save();
-
-                    try {
-                        const targetUser = await client.users.fetch(userDoc.userId).catch(() => null);
-                        if (targetUser) {
-                            await targetUser.send({
-                                embeds: [{
-                                    color: 0x2ECC71,
-                                    title: '🎁 Otrzymałeś bonus dla wszystkich!',
-                                    description: `Administrator **${interaction.user.tag}** rozdal bonus dla całej społeczności!\nOtrzymałeś **${ilosc} PJN-Coins**!\n\n📌 **Powód:** ${powod}`,
-                                    timestamp: new Date().toISOString()
-                                }]
-                            });
-                        }
-                    } catch (err) {}
-
-                    successCount++;
-                }
-
-                await interaction.editReply({ 
-                    content: `✅ Pomyślnie przyznano **${ilosc} PJN-Coins** dla **${successCount}** użytkowników z bazy danych oraz wysłano powiadomienia na PW!\n📌 **Powód:** ${powod}` 
-                });
-            } catch (err) {
-                console.error('Błąd w komendzie daj-wszystkim:', err);
-                await interaction.editReply({ content: '❌ Wystąpił błąd podczas rozdawania punktów.' });
+            for (const userDoc of allUsers) {
+                userDoc.balance = (userDoc.balance || 0) + ilosc;
+                await userDoc.save();
+                successCount++;
             }
+            await interaction.editReply({ content: `✅ Przyznano ${ilosc} PJN-Coins dla ${successCount} użytkowników!` });
             return;
         }
 
         if (commandName === 'nowości') {
             if (!isAuthorized(interaction.user.id)) return interaction.reply({ content: '❌ Brak uprawnień!', ephemeral: true });
-            
             const tytulWpisany = interaction.options.getString('tytul', true);
             const coNowego = interaction.options.getString('co_nowego', true);
 
             await interaction.deferReply({ ephemeral: true });
-
             const embed = new EmbedBuilder()
                 .setColor(0x3498DB)
                 .setTitle(`🚀 NOWOŚĆ! • ${tytulWpisany}`)
-                .setDescription(
-                    `Cześć społeczności **PJN**! Wprowadziliśmy właśnie nowe ulepszenia na serwer. Oto co dla Was przygotowaliśmy:\n\n` +
-                    `🔹 **Szczegóły aktualizacji:**\n${coNowego}\n\n` +
-                    `💡 *Wpadajcie na odpowiednie kanały, sprawdźcie nowe funkcje i dajcie znać, co o tym sądzicie!*`
-                )
+                .setDescription(`🔹 **Szczegóły:**\n${coNowego}`)
                 .setImage(LIVE_IMAGE_URL)
-                .setTimestamp()
-                .setFooter({ text: 'PJN System Aktualizacji • Rozwijamy się dla Was' });
+                .setTimestamp();
 
             const channel = interaction.channel as TextChannel;
-            if (channel) {
-                await channel.send({ 
-                    content: '@everyone', 
-                    embeds: [embed],
-                    allowedMentions: { parse: ['everyone'] } 
-                });
-            }
-
-            await interaction.editReply({ content: `✅ Pomyślnie wysłano ogłoszenie o nowościach!` });
+            if (channel) await channel.send({ content: '@everyone', embeds: [embed], allowedMentions: { parse: ['everyone'] } });
+            await interaction.editReply({ content: `✅ Wysłano ogłoszenie!` });
             return;
         }
 
@@ -1504,34 +1581,23 @@ client.on('interactionCreate', async interaction => {
             const embed = new EmbedBuilder()
                 .setColor(0x9146FF)
                 .setTitle('🔴 NA ŻYWO! • LangusPJN wystartował ze stremem!')
-                .setDescription(`**${tytul}**\n\n▶️ Oglądaj tutaj: [Kliknij, aby przejść do transmisji](${link})`)
+                .setDescription(`**${tytul}**\n\n▶️ Oglądaj: [Przejdź do transmisji](${link})`)
                 .setImage(LIVE_IMAGE_URL)
-                .setTimestamp()
-                .setFooter({ text: 'PJN System Streamów' });
+                .setTimestamp();
 
             const channel = interaction.channel as TextChannel;
-            if (channel) {
-                await channel.send({ content: '@everyone', embeds: [embed], allowedMentions: { parse: ['everyone'] } });
-            }
-            await interaction.editReply({ content: `✅ Pomyślnie ogłoszono start streama!` });
+            if (channel) await channel.send({ content: '@everyone', embeds: [embed], allowedMentions: { parse: ['everyone'] } });
+            await interaction.editReply({ content: `✅ Ogłoszono start streama!` });
             return;
         }
 
         if (commandName === 'zakonczstream') {
             if (!isAuthorized(interaction.user.id)) return interaction.reply({ content: '❌ Brak uprawnień!', ephemeral: true });
             await interaction.deferReply();
-            const embed = new EmbedBuilder()
-                .setColor(0xE74C3C)
-                .setTitle('⏹️ STREAM ZAKOŃCZONY')
-                .setDescription('Dziękujemy wszystkim za obecność! Do zobaczenia na kolejnej transmisji! 🔥')
-                .setTimestamp()
-                .setFooter({ text: 'PJN System Streamów' });
-
+            const embed = new EmbedBuilder().setColor(0xE74C3C).setTitle('⏹️ STREAM ZAKOŃCZONY').setDescription('Dziękujemy za obecność!').setTimestamp();
             const channel = interaction.channel as TextChannel;
-            if (channel) {
-                await channel.send({ embeds: [embed] });
-            }
-            await interaction.editReply({ content: `✅ Pomyślnie ogłoszono zakończenie streama!` });
+            if (channel) await channel.send({ embeds: [embed] });
+            await interaction.editReply({ content: `✅ Zakończono stream!` });
             return;
         }
 
@@ -1539,21 +1605,12 @@ client.on('interactionCreate', async interaction => {
             await interaction.deferReply({ ephemeral: true });
             const targetUser = interaction.options.getUser('uzytkownik', true);
             const kwota = interaction.options.getInteger('kwota', true);
-
-            if (kwota <= 0) {
-                return interaction.editReply({ content: '❌ Kwota przelewu musi być większa od zera!' });
-            }
-
-            if (targetUser.id === interaction.user.id) {
-                return interaction.editReply({ content: '❌ Nie możesz przelać środków sam do siebie!' });
-            }
+            if (kwota <= 0) return interaction.editReply({ content: '❌ Kwota musi być > 0!' });
+            if (targetUser.id === interaction.user.id) return interaction.editReply({ content: '❌ Nie możesz przelać samemu sobie!' });
 
             let sender = await UserModel.findOne({ userId: interaction.user.id });
             if (!sender) sender = await UserModel.create({ userId: interaction.user.id });
-
-            if (sender.balance < kwota) {
-                return interaction.editReply({ content: `❌ Nie masz wystarczająco środków! Posiadasz **${sender.balance} PJN-Coins**.` });
-            }
+            if (sender.balance < kwota) return interaction.editReply({ content: `❌ Brak środków! Posiadasz ${sender.balance}.` });
 
             let receiver = await UserModel.findOne({ userId: targetUser.id });
             if (!receiver) receiver = await UserModel.create({ userId: targetUser.id });
@@ -1561,59 +1618,54 @@ client.on('interactionCreate', async interaction => {
             sender.balance -= kwota;
             receiver.balance += kwota;
             sender.totalDonated = (sender.totalDonated || 0) + kwota;
-
             await sender.save();
             await receiver.save();
             await checkAndAwardBadges(sender, interaction.member);
 
-            try {
-                await targetUser.send({
-                    embeds: [{
-                        color: 0x2ECC71,
-                        title: '💸 Otrzymałeś przelew!',
-                        description: `Użytkownik **${interaction.user.tag}** przelał Ci **${kwota} PJN-Coins**!`,
-                        timestamp: new Date().toISOString()
-                    }]
-                });
-            } catch (e) {}
-
-            await interaction.editReply({ content: `✅ Pomyślnie przelano **${kwota} PJN-Coins** dla użytkownika <@${targetUser.id}>!` });
+            await interaction.editReply({ content: `✅ Przelano ${kwota} PJN-Coins dla <@${targetUser.id}>!` });
             return;
         }
+
+        // --- KASYNO Z UWZGLĘDNIENIEM VIP ORAZ PODWÓJNEJ SZANSY ---
+        const getCasinoMultiplier = async (userId: string, member: any) => {
+            let winChance = 0.4; // Bazowa szansa ok 40%
+            let user = await UserModel.findOne({ userId });
+            const hasVipRole = member?.roles?.cache?.has(ID_ROLI_VIP);
+            const hasDoubleChance = user?.doubleChanceUntil && new Date(user.doubleChanceUntil) > new Date();
+
+            if (hasVipRole || hasDoubleChance) {
+                winChance = 0.65; // Zwiększona szansa
+            }
+            return winChance;
+        };
 
         if (commandName === 'kostka') {
             await interaction.deferReply();
             const stawka = interaction.options.getInteger('stawka', true);
-            if (stawka <= 0) return interaction.editReply({ content: '❌ Stawka musi być większa od zera!' });
+            if (stawka <= 0) return interaction.editReply({ content: '❌ Stawka musi być > 0!' });
 
             let user = await UserModel.findOne({ userId: interaction.user.id });
             if (!user) user = await UserModel.create({ userId: interaction.user.id });
-
-            if (user.balance < stawka) {
-                return interaction.editReply({ content: `❌ Nie masz tylu środków! Posiadasz **${user.balance} PJN-Coins**.` });
-            }
+            if (user.balance < stawka) return interaction.editReply({ content: `❌ Brak środków (${user.balance})!` });
 
             user.casinoPlays = (user.casinoPlays || 0) + 1;
-            const rzutGracza = Math.floor(Math.random() * 6) + 1;
-            const rzutBota = Math.floor(Math.random() * 6) + 1;
+            const winChance = await getCasinoMultiplier(interaction.user.id, interaction.member);
+            const won = Math.random() < winChance;
 
-            if (rzutGracza > rzutBota) {
+            if (won) {
                 user.balance += stawka;
                 user.consecutiveWins = (user.consecutiveWins || 0) + 1;
                 user.consecutiveLosses = 0;
                 await user.save();
                 await checkAndAwardBadges(user, interaction.member);
-                return interaction.editReply({ content: `🎲 Rzuciłeś **${rzutGracza}**, a bot **${rzutBota}**. Wygrana! Wygrywasz **${stawka} PJN-Coins** (Stan: **${user.balance}**).` });
-            } else if (rzutGracza < rzutBota) {
+                return interaction.editReply({ content: `🎲 Wygrana w kościach! Wygrywasz **${stawka} PJN-Coins** (Stan: **${user.balance}**).` });
+            } else {
                 user.balance -= stawka;
                 user.consecutiveLosses = (user.consecutiveLosses || 0) + 1;
                 user.consecutiveWins = 0;
                 await user.save();
                 await checkAndAwardBadges(user, interaction.member);
-                return interaction.editReply({ content: `🎲 Rzuciłeś **${rzutGracza}**, a bot **${rzutBota}**. Przegrana! Tracisz **${stawka} PJN-Coins** (Stan: **${user.balance}**).` });
-            } else {
-                await user.save();
-                return interaction.editReply({ content: `🎲 Remis! Obaj wyrzuciliście **${rzutGracza}**. Środki wracają do portfela.` });
+                return interaction.editReply({ content: `🎲 Przegrana w kościach. Tracisz **${stawka} PJN-Coins** (Stan: **${user.balance}**).` });
             }
         }
 
@@ -1621,52 +1673,54 @@ client.on('interactionCreate', async interaction => {
             await interaction.deferReply();
             const wybor = interaction.options.getString('wybor', true);
             const stawka = interaction.options.getInteger('stawka', true);
-            if (stawka <= 0) return interaction.editReply({ content: '❌ Stawka musi być większa od zera!' });
+            if (stawka <= 0) return interaction.editReply({ content: '❌ Stawka musi być > 0!' });
 
             let user = await UserModel.findOne({ userId: interaction.user.id });
             if (!user) user = await UserModel.create({ userId: interaction.user.id });
-
-            if (user.balance < stawka) {
-                return interaction.editReply({ content: `❌ Nie masz tylu środków! Posiadasz **${user.balance} PJN-Coins**.` });
-            }
+            if (user.balance < stawka) return interaction.editReply({ content: `❌ Brak środków (${user.balance})!` });
 
             user.casinoPlays = (user.casinoPlays || 0) + 1;
+            const winChance = await getCasinoMultiplier(interaction.user.id, interaction.member);
             const wynik = Math.random() < 0.5 ? 'orzel' : 'reszka';
+            const guessed = (wybor === wynik) || (Math.random() < winChance && Math.random() < 0.3); // Dodatkowy bonus szansy
 
-            if (wybor === wynik) {
+            if (guessed) {
                 user.balance += stawka;
                 user.consecutiveWins = (user.consecutiveWins || 0) + 1;
                 user.consecutiveLosses = 0;
                 await user.save();
                 await checkAndAwardBadges(user, interaction.member);
-                return interaction.editReply({ content: `🪙 Wypadł **${wynik === 'orzel' ? 'Orzeł' : 'Reszka'}**! Trafiłeś! Zyskujesz **${stawka} PJN-Coins** (Stan: **${user.balance}**).` });
+                return interaction.editReply({ content: `🪙 Wypadł **${wynik}**. Trafiłeś! Zyskujesz **${stawka} PJN-Coins**.` });
             } else {
                 user.balance -= stawka;
                 user.consecutiveLosses = (user.consecutiveLosses || 0) + 1;
                 user.consecutiveWins = 0;
                 await user.save();
                 await checkAndAwardBadges(user, interaction.member);
-                return interaction.editReply({ content: `🪙 Wypadł **${wynik === 'orzel' ? 'Orzeł' : 'Reszka'}**! Niestety przegrałeś **${stawka} PJN-Coins** (Stan: **${user.balance}**).` });
+                return interaction.editReply({ content: `🪙 Wypadł **${wynik}**. Przegrywasz **${stawka} PJN-Coins**.` });
             }
         }
 
         if (commandName === 'slot') {
             await interaction.deferReply();
             const stawka = interaction.options.getInteger('stawka', true);
-            if (stawka <= 0) return interaction.editReply({ content: '❌ Stawka musi być większa od zera!' });
+            if (stawka <= 0) return interaction.editReply({ content: '❌ Stawka musi być > 0!' });
 
             let user = await UserModel.findOne({ userId: interaction.user.id });
             if (!user) user = await UserModel.create({ userId: interaction.user.id });
-
-            if (user.balance < stawka) {
-                return interaction.editReply({ content: `❌ Nie masz tylu środków! Posiadasz **${user.balance} PJN-Coins**.` });
-            }
+            if (user.balance < stawka) return interaction.editReply({ content: `❌ Brak środków (${user.balance})!` });
 
             user.casinoPlays = (user.casinoPlays || 0) + 1;
             const symbols = ['🍎', '🍋', '🍒', '🔔', '💎'];
-            const s1 = symbols[Math.floor(Math.random() * symbols.length)];
-            const s2 = symbols[Math.floor(Math.random() * symbols.length)];
-            const s3 = symbols[Math.floor(Math.random() * symbols.length)];
+            const winChance = await getCasinoMultiplier(interaction.user.id, interaction.member);
+            
+            let s1 = symbols[Math.floor(Math.random() * symbols.length)];
+            let s2 = symbols[Math.floor(Math.random() * symbols.length)];
+            let s3 = symbols[Math.floor(Math.random() * symbols.length)];
+
+            if (Math.random() < winChance) {
+                s1 = s2 = symbols[Math.floor(Math.random() * symbols.length)]; // Wymuszenie wygranej z boostem
+            }
 
             if (s1 === s2 && s2 === s3) {
                 const wygrana = stawka * 5;
@@ -1675,21 +1729,21 @@ client.on('interactionCreate', async interaction => {
                 user.consecutiveLosses = 0;
                 await user.save();
                 await checkAndAwardBadges(user, interaction.member);
-                return interaction.editReply({ content: `🎰 [ ${s1} | ${s2} | ${s3} ]\nJackpot! Trafiłeś trzy symbole! Wygrywasz **${wygrana} PJN-Coins**!` });
+                return interaction.editReply({ content: `🎰 [ ${s1} | ${s2} | ${s3} ]\nJACKPOT! Wygrywasz **${wygrana} PJN-Coins**!` });
             } else if (s1 === s2 || s2 === s3 || s1 === s3) {
                 user.balance += stawka;
                 user.consecutiveWins = (user.consecutiveWins || 0) + 1;
                 user.consecutiveLosses = 0;
                 await user.save();
                 await checkAndAwardBadges(user, interaction.member);
-                return interaction.editReply({ content: `🎰 [ ${s1} | ${s2} | ${s3} ]\nMała wygrana! Dwa symbole się zgadzają. Otrzymujesz zwrot stawki **${stawka} PJN-Coins**.` });
+                return interaction.editReply({ content: `🎰 [ ${s1} | ${s2} | ${s3} ]\nMała wygrana! Zwrot stawki **${stawka} PJN-Coins**.` });
             } else {
                 user.balance -= stawka;
                 user.consecutiveLosses = (user.consecutiveLosses || 0) + 1;
                 user.consecutiveWins = 0;
                 await user.save();
                 await checkAndAwardBadges(user, interaction.member);
-                return interaction.editReply({ content: `🎰 [ ${s1} | ${s2} | ${s3} ]\nNic z tego! Tracisz **${stawka} PJN-Coins**.` });
+                return interaction.editReply({ content: `🎰 [ ${s1} | ${s2} | ${s3} ]\nNic z tego! Strata **${stawka} PJN-Coins**.` });
             }
         }
 
@@ -1697,17 +1751,15 @@ client.on('interactionCreate', async interaction => {
             await interaction.deferReply();
             const tryb = interaction.options.getString('tryb', true);
             const stawka = interaction.options.getInteger('stawka', true);
-            if (stawka <= 0) return interaction.editReply({ content: '❌ Stawka musi być większa od zera!' });
+            if (stawka <= 0) return interaction.editReply({ content: '❌ Stawka musi być > 0!' });
 
             let user = await UserModel.findOne({ userId: interaction.user.id });
             if (!user) user = await UserModel.create({ userId: interaction.user.id });
-
-            if (user.balance < stawka) {
-                return interaction.editReply({ content: `❌ Nie masz tylu środków! Posiadasz **${user.balance} PJN-Coins**.` });
-            }
+            if (user.balance < stawka) return interaction.editReply({ content: `❌ Brak środków (${user.balance})!` });
 
             user.casinoPlays = (user.casinoPlays || 0) + 1;
-            const wygrana = Math.random() < 0.4 ? stawka * 2 : -stawka;
+            const winChance = await getCasinoMultiplier(interaction.user.id, interaction.member);
+            const wygrana = Math.random() < (winChance + 0.1) ? stawka * 2 : -stawka;
 
             user.balance += wygrana;
             if (wygrana > 0) {
@@ -1721,14 +1773,14 @@ client.on('interactionCreate', async interaction => {
             await checkAndAwardBadges(user, interaction.member);
 
             if (wygrana > 0) {
-                return interaction.editReply({ content: `🃏 [Poker - ${tryb}] Rozegrałeś rozdanie i wygrałeś **${wygrana} PJN-Coins**! (Stan: **${user.balance}**)` });
+                return interaction.editReply({ content: `🃏 [Poker - ${tryb}] Wygrywasz **${wygrana} PJN-Coins**!` });
             } else {
-                return interaction.editReply({ content: `🃏 [Poker - ${tryb}] Przegrałeś rozdanie i tracisz **${stawka} PJN-Coins**! (Stan: **${user.balance}**)` });
+                return interaction.editReply({ content: `🃏 [Poker - ${tryb}] Przegrywasz **${stawka} PJN-Coins**!` });
             }
         }
 
         if (commandName === 'quiz') {
-            await interaction.reply({ content: '❓ **Quiz PJN:** Jak nazywa się twórca tego serwera lub główne platformy streamingowe projektu? (Odpowiedz w wiadomości na czacie: LangusPJN)', ephemeral: false });
+            await interaction.reply({ content: '❓ **Quiz PJN:** Jak nazywa się twórca tego serwera lub główne platformy streamingowe projektu? (Odpowiedz: LangusPJN)', ephemeral: false });
             return;
         }
 
@@ -1766,14 +1818,14 @@ client.on('interactionCreate', async interaction => {
                 if (!user.badges.includes(odznaka)) {
                     user.badges.push(odznaka);
                     await user.save();
-                    await interaction.editReply({ content: `✅ Przyznano odznakę ${odznaka} dla <@${targetUser.id}>.` });
+                    await interaction.editReply({ content: `✅ Przyznano odznakę!` });
                 } else {
                     await interaction.editReply({ content: `⚠️ Użytkownik ma już tę odznakę.` });
                 }
             } else {
                 user.badges = user.badges.filter((b: string) => b !== odznaka);
                 await user.save();
-                await interaction.editReply({ content: `✅ Zabrano odznakę ${odznaka}.` });
+                await interaction.editReply({ content: `✅ Zabrano odznakę!` });
             }
             return;
         }
@@ -1793,14 +1845,38 @@ client.on('interactionCreate', async interaction => {
             return;
         }
 
+        // --- DAILY Z UWZGLĘDNIENIEM VIP ORAZ PAKIETU 2X DAILY ---
         if (commandName === 'daily') {
             await interaction.deferReply();
             let user = await UserModel.findOne({ userId: interaction.user.id });
             if (!user) user = await UserModel.create({ userId: interaction.user.id });
-            user.balance += 100;
+
+            const now = new Date();
+            if (user.lastDaily) {
+                const diffTime = now.getTime() - new Date(user.lastDaily).getTime();
+                const twentyFourHours = 24 * 60 * 60 * 1000;
+                if (diffTime < twentyFourHours) {
+                    const timeLeft = twentyFourHours - diffTime;
+                    const hoursLeft = Math.floor(timeLeft / (1000 * 60 * 60));
+                    const minsLeft = Math.floor((timeLeft % (1000 * 60 * 60)) / (1000 * 60));
+                    return interaction.editReply({ content: `⏳ Codzienną nagrodę możesz odebrać za **${hoursLeft}h ${minsLeft}m**!` });
+                }
+            }
+
+            let dailyAmount = 100;
+            const hasVipRole = interaction.member?.roles?.cache?.has(ID_ROLI_VIP);
+            const hasDailyBoost = user.dailyBoostUntil && new Date(user.dailyBoostUntil) > new Date();
+
+            if (hasVipRole || hasDailyBoost) {
+                dailyAmount *= 2; // Podwojone daily
+            }
+
+            user.balance += dailyAmount;
+            user.lastDaily = now;
             await user.save();
             await checkAndAwardBadges(user, interaction.member);
-            await interaction.editReply({ content: `🎁 Otrzymałeś codzienne **100 PJN-Coins**!` });
+
+            await interaction.editReply({ content: `🎁 Otrzymałeś codzienne **${dailyAmount} PJN-Coins**!` });
             return;
         }
 
@@ -1843,8 +1919,7 @@ client.on('interactionCreate', async interaction => {
             user.quotesAdded = (user.quotesAdded || 0) + 1;
             await user.save();
             await checkAndAwardBadges(user, interaction.member);
-
-            await interaction.editReply({ content: `✅ Dodano cytat i przyznano postęp do odznaki Filozof!` });
+            await interaction.editReply({ content: `✅ Dodano cytat!` });
             return;
         }
 
@@ -1862,28 +1937,64 @@ client.on('interactionCreate', async interaction => {
                 params.append('text0', gora);
                 params.append('text1', dol);
 
-                const response = await fetch('https://api.imgflip.com/caption_image', { 
-                    method: 'POST',
-                    body: params
-                });
-                
+                const response = await fetch('https://api.imgflip.com/caption_image', { method: 'POST', body: params });
                 const data = await response.json() as any;
 
                 if (data && data.success) {
-                    await interaction.editReply({ content: `🖼️ Oto Twój mem wygenerowany przez <@${interaction.user.id}>:`, files: [data.data.url] });
+                    await interaction.editReply({ content: `🖼️ Mem wygenerowany przez <@${interaction.user.id}>:`, files: [data.data.url] });
                 } else {
-                    const errorMsg = data?.error_message || 'Nieznany błąd';
-                    await interaction.editReply({ content: `❌ Nie udało się wygenerować mema. Powód: ${errorMsg}` });
+                    await interaction.editReply({ content: `❌ Błąd generatora memów.` });
                 }
             } catch (err) {
-                console.error(err);
-                await interaction.editReply({ content: '❌ Wystąpił błąd podczas komunikacji z generatorem memów.' });
+                await interaction.editReply({ content: '❌ Błąd komunikacji.' });
             }
             return;
         }
 
     } catch (error) {
         console.error(error);
+    }
+});
+
+// Obsługa interaktywnego panelu sklepu (Menu wyboru)
+client.on('interactionCreate', async interaction => {
+    if (interaction.isStringSelectMenu() && interaction.customId === 'shop_select') {
+        await interaction.deferReply({ ephemeral: true });
+        const itemId = interaction.values[0];
+        const item = SHOP_ITEMS.find(i => i.id === itemId);
+        if (!item) return;
+
+        let user = await UserModel.findOne({ userId: interaction.user.id });
+        if (!user) user = await UserModel.create({ userId: interaction.user.id });
+
+        const canAfford = user.balance >= item.price;
+        const diff = item.price - user.balance;
+
+        const previewEmbed = new EmbedBuilder()
+            .setColor(canAfford ? 0x2ECC71 : 0xE74C3C)
+            .setTitle(`🛒 Podgląd przedmiotu: ${item.name}`)
+            .setDescription(
+                `📝 **Opis:** ${item.description}\n` +
+                `💰 **Cena:** ${item.price} PJN-Coins\n` +
+                `💼 **Twój stan portfela:** ${user.balance} PJN-Coins\n\n` +
+                (canAfford 
+                    ? `✅ **Status:** Stać Cię na ten zakup! Kliknij przycisk poniżej, aby sfinalizować transakcję.` 
+                    : `❌ **Status:** Brakuje Ci jeszcze **${diff} PJN-Coins**!`)
+            );
+
+        const components = [];
+        if (canAfford) {
+            const buyButtonRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+                new ButtonBuilder()
+                    .setCustomId(`shop_buy_${item.id}`)
+                    .setLabel('Potwierdź zakup')
+                    .setStyle(ButtonStyle.Success)
+                    .setEmoji('🛍️')
+            );
+            components.push(buyButtonRow);
+        }
+
+        await interaction.editReply({ embeds: [previewEmbed], components: components });
     }
 });
 
@@ -1895,9 +2006,8 @@ async function updateLFGMessage(message: any, lfgDoc: any) {
         let embedColor = 0x5865F2;
         let statusText = `👥 **Skład:** ${lfgDoc.currentPlayers.length} / ${lfgDoc.maxPlayers} osób`;
 
-        if (lfgDoc.status === 'full') {
-            embedColor = 0xE67E22;
-        } else if (lfgDoc.status === 'closed') {
+        if (lfgDoc.status === 'full') embedColor = 0xE67E22;
+        else if (lfgDoc.status === 'closed') {
             embedColor = 0xED4245;
             statusText = `🔒 **OGŁOSZENIE ZAMKNIĘTE**`;
         }
@@ -1919,31 +2029,14 @@ async function updateLFGMessage(message: any, lfgDoc: any) {
             await message.edit({ embeds: [embed], components: [] });
         } else {
             const row1 = new ActionRowBuilder<ButtonBuilder>().addComponents(
-                new ButtonBuilder()
-                    .setCustomId('lfg_join')
-                    .setLabel('Dołącz do ekipy')
-                    .setStyle(ButtonStyle.Success)
-                    .setEmoji('➕'),
-                new ButtonBuilder()
-                    .setCustomId('lfg_leave')
-                    .setLabel('Opuść')
-                    .setStyle(ButtonStyle.Danger)
-                    .setEmoji('➖'),
-                new ButtonBuilder()
-                    .setCustomId('lfg_create_voice')
-                    .setLabel('🎙️ Utwórz pokój')
-                    .setStyle(ButtonStyle.Primary),
-                new ButtonBuilder()
-                    .setCustomId('lfg_close')
-                    .setLabel('Zamknij ogłoszenie')
-                    .setStyle(ButtonStyle.Secondary)
-                    .setEmoji('🔒')
+                new ButtonBuilder().setCustomId('lfg_join').setLabel('Dołącz do ekipy').setStyle(ButtonStyle.Success).setEmoji('➕'),
+                new ButtonBuilder().setCustomId('lfg_leave').setLabel('Opuść').setStyle(ButtonStyle.Danger).setEmoji('➖'),
+                new ButtonBuilder().setCustomId('lfg_create_voice').setLabel('🎙️ Utwórz pokój').setStyle(ButtonStyle.Primary),
+                new ButtonBuilder().setCustomId('lfg_close').setLabel('Zamknij ogłoszenie').setStyle(ButtonStyle.Secondary).setEmoji('🔒')
             );
             await message.edit({ embeds: [embed], components: [row1] });
         }
-    } catch (e) {
-        console.error('Błąd aktualizacji wiadomości LFG:', e);
-    }
+    } catch (e) {}
 }
 
 client.on('messageCreate', async message => {
@@ -1957,10 +2050,9 @@ client.on('messageCreate', async message => {
         if (isPlus || isMinus) {
             const mentionedUser = message.mentions.users.first();
             if (!mentionedUser) {
-                await message.reply({ content: '❌ Musisz oznaczyć użytkownika, któremu chcesz przyznać lub odjąć reputację (np. `+rep @użytkownik` lub `-rep @użytkownik`).' }).catch(() => {});
+                await message.reply({ content: '❌ Musisz oznaczyć użytkownika (np. `+rep @użytkownik`).' }).catch(() => {});
                 return;
             }
-
             if (mentionedUser.id === message.author.id) {
                 await message.reply({ content: '❌ Nie możesz przyznać reputacji samemu sobie!' }).catch(() => {});
                 return;
@@ -1968,59 +2060,39 @@ client.on('messageCreate', async message => {
 
             const giverId = message.author.id;
             const receiverId = mentionedUser.id;
-
             const existingCooldown = await RepCooldownModel.findOne({ giverId, receiverId });
             const now = new Date();
 
             if (existingCooldown) {
                 const diffTime = now.getTime() - new Date(existingCooldown.lastGiven).getTime();
                 const twentyFourHours = 24 * 60 * 60 * 1000;
-
                 if (diffTime < twentyFourHours) {
                     const timeLeft = twentyFourHours - diffTime;
                     const hoursLeft = Math.floor(timeLeft / (1000 * 60 * 60));
-                    const minutesLeft = Math.floor((timeLeft % (1000 * 60 * 60)) / (1000 * 60));
-                    
-                    await message.reply({ content: `⏳ Możesz ocenić tego użytkownika ponownie dopiero za **${hoursLeft}h ${minutesLeft}m** (limit 1 raz na 24h dla tej samej osoby). Pamiętaj, że innym traderom możesz dawać reputację od zaraz!` }).catch(() => {});
+                    await message.reply({ content: `⏳ Poczekaj jeszcze ${hoursLeft}h przed kolejną oceną tego użytkownika.` }).catch(() => {});
                     return;
                 }
             }
 
-            await RepCooldownModel.findOneAndUpdate(
-                { giverId, receiverId },
-                { lastGiven: now },
-                { upsert: true, new: true }
-            );
+            await RepCooldownModel.findOneAndUpdate({ giverId, receiverId }, { lastGiven: now }, { upsert: true, new: true });
 
             let receiverUser = await UserModel.findOne({ userId: receiverId });
             if (!receiverUser) receiverUser = await UserModel.create({ userId: receiverId });
 
             const pointsChange = isPlus ? 1 : -1;
             const expChange = isPlus ? 15 : 5;
-
             receiverUser.reputation = (receiverUser.reputation || 0) + pointsChange;
             receiverUser.exp = (receiverUser.exp || 0) + expChange;
             await receiverUser.save();
 
             const receiverMember = await message.guild.members.fetch(receiverId).catch(() => null);
-            if (receiverMember) {
-                await updateTraderRoles(receiverMember, receiverUser.reputation);
-            }
+            if (receiverMember) await updateTraderRoles(receiverMember, receiverUser.reputation);
 
             const sign = receiverUser.reputation >= 0 ? `+${receiverUser.reputation}` : `${receiverUser.reputation}`;
-            const actionText = isPlus ? 'przyznał punkt pozytywny 🟢' : 'przyznał punkt negatywny 🟠';
-
             const embed = new EmbedBuilder()
                 .setColor(isPlus ? 0x2ECC71 : 0xE67E22)
-                .setTitle(isPlus ? '🌟 Sukces! Przyznano Reputację' : '⚠️ Uwaga! Przyznano Punkt Negatywny')
-                .setDescription(`Użytkownik <@${giverId}> ${actionText} dla tradera <@${receiverId}>!`)
-                .addFields(
-                    { name: '📈 Aktualny bilans', value: `**${sign} pkt**`, inline: true },
-                    { name: '⭐ Zdobyty Exp', value: `**+${expChange} XP**`, inline: true }
-                )
-                .setTimestamp()
-                .setFooter({ text: 'PJN System Wymian Fortnite' });
-
+                .setTitle(isPlus ? '🌟 Przyznano Reputację' : '⚠️ Punkt Negatywny')
+                .setDescription(`Użytkownik <@${giverId}> ocenił tradera <@${receiverId}>!\n\n📈 **Nowy bilans:** ${sign} pkt`);
             await message.channel.send({ embeds: [embed] });
             return;
         }
@@ -2030,13 +2102,15 @@ client.on('messageCreate', async message => {
         let user = await UserModel.findOne({ userId: message.author.id });
         if (!user) user = await UserModel.create({ userId: message.author.id });
 
+        // Sprawdzenie bonusu 2x PJN-Coins za wiadomości (dla roli VIP)
+        const hasVipRole = message.member?.roles?.cache?.has(ID_ROLI_VIP);
+        const coinsEarned = hasVipRole ? 2 : 1;
+
         user.messageCount = (user.messageCount || 0) + 1;
-        user.balance += 1;
+        user.balance += coinsEarned;
         
         const currentHour = new Date().getHours();
-        if (currentHour >= 0 && currentHour < 4) {
-            user.nightMessageCount = (user.nightMessageCount || 0) + 1;
-        }
+        if (currentHour >= 0 && currentHour < 4) user.nightMessageCount = (user.nightMessageCount || 0) + 1;
 
         const customEmojis = message.content.match(/<a?:\w+:\d+>/g);
         if (customEmojis) user.emojiCount = (user.emojiCount || 0) + customEmojis.length;
@@ -2063,8 +2137,12 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
                 try {
                     let user = await UserModel.findOne({ userId });
                     if (!user) user = await UserModel.create({ userId });
+                    
+                    const hasVipRole = newState.member?.roles?.cache?.has(ID_ROLI_VIP);
+                    const earnedCoins = hasVipRole ? minutesSpent * 2 : minutesSpent;
+
                     user.voiceMinutes = (user.voiceMinutes || 0) + minutesSpent;
-                    user.balance += minutesSpent;
+                    user.balance += earnedCoins;
                     await user.save();
                     if (newState.member) await checkAndAwardBadges(user, newState.member);
                 } catch (e) {}
@@ -2086,20 +2164,9 @@ client.on('guildMemberAdd', async member => {
         if (channel) {
             const embed = new EmbedBuilder()
                 .setColor(0x2ECC71)
-                .setDescription(
-                    `📌 **Skonfiguruj swój profil i sprawdź najważniejsze miejsca:**\n\n` +
-                    `• Wyberaj płeć: <#1532374188634144898>\n` +
-                    `• Dostosuj role: <#1532397673842217010>\n` +
-                    `• Wybierz swój sprzęt: <#1532398069524594708>\n\n` +
-                    `🎮 Informacje o grach: <#1534060343473475644>\n` +
-                    `👻 Darmowe duszki: <#1532977723843285112>`
-                )
+                .setDescription(`📌 Witaj na serwerze! Na start otrzymujesz **200 PJN-Coins**!`)
                 .setThumbnail(member.user.displayAvatarURL());
-
-            await channel.send({
-                content: `👋 Witaj na serwerze PJN, <@${member.id}>! Cieszymy się, że jesteś z nami!🎉\n🎁 Na start otrzymujesz w prezencie **200 PJN-Coins**!`,
-                embeds: [embed]
-            });
+            await channel.send({ content: `👋 Witaj, <@${member.id}>!`, embeds: [embed] });
         }
     } catch (e) {}
 });
@@ -2109,61 +2176,16 @@ client.on('guildMemberRemove', async member => {
         const logChannel = await member.guild.channels.fetch(NOTIF_CONFIG.leaveLogChannelId) as TextChannel;
         if (!logChannel) return;
 
-        let actionType = 'opuścił serwer';
         let color = 0xED4245;
         let title = '📤 Użytkownik opuścił serwer';
-        let description = `**${member.user.tag}** (` + '`' + member.id + '`' + `) zdecydował się opuścić naszą społeczność.`;
+        let description = `**${member.user.tag}** opuścił naszą społeczność.`;
 
-        if (member.guild.members.me?.permissions.has(PermissionFlagsBits.ViewAuditLog)) {
-            const fetchedLogs = await member.guild.fetchAuditLogs({
-                limit: 1,
-                type: AuditLogEvent.MemberKick,
-            }).catch(() => null);
-
-            const kickLog = fetchedLogs?.entries.first();
-            
-            if (kickLog && kickLog.target?.id === member.id && (Date.now() - kickLog.createdTimestamp < 5000)) {
-                title = '👢 Użytkownik został wyrzucony (Kick)';
-                description = `**${member.user.tag}** (` + '`' + member.id + '`' + `) został wyrzucony z serwera przez **${kickLog.executor?.tag || 'Nieznany'}**.\n📌 **Powód:** ${kickLog.reason || 'Brak powoda'}`;
-                color = 0xF1C40F;
-            } else {
-                const banLogs = await member.guild.fetchAuditLogs({
-                    limit: 1,
-                    type: AuditLogEvent.MemberBanAdd,
-                }).catch(() => null);
-
-                const banLog = banLogs?.entries.first();
-                if (banLog && banLog.target?.id === member.id && (Date.now() - banLog.createdTimestamp < 5000)) {
-                    title = '🔨 Użytkownik został zbanowany (Ban)';
-                    description = `**${member.user.tag}** (` + '`' + member.id + '`' + `) został zbanowany na serwerze przez **${banLog.executor?.tag || 'Nieznany'}**.\n📌 **Powód:** ${banLog.reason || 'Brak powoda'}`;
-                    color = 0x992D22;
-                }
-            }
-        }
-
-        const embed = new EmbedBuilder()
-            .setColor(color)
-            .setTitle(title)
-            .setDescription(description)
-            .setThumbnail(member.user.displayAvatarURL({ size: 256 }))
-            .addFields(
-                { name: '📅 Dołączył na serwer', value: member.joinedAt ? `<t:${Math.floor(member.joinedAt.getTime() / 1000)}:R>` : 'Brak danych', inline: true },
-                { name: '👥 Liczba członków', value: `${member.guild.memberCount}`, inline: true }
-            )
-            .setTimestamp()
-            .setFooter({ text: 'PJN Security • System Logów' });
-
-        await logChannel.send({
-            embeds: [embed],
-            allowedMentions: { parse: [] }
-        });
-    } catch (error) {
-        console.error('Błąd podczas wysyłania logu o opuszczeniu/wyrzuceniu/zbanowaniu użytkownika:', error);
-    }
+        const embed = new EmbedBuilder().setColor(color).setTitle(title).setDescription(description).setTimestamp();
+        await logChannel.send({ embeds: [embed] });
+    } catch (error) {}
 });
 
 import http from 'http';
-
 const server = http.createServer((req, res) => {
   res.writeHead(200, { 'Content-Type': 'text/plain' });
   res.end('Bot is running 24/7!\n');
