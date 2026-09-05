@@ -44,7 +44,7 @@ const userSchema = new mongoose.Schema({
     badges: { type: [String], default: [] },
     reputation: { type: Number, default: 0 },
     exp: { type: Number, default: 0 },
-    vipExpiresAt: { type: Date, default: null },        // <-- Nowe pole dla wygasania VIP
+    vipExpiresAt: { type: Date, default: null },        
     doubleChanceUntil: { type: Date, default: null }, 
     dailyBoostUntil: { type: Date, default: null },     
     customRoleExpiresAt: { type: Date, default: null }, 
@@ -228,7 +228,6 @@ function startDailyQuotes() {
     });
 }
 
-// === AUTOMATYCZNE SPRAWDZANIE WYGAŚNIĘCIA RÓL VIP I USŁUG CO GODZINĘ ===
 function startExpirationChecker() {
     cron.schedule('0 * * * *', async () => {
         try {
@@ -248,7 +247,6 @@ function startExpirationChecker() {
                     const member = await guild.members.fetch(userDoc.userId).catch(() => null);
                     if (!member) continue;
 
-                    // Wygaśnięcie VIP
                     if (userDoc.vipExpiresAt && new Date(userDoc.vipExpiresAt) <= now) {
                         if (member.roles.cache.has(ID_ROLI_VIP)) {
                             await member.roles.remove(ID_ROLI_VIP).catch(() => {});
@@ -267,13 +265,11 @@ function startExpirationChecker() {
                         }).catch(() => {});
                     }
 
-                    // Wygaśnięcie podwójnej szansy
                     if (userDoc.doubleChanceUntil && new Date(userDoc.doubleChanceUntil) <= now) {
                         userDoc.doubleChanceUntil = null;
                         await userDoc.save();
                     }
 
-                    // Wygaśnięcie daily boost
                     if (userDoc.dailyBoostUntil && new Date(userDoc.dailyBoostUntil) <= now) {
                         userDoc.dailyBoostUntil = null;
                         await userDoc.save();
@@ -971,6 +967,11 @@ const commands = [
     new SlashCommandBuilder().setName('sklep').setDescription('Otwórz podgląd sklepu i sprawdź swoje środki'),
     new SlashCommandBuilder().setName('moje-przedmioty').setDescription('Sprawdź swoje aktywne przedmioty z sklepu i czas ich wygaśnięcia'),
     new SlashCommandBuilder().setName('historia-sklepu').setDescription('Wyświetl historię zakupów (Admin)').setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+    new SlashCommandBuilder()
+        .setName('napraw-vip')
+        .setDescription('Przywraca lub ustawia 30 dni VIP dla gracza po resecie bazy (Admin)')
+        .addUserOption(o => o.setName('uzytkownik').setDescription('Komu przywrócić VIP').setRequired(true))
+        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
     new SlashCommandBuilder().setName('topka').setDescription('Zobacz ranking najbogatszych graczy'),
     new SlashCommandBuilder().setName('ustaw-topke').setDescription('Ustaw ten kanał jako ranking (Admin)').setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
     new SlashCommandBuilder().setName('ustaw-odznaki').setDescription('Ustaw ten kanał jako centrum odznak (Admin)').setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
@@ -1104,12 +1105,11 @@ client.once('ready', async () => {
     startReputationTopUpdater();
     startYouTubeRssChecker();
     startLfgAutoCloser();
-    startExpirationChecker(); // <-- Uruchomienie automatycznego sprawdzania wygasania ról i usług
+    startExpirationChecker();
 });
 
 // === CENTRALNA OBSŁUGA INTERAKCJI ===
 client.on('interactionCreate', async interaction => {
-    // 1. Obsługa menu wyboru ze sklepu
     if (interaction.isStringSelectMenu()) {
         if (interaction.customId === 'shop_select') {
             await interaction.deferReply({ ephemeral: true });
@@ -1152,7 +1152,6 @@ client.on('interactionCreate', async interaction => {
         }
     }
 
-    // 2. Obsługa przycisków
     if (interaction.isButton()) {
         if (interaction.customId.startsWith('shop_buy_')) {
             await interaction.deferReply({ ephemeral: true });
@@ -1167,7 +1166,6 @@ client.on('interactionCreate', async interaction => {
                 return interaction.editReply({ content: `❌ Nie masz wystarczająco środków! Posiadasz **${user.balance} PJN-Coins**.` });
             }
 
-            // Pobranie środków i zapis w historii
             user.balance -= item.price;
             await user.save();
 
@@ -1177,7 +1175,6 @@ client.on('interactionCreate', async interaction => {
                 price: item.price
             });
 
-            // Automatyczne przyznanie odznaki podstawowej lub zaawansowanej przy zakupie
             if (!user.badges.includes('🏷️ **Klient sklepu PJN**')) {
                 user.badges.push('🏷️ **Klient sklepu PJN**');
             }
@@ -1186,20 +1183,15 @@ client.on('interactionCreate', async interaction => {
             }
             await user.save();
 
-            // Bezpieczne pobranie obiektu member bezpośrednio z serwera z uwzględnieniem uprawnień
             const member = await interaction.guild?.members.fetch(interaction.user.id).catch(() => null);
 
-            // Logika przyznawania nagrody
             if (item.type === 'vip') {
-                user.vipExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 dni ważności VIP
+                user.vipExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); 
                 await user.save();
 
                 if (member) {
                     try {
                         await member.roles.add(ID_ROLI_VIP);
-                        console.log(`[SKLEP] Pomyślnie nadano rolę VIP użytkownikowi ${interaction.user.tag}`);
-                        
-                        // Powiadomienie na PW (DM) o nadaniu rangi VIP
                         await interaction.user.send({
                             embeds: [
                                 new EmbedBuilder()
@@ -1209,12 +1201,9 @@ client.on('interactionCreate', async interaction => {
                                     .setTimestamp()
                             ]
                         }).catch(() => {});
-
                     } catch (err) {
-                        console.error('[SKLEP] Błąd podczas nadawania roli VIP (sprawdź uprawnienia bota i pozycję roli VIP):', err);
+                        console.error('[SKLEP] Błąd podczas nadawania roli VIP:', err);
                     }
-                } else {
-                    console.log(`[SKLEP] Nie udało się pobrać obiektu member dla ${interaction.user.id}`);
                 }
             } else if (item.type === 'double_chance') {
                 user.doubleChanceUntil = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
@@ -1238,19 +1227,6 @@ client.on('interactionCreate', async interaction => {
             }
 
             await interaction.editReply({ content: `🎉 Dziękuję za zakup przedmiotu **${item.name}**! Pomyślnie pobrano **${item.price} PJN-Coins** z Twojego portfela.` });
-
-            try {
-                const adminChannel = await interaction.guild?.channels.fetch(ADMIN_LOG_CHANNEL_ID).catch(() => null) as TextChannel;
-                if (adminChannel) {
-                    const logEmbed = new EmbedBuilder()
-                        .setColor(0xE67E22)
-                        .setTitle('🛒 Nowy zakup w sklepie serwerowym!')
-                        .setDescription(`Użytkownik <@${interaction.user.id}> właśnie dokonał zakupu.\n\n📦 **Przedmiot:** ${item.name}\n💰 **Cena:** ${item.price} PJN-Coins`)
-                        .setTimestamp();
-                    await adminChannel.send({ embeds: [logEmbed] });
-                }
-            } catch (e) {}
-
             return;
         }
 
@@ -1283,11 +1259,7 @@ client.on('interactionCreate', async interaction => {
                 const welcomeEmbed = new EmbedBuilder()
                     .setColor(0x2ECC71)
                     .setTitle(`🎫 Ticket od: ${interaction.user.tag}`)
-                    .setDescription(
-                        `Witaj <@${interaction.user.id}>!\n\n` +
-                        `Napisz jakiego duszka potrzebujesz, ktoś z ekipy wejdzie i od razu zobaczy Twoją wiadomość.\n\n` +
-                        `Kliknij przycisk **Zamknij Ticket**, gdy już otrzymasz duszka.`
-                    )
+                    .setDescription(`Witaj <@${interaction.user.id}>!\n\nNapisz jakiego duszka potrzebujesz, ktoś z ekipy wejdzie i od razu zobaczy Twoją wiadomość.\n\nKliknij przycisk **Zamknij Ticket**, gdy już otrzymasz duszka.`)
                     .setTimestamp();
 
                 const closeRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
@@ -1314,145 +1286,6 @@ client.on('interactionCreate', async interaction => {
             setTimeout(async () => { await channel.delete().catch(() => {}); }, 5000);
             return;
         }
-
-        if (['lfg_join', 'lfg_leave', 'lfg_create_voice', 'lfg_close'].includes(interaction.customId)) {
-            await interaction.deferReply({ ephemeral: true });
-            const lfgDoc = await LFGModel.findOne({ messageId: interaction.message.id });
-
-            if (!lfgDoc) {
-                return interaction.editReply({ content: '❌ To ogłoszenie LFG jest już nieaktualne lub zostało usunięte z bazy.' });
-            }
-
-            if (lfgDoc.status === 'closed') {
-                return interaction.editReply({ content: '❌ Ta ekipa została już zamknięta.' });
-            }
-
-            const userId = interaction.user.id;
-            const gameInfo = LFG_CONFIG.GAMES[lfgDoc.game as keyof typeof LFG_CONFIG.GAMES];
-
-            if (interaction.customId === 'lfg_close') {
-                if (lfgDoc.authorId !== userId) {
-                    return interaction.editReply({ content: '❌ Tylko autor ogłoszenia może je zamknąć!' });
-                }
-
-                lfgDoc.status = 'closed';
-                await lfgDoc.save();
-
-                if (lfgDoc.voiceChannelId) {
-                    try {
-                        const guild = interaction.guild;
-                        if (guild) {
-                            const voiceChannel = await guild.channels.fetch(lfgDoc.voiceChannelId).catch(() => null);
-                            if (voiceChannel) await voiceChannel.delete('Autor zamknął ogłoszenie LFG');
-                        }
-                    } catch (err) {}
-                }
-
-                await updateLFGMessage(interaction.message, lfgDoc);
-                return interaction.editReply({ content: '✅ Pomyślnie zamknięto ogłoszenie LFG i usunięto przypisany kanał głosowy.' });
-            }
-
-            if (interaction.customId === 'lfg_join') {
-                if (lfgDoc.currentPlayers.includes(userId)) {
-                    return interaction.editReply({ content: '⚠️ Jesteś już na liście tej ekipy!' });
-                }
-                if (lfgDoc.currentPlayers.length >= lfgDoc.maxPlayers) {
-                    return interaction.editReply({ content: '❌ Ta ekipa jest już w pełni zapełniona!' });
-                }
-
-                lfgDoc.currentPlayers.push(userId);
-                if (lfgDoc.currentPlayers.length >= lfgDoc.maxPlayers) lfgDoc.status = 'full';
-                await lfgDoc.save();
-
-                if (lfgDoc.status === 'full' && !lfgDoc.voiceChannelId) {
-                    try {
-                        const guild = interaction.guild;
-                        if (guild) {
-                            const permissionOverwrites = [{ id: guild.id, deny: [PermissionFlagsBits.ViewChannel] }];
-                            for (const pId of lfgDoc.currentPlayers) {
-                                permissionOverwrites.push({ id: pId, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.Connect, PermissionFlagsBits.Speak] });
-                            }
-                            const voiceChan = await guild.channels.create({
-                                name: `🎮-${gameInfo?.name || 'Ekipa'}-${interaction.user.username}`,
-                                type: ChannelType.GuildVoice,
-                                parent: LFG_CONFIG.CATEGORY_VOICE,
-                                permissionOverwrites: permissionOverwrites
-                            });
-                            lfgDoc.voiceChannelId = voiceChan.id;
-                            await lfgDoc.save();
-                        }
-                    } catch (err) {}
-                }
-
-                await updateLFGMessage(interaction.message, lfgDoc);
-                return interaction.editReply({ content: '✅ Pomyślnie dołączyłeś do ekipy!' });
-            }
-
-            if (interaction.customId === 'lfg_leave') {
-                if (!lfgDoc.currentPlayers.includes(userId)) {
-                    return interaction.editReply({ content: '⚠️ Nie jesteś na liście tej ekipy.' });
-                }
-                if (lfgDoc.authorId === userId) {
-                    return interaction.editReply({ content: '❌ Autor ogłoszenia nie może opuścić własnej ekipy. Użyj przycisku "Zamknij ogłoszenie".' });
-                }
-
-                lfgDoc.currentPlayers = lfgDoc.currentPlayers.filter(id => id !== userId);
-                if (lfgDoc.status === 'full') lfgDoc.status = 'active';
-                await lfgDoc.save();
-
-                await updateLFGMessage(interaction.message, lfgDoc);
-                return interaction.editReply({ content: '✅ Pomyślnie opuściłeś ekipę.' });
-            }
-
-            if (interaction.customId === 'lfg_create_voice') {
-                if (lfgDoc.authorId !== userId) {
-                    return interaction.editReply({ content: '❌ Tylko autor ogłoszenia może wymusić utworzenie pokoju głosowego!' });
-                }
-                if (lfgDoc.voiceChannelId) {
-                    return interaction.editReply({ content: `⚠️ Kanał głosowy został już utworzony: <#${lfgDoc.voiceChannelId}>!` });
-                }
-
-                try {
-                    const guild = interaction.guild;
-                    if (guild) {
-                        const permissionOverwrites = [{ id: guild.id, deny: [PermissionFlagsBits.ViewChannel] }];
-                        for (const pId of lfgDoc.currentPlayers) {
-                            permissionOverwrites.push({ id: pId, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.Connect, PermissionFlagsBits.Speak] });
-                        }
-                        const voiceChan = await guild.channels.create({
-                            name: `🎮-${gameInfo?.name || 'Ekipa'}-${interaction.user.username}`,
-                            type: ChannelType.GuildVoice,
-                            parent: LFG_CONFIG.CATEGORY_VOICE,
-                            permissionOverwrites: permissionOverwrites
-                        });
-                        lfgDoc.voiceChannelId = voiceChan.id;
-                        await lfgDoc.save();
-                        await updateLFGMessage(interaction.message, lfgDoc);
-                        return interaction.editReply({ content: `✅ Pomyślnie utworzono prywatny kanał głosowy: <#${voiceChan.id}>!` });
-                    }
-                } catch (err) {}
-            }
-            return;
-        }
-    }
-
-    if (interaction.isAutocomplete()) {
-        if (interaction.commandName === 'mem') {
-            const focusedValue = interaction.options.getFocused();
-            try {
-                const response = await fetch('https://api.imgflip.com/get_memes');
-                const data = await response.json() as any;
-                if (data && data.success && data.data && data.data.memes) {
-                    const filtered = data.data.memes.filter((m: any) => m.name.toLowerCase().includes(focusedValue.toLowerCase())).slice(0, 25);
-                    await interaction.respond(filtered.map((m: any) => ({ name: m.name, value: m.id })));
-                } else {
-                    await interaction.respond([]);
-                }
-            } catch (err) {
-                await interaction.respond([]);
-            }
-        }
-        return;
     }
 
     if (!interaction.isChatInputCommand()) return;
@@ -1472,6 +1305,7 @@ client.on('interactionCreate', async interaction => {
             return;
         }
 
+        // === NAPRAWIONE SPRAWDŻANIE AKTYWNYCH PRZEDMIOTÓW (Z UWZGLĘDNIENIEM BAZY I RANGI) ===
         if (commandName === 'moje-przedmioty') {
             await interaction.deferReply({ ephemeral: true });
             let user = await UserModel.findOne({ userId: interaction.user.id });
@@ -1489,9 +1323,14 @@ client.on('interactionCreate', async interaction => {
                 return `Pozostało: **${days} dni, ${hours} godz.** (<t:${Math.floor(new Date(date).getTime() / 1000)}:R>)`;
             };
 
-            if (user.vipExpiresAt && new Date(user.vipExpiresAt) > now) {
+            const member = await interaction.guild?.members.fetch(interaction.user.id).catch(() => null);
+            const hasVipRoleOnServer = member?.roles?.cache?.has(ID_ROLI_VIP);
+
+            // Jeśli ma rolę w bazie LUB fizycznie na serwerze (a w bazie wygasło/brak), uwzględniamy VIP
+            if ((user.vipExpiresAt && new Date(user.vipExpiresAt) > now) || hasVipRoleOnServer) {
                 activeCount++;
-                desc += `🟡 **Rola VIP**\n> ${formatTimeLeft(user.vipExpiresAt)}\n\n`;
+                const timeText = user.vipExpiresAt ? formatTimeLeft(user.vipExpiresAt) : 'Aktywna na serwerze (stały dostęp)';
+                desc += `🟡 **Rola VIP**\n> ${timeText}\n\n`;
             }
 
             if (user.doubleChanceUntil && new Date(user.doubleChanceUntil) > now) {
@@ -1511,6 +1350,7 @@ client.on('interactionCreate', async interaction => {
 
             if (user.customVoiceExpiresAt && new Date(user.customVoiceExpiresAt) > now) {
                 activeCount++;
+                desc++;
                 desc += `🎙️ **Własny kanał głosowy**\n> ${formatTimeLeft(user.customVoiceExpiresAt)}\n\n`;
             }
 
@@ -1525,6 +1365,28 @@ client.on('interactionCreate', async interaction => {
                 .setTimestamp();
 
             await interaction.editReply({ embeds: [embed] });
+            return;
+        }
+
+        // === NOWA KOMENDA ADMINISTRACYJNA DO NAPRAWY VIP PO RESTARCIE ===
+        if (commandName === 'napraw-vip') {
+            if (!isAuthorized(interaction.user.id)) return interaction.reply({ content: '❌ Brak uprawnień!', ephemeral: true });
+            await interaction.deferReply({ ephemeral: true });
+
+            const targetUser = interaction.options.getUser('uzytkownik', true);
+            let user = await UserModel.findOne({ userId: targetUser.id });
+            if (!user) user = await UserModel.create({ userId: targetUser.id });
+
+            // Ustawiamy pełne 30 dni od teraz w bazie
+            user.vipExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+            await user.save();
+
+            const member = await interaction.guild?.members.fetch(targetUser.id).catch(() => null);
+            if (member) {
+                await member.roles.add(ID_ROLI_VIP).catch(() => {});
+            }
+
+            await interaction.editReply({ content: `✅ Pomyślnie przywrócono/ustawiono 30 dni rangi VIP dla użytkownika <@${targetUser.id}> w bazie i nadano rolę!` });
             return;
         }
 
@@ -1549,453 +1411,6 @@ client.on('interactionCreate', async interaction => {
                 .setDescription(desc)
                 .setTimestamp();
             await interaction.editReply({ embeds: [embed] });
-            return;
-        }
-
-        if (commandName === 'szukam') {
-            if (interaction.channelId !== ID_KANALU_SZUKAM_DO_GRY) {
-                return interaction.reply({ 
-                    content: `❌ Komendy \`/szukam\` można używać wyłącznie na dedykowanym kanale: <#${ID_KANALU_SZUKAM_DO_GRY}>!`, 
-                    ephemeral: true 
-                });
-            }
-
-            await interaction.deferReply();
-            const graKey = interaction.options.getString('gra', true);
-            const maxPlayers = interaction.options.getInteger('osoby', true);
-            const opis = interaction.options.getString('opis') || 'Brak dodatkowego opisu.';
-
-            const gameInfo = LFG_CONFIG.GAMES[graKey as keyof typeof LFG_CONFIG.GAMES];
-            if (!gameInfo) return interaction.editReply({ content: '❌ Wybrano nieobsługiwaną grę.' });
-
-            const authorId = interaction.user.id;
-            const currentPlayers = [authorId];
-
-            const embed = new EmbedBuilder()
-                .setColor(0x5865F2)
-                .setTitle(`${gameInfo.emoji} Szukanie Ekipy: ${gameInfo.name}`)
-                .setDescription(
-                    `👤 **Organizator:** <@${authorId}>\n` +
-                    `👥 **Skład:** 1 / ${maxPlayers} osób\n` +
-                    `📝 **Opis:** ${opis}\n\n` +
-                    `📋 **Aktualni członkowie:**\n• <@${authorId}>`
-                )
-                .setTimestamp()
-                .setFooter({ text: 'PJN System LFG • Dołącz do gry!' });
-
-            const row1 = new ActionRowBuilder<ButtonBuilder>().addComponents(
-                new ButtonBuilder().setCustomId('lfg_join').setLabel('Dołącz do ekipy').setStyle(ButtonStyle.Success).setEmoji('➕'),
-                new ButtonBuilder().setCustomId('lfg_leave').setLabel('Opuść').setStyle(ButtonStyle.Danger).setEmoji('➖'),
-                new ButtonBuilder().setCustomId('lfg_create_voice').setLabel('🎙️ Utwórz pokój').setStyle(ButtonStyle.Primary),
-                new ButtonBuilder().setCustomId('lfg_close').setLabel('Zamknij ogłoszenie').setStyle(ButtonStyle.Secondary).setEmoji('🔒')
-            );
-
-            const rolePing = gameInfo.roleId ? `<@&${gameInfo.roleId}>` : '';
-            const sentMessage = await interaction.channel?.send({
-                content: `${rolePing} 🚨 **Nowe zgłoszenie LFG!** Użytkownik <@${authorId}> szuka ludzi do gry **${gameInfo.name}**!`,
-                embeds: [embed],
-                components: [row1],
-                allowedMentions: { roles: [gameInfo.roleId], users: [authorId] }
-            });
-
-            if (sentMessage) {
-                await LFGModel.create({
-                    messageId: sentMessage.id,
-                    channelId: interaction.channelId,
-                    authorId: authorId,
-                    game: graKey,
-                    maxPlayers: maxPlayers,
-                    currentPlayers: currentPlayers,
-                    description: opis,
-                    status: 'active',
-                    createdAt: new Date()
-                });
-                await interaction.editReply({ content: `✅ Pomyślnie utworzono ogłoszenie LFG!` });
-            } else {
-                await interaction.editReply({ content: `❌ Nie udało się wysłać ogłoszenia na kanał.` });
-            }
-            return;
-        }
-
-        if (commandName === 'powiadomienie') {
-            if (!isAuthorized(interaction.user.id)) return interaction.reply({ content: '❌ Nie masz uprawnień!', ephemeral: true });
-            await interaction.deferReply({ ephemeral: true });
-            const tworca = interaction.options.getString('tworca', true) as 'languspjn' | 'elladermusic';
-            const platforma = interaction.options.getString('platforma', true) as 'youtube' | 'tiktok';
-            const tytul = interaction.options.getString('tytul', true);
-            const link = interaction.options.getString('link', true);
-            const miniatura = interaction.options.getString('miniatura') || undefined;
-
-            await sendNotification(tworca, platforma, tytul, link, miniatura);
-            await interaction.editReply({ content: '✅ Pomyślnie wysłano powiadomienie!' });
-            return;
-        }
-
-        if (commandName === 'ustaw-topke') {
-            if (!isAuthorized(interaction.user.id)) return interaction.reply({ content: '❌ Brak uprawnień!', ephemeral: true });
-            await interaction.deferReply({ ephemeral: true });
-            const embedData = await getTopEmbedData(interaction.guild);
-            const sentMessage = await interaction.channel?.send({ embeds: [embedData] });
-            if (sentMessage) {
-                await ConfigModel.findOneAndUpdate({ key: 'topka_msg' }, { channelId: interaction.channelId, messageId: sentMessage.id }, { upsert: true, new: true });
-                await interaction.editReply({ content: `✅ Ustawiono ten kanał jako ranking.` });
-            }
-            return;
-        }
-
-        if (commandName === 'ustaw-odznaki') {
-            if (!isAuthorized(interaction.user.id)) return interaction.reply({ content: '❌ Brak uprawnień!', ephemeral: true });
-            await interaction.deferReply({ ephemeral: true });
-            const embedData = createBadgesInfoEmbed();
-            const sentMessage = await interaction.channel?.send({ embeds: [embedData] });
-            if (sentMessage) {
-                await ConfigModel.findOneAndUpdate({ key: 'odznaki_info_msg' }, { channelId: interaction.channelId, messageId: sentMessage.id }, { upsert: true, new: true });
-                await interaction.editReply({ content: `✅ Ustawiono ten kanał jako centrum odznak.` });
-            }
-            return;
-        }
-
-        if (commandName === 'reputacja') {
-            await interaction.deferReply();
-            const targetUser = interaction.options.getUser('uzytkownik') || interaction.user;
-            let user = await UserModel.findOne({ userId: targetUser.id });
-            if (!user) user = await UserModel.create({ userId: targetUser.id });
-
-            const rep = user.reputation || 0;
-            const exp = user.exp || 0;
-            const sign = rep > 0 ? '+' : '';
-            const currentLevel = Math.floor(exp / 100) + 1;
-            const progressInLevel = exp % 100;
-            const progressBar = '█'.repeat(Math.floor(progressInLevel / 10)) + '░'.repeat(10 - Math.floor(progressInLevel / 10));
-
-            let traderRankName = 'Brak rangi tradera';
-            let rankColor = 0x3498DB;
-            const member = await interaction.guild?.members.fetch(targetUser.id).catch(() => null);
-            
-            if (member) {
-                if (member.roles.cache.has(ID_RANGI_WZOROWY_TRADER)) {
-                    traderRankName = '🟡 Wzorowy Trader (+50 pkt)';
-                    rankColor = 0xF1C40F;
-                } else if (member.roles.cache.has(ID_RANGI_POZYTYWNY_TRADER)) {
-                    traderRankName = '🟢 Pozytywny Trader (+10 pkt)';
-                    rankColor = 0x2ECC71;
-                } else if (member.roles.cache.has(ID_RANGI_NEGATYWNY_TRADER)) {
-                    traderRankName = '🟠 Negatywny Trader (-5 pkt)';
-                    rankColor = 0xE67E22;
-                }
-            }
-
-            const embed = new EmbedBuilder()
-                .setColor(rankColor)
-                .setTitle(`⭐ Profil Handlowy • ${targetUser.tag}`)
-                .setThumbnail(targetUser.displayAvatarURL())
-                .addFields(
-                    { name: '📊 Punkty Reputacji', value: `**${sign}${rep} pkt**`, inline: true },
-                    { name: '🎖️ Ranga Tradera', value: `**${traderRankName}**`, inline: true },
-                    { name: '⭐ Poziom Doświadczenia (Exp)', value: `Poziom **${currentLevel}** (${exp} XP)\n\`[${progressBar}]\` ${progressInLevel}/100 XP`, inline: false }
-                )
-                .setTimestamp();
-            await interaction.editReply({ embeds: [embed] });
-            return;
-        }
-
-        if (commandName === 'daj-wszystkim') {
-            if (!isAuthorized(interaction.user.id)) return interaction.reply({ content: '❌ Brak uprawnień!', ephemeral: true });
-            const ilosc = interaction.options.getInteger('ilosc', true);
-            const powod = interaction.options.getString('powod') || 'Brak';
-            if (ilosc <= 0) return interaction.reply({ content: '❌ Ilość musi być większa od zera!', ephemeral: true });
-
-            await interaction.deferReply({ ephemeral: true });
-            const allUsers = await UserModel.find({});
-            let successCount = 0;
-
-            for (const userDoc of allUsers) {
-                userDoc.balance = (userDoc.balance || 0) + ilosc;
-                await userDoc.save();
-                successCount++;
-            }
-            await interaction.editReply({ content: `✅ Przyznano ${ilosc} PJN-Coins dla ${successCount} użytkowników!` });
-            return;
-        }
-
-        if (commandName === 'nowości') {
-            if (!isAuthorized(interaction.user.id)) return interaction.reply({ content: '❌ Brak uprawnień!', ephemeral: true });
-            const tytulWpisany = interaction.options.getString('tytul', true);
-            const coNowego = interaction.options.getString('co_nowego', true);
-
-            await interaction.deferReply({ ephemeral: true });
-            const embed = new EmbedBuilder()
-                .setColor(0x3498DB)
-                .setTitle(`🚀 NOWOŚĆ! • ${tytulWpisany}`)
-                .setDescription(`🔹 **Szczegóły:**\n${coNowego}`)
-                .setImage(LIVE_IMAGE_URL)
-                .setTimestamp();
-
-            const channel = interaction.channel as TextChannel;
-            if (channel) await channel.send({ content: '@everyone', embeds: [embed], allowedMentions: { parse: ['everyone'] } });
-            await interaction.editReply({ content: `✅ Wysłano ogłoszenie!` });
-            return;
-        }
-
-        if (commandName === 'odpalstream') {
-            if (!isAuthorized(interaction.user.id)) return interaction.reply({ content: '❌ Brak uprawnień!', ephemeral: true });
-            const tytul = interaction.options.getString('tytul', true);
-            const link = interaction.options.getString('link', true);
-
-            await interaction.deferReply();
-            const embed = new EmbedBuilder()
-                .setColor(0x9146FF)
-                .setTitle('🔴 NA ŻYWO! • LangusPJN wystartował ze stremem!')
-                .setDescription(`**${tytul}**\n\n▶️ Oglądaj: [Przejdź do transmisji](${link})`)
-                .setImage(LIVE_IMAGE_URL)
-                .setTimestamp();
-
-            const channel = interaction.channel as TextChannel;
-            if (channel) await channel.send({ content: '@everyone', embeds: [embed], allowedMentions: { parse: ['everyone'] } });
-            await interaction.editReply({ content: `✅ Ogłoszono start streama!` });
-            return;
-        }
-
-        if (commandName === 'zakonczstream') {
-            if (!isAuthorized(interaction.user.id)) return interaction.reply({ content: '❌ Brak uprawnień!', ephemeral: true });
-            await interaction.deferReply();
-            const embed = new EmbedBuilder().setColor(0xE74C3C).setTitle('⏹️ STREAM ZAKOŃCZONY').setDescription('Dziękujemy za obecność!').setTimestamp();
-            const channel = interaction.channel as TextChannel;
-            if (channel) await channel.send({ embeds: [embed] });
-            await interaction.editReply({ content: `✅ Zakończono stream!` });
-            return;
-        }
-
-        if (commandName === 'przelej') {
-            await interaction.deferReply({ ephemeral: true });
-            const targetUser = interaction.options.getUser('uzytkownik', true);
-            const kwota = interaction.options.getInteger('kwota', true);
-            if (kwota <= 0) return interaction.editReply({ content: '❌ Kwota musi być > 0!' });
-            if (targetUser.id === interaction.user.id) return interaction.editReply({ content: '❌ Nie możesz przelać samemu sobie!' });
-
-            let sender = await UserModel.findOne({ userId: interaction.user.id });
-            if (!sender) sender = await UserModel.create({ userId: interaction.user.id });
-            if (sender.balance < kwota) return interaction.editReply({ content: `❌ Brak środków! Posiadasz ${sender.balance}.` });
-
-            let receiver = await UserModel.findOne({ userId: targetUser.id });
-            if (!receiver) receiver = await UserModel.create({ userId: targetUser.id });
-
-            sender.balance -= kwota;
-            receiver.balance += kwota;
-            sender.totalDonated = (sender.totalDonated || 0) + kwota;
-            await sender.save();
-            await receiver.save();
-            const memberObj = await interaction.guild?.members.fetch(interaction.user.id).catch(() => null);
-            await checkAndAwardBadges(sender, memberObj);
-
-            await interaction.editReply({ content: `✅ Przelano ${kwota} PJN-Coins dla <@${targetUser.id}>!` });
-            return;
-        }
-
-        const getCasinoMultiplier = async (userId: string, member: any) => {
-            let winChance = 0.4; 
-            let user = await UserModel.findOne({ userId });
-            const hasVipRole = member?.roles?.cache?.has(ID_ROLI_VIP);
-            const hasDoubleChance = user?.doubleChanceUntil && new Date(user.doubleChanceUntil) > new Date();
-
-            if (hasVipRole || hasDoubleChance) {
-                winChance = 0.65; 
-            }
-            return winChance;
-        };
-
-        if (commandName === 'kostka') {
-            await interaction.deferReply();
-            const stawka = interaction.options.getInteger('stawka', true);
-            if (stawka <= 0) return interaction.editReply({ content: '❌ Stawka musi być > 0!' });
-
-            let user = await UserModel.findOne({ userId: interaction.user.id });
-            if (!user) user = await UserModel.create({ userId: interaction.user.id });
-            if (user.balance < stawka) return interaction.editReply({ content: `❌ Brak środków (${user.balance})!` });
-
-            user.casinoPlays = (user.casinoPlays || 0) + 1;
-            const memberObj = await interaction.guild?.members.fetch(interaction.user.id).catch(() => null);
-            const winChance = await getCasinoMultiplier(interaction.user.id, memberObj);
-            const won = Math.random() < winChance;
-
-            if (won) {
-                user.balance += stawka;
-                user.consecutiveWins = (user.consecutiveWins || 0) + 1;
-                user.consecutiveLosses = 0;
-                await user.save();
-                await checkAndAwardBadges(user, memberObj);
-                return interaction.editReply({ content: `🎲 Wygrana w kościach! Wygrywasz **${stawka} PJN-Coins** (Stan: **${user.balance}**).` });
-            } else {
-                user.balance -= stawka;
-                user.consecutiveLosses = (user.consecutiveLosses || 0) + 1;
-                user.consecutiveWins = 0;
-                await user.save();
-                await checkAndAwardBadges(user, memberObj);
-                return interaction.editReply({ content: `🎲 Przegrana w kościach. Tracisz **${stawka} PJN-Coins** (Stan: **${user.balance}**).` });
-            }
-        }
-
-        if (commandName === 'moneta') {
-            await interaction.deferReply();
-            const wybor = interaction.options.getString('wybor', true);
-            const stawka = interaction.options.getInteger('stawka', true);
-            if (stawka <= 0) return interaction.editReply({ content: '❌ Stawka musi być > 0!' });
-
-            let user = await UserModel.findOne({ userId: interaction.user.id });
-            if (!user) user = await UserModel.create({ userId: interaction.user.id });
-            if (user.balance < stawka) return interaction.editReply({ content: `❌ Brak środków (${user.balance})!` });
-
-            user.casinoPlays = (user.casinoPlays || 0) + 1;
-            const memberObj = await interaction.guild?.members.fetch(interaction.user.id).catch(() => null);
-            const winChance = await getCasinoMultiplier(interaction.user.id, memberObj);
-            const wynik = Math.random() < 0.5 ? 'orzel' : 'reszka';
-            const guessed = (wybor === wynik) || (Math.random() < winChance && Math.random() < 0.3);
-
-            if (guessed) {
-                user.balance += stawka;
-                user.consecutiveWins = (user.consecutiveWins || 0) + 1;
-                user.consecutiveLosses = 0;
-                await user.save();
-                await checkAndAwardBadges(user, memberObj);
-                return interaction.editReply({ content: `🪙 Wypadł **${wynik}**. Trafiłeś! Zyskujesz **${stawka} PJN-Coins**.` });
-            } else {
-                user.balance -= stawka;
-                user.consecutiveLosses = (user.consecutiveLosses || 0) + 1;
-                user.consecutiveWins = 0;
-                await user.save();
-                await checkAndAwardBadges(user, memberObj);
-                return interaction.editReply({ content: `🪙 Wypadł **${wynik}**. Przegrywasz **${stawka} PJN-Coins**.` });
-            }
-        }
-
-        if (commandName === 'slot') {
-            await interaction.deferReply();
-            const stawka = interaction.options.getInteger('stawka', true);
-            if (stawka <= 0) return interaction.editReply({ content: '❌ Stawka musi być > 0!' });
-
-            let user = await UserModel.findOne({ userId: interaction.user.id });
-            if (!user) user = await UserModel.create({ userId: interaction.user.id });
-            if (user.balance < stawka) return interaction.editReply({ content: `❌ Brak środków (${user.balance})!` });
-
-            user.casinoPlays = (user.casinoPlays || 0) + 1;
-            const symbols = ['🍎', '🍋', '🍒', '🔔', '💎'];
-            const memberObj = await interaction.guild?.members.fetch(interaction.user.id).catch(() => null);
-            const winChance = await getCasinoMultiplier(interaction.user.id, memberObj);
-            
-            let s1 = symbols[Math.floor(Math.random() * symbols.length)];
-            let s2 = symbols[Math.floor(Math.random() * symbols.length)];
-            let s3 = symbols[Math.floor(Math.random() * symbols.length)];
-
-            if (Math.random() < winChance) {
-                s1 = s2 = symbols[Math.floor(Math.random() * symbols.length)];
-            }
-
-            if (s1 === s2 && s2 === s3) {
-                const wygrana = stawka * 5;
-                user.balance += wygrana;
-                user.consecutiveWins = (user.consecutiveWins || 0) + 1;
-                user.consecutiveLosses = 0;
-                await user.save();
-                await checkAndAwardBadges(user, memberObj);
-                return interaction.editReply({ content: `🎰 [ ${s1} | ${s2} | ${s3} ]\nJACKPOT! Wygrywasz **${wygrana} PJN-Coins**!` });
-            } else if (s1 === s2 || s2 === s3 || s1 === s3) {
-                user.balance += stawka;
-                user.consecutiveWins = (user.consecutiveWins || 0) + 1;
-                user.consecutiveLosses = 0;
-                await user.save();
-                await checkAndAwardBadges(user, memberObj);
-                return interaction.editReply({ content: `🎰 [ ${s1} | ${s2} | ${s3} ]\nMała wygrana! Zwrot stawki **${stawka} PJN-Coins**.` });
-            } else {
-                user.balance -= stawka;
-                user.consecutiveLosses = (user.consecutiveLosses || 0) + 1;
-                user.consecutiveWins = 0;
-                await user.save();
-                await checkAndAwardBadges(user, memberObj);
-                return interaction.editReply({ content: `🎰 [ ${s1} | ${s2} | ${s3} ]\nNic z tego! Strata **${stawka} PJN-Coins**.` });
-            }
-        }
-
-        if (commandName === 'poker') {
-            await interaction.deferReply();
-            const tryb = interaction.options.getString('tryb', true);
-            const stawka = interaction.options.getInteger('stawka', true);
-            if (stawka <= 0) return interaction.editReply({ content: '❌ Stawka musi być > 0!' });
-
-            let user = await UserModel.findOne({ userId: interaction.user.id });
-            if (!user) user = await UserModel.create({ userId: interaction.user.id });
-            if (user.balance < stawka) return interaction.editReply({ content: `❌ Brak środków (${user.balance})!` });
-
-            user.casinoPlays = (user.casinoPlays || 0) + 1;
-            const memberObj = await interaction.guild?.members.fetch(interaction.user.id).catch(() => null);
-            const winChance = await getCasinoMultiplier(interaction.user.id, memberObj);
-            const wygrana = Math.random() < (winChance + 0.1) ? stawka * 2 : -stawka;
-
-            user.balance += wygrana;
-            if (wygrana > 0) {
-                user.consecutiveWins = (user.consecutiveWins || 0) + 1;
-                user.consecutiveLosses = 0;
-            } else {
-                user.consecutiveLosses = (user.consecutiveLosses || 0) + 1;
-                user.consecutiveWins = 0;
-            }
-            await user.save();
-            await checkAndAwardBadges(user, memberObj);
-
-            if (wygrana > 0) {
-                return interaction.editReply({ content: `🃏 [Poker - ${tryb}] Wygrywasz **${wygrana} PJN-Coins**!` });
-            } else {
-                return interaction.editReply({ content: `🃏 [Poker - ${tryb}] Przegrywasz **${stawka} PJN-Coins**!` });
-            }
-        }
-
-        if (commandName === 'quiz') {
-            await interaction.reply({ content: '❓ **Quiz PJN:** Jak nazywa się twórca tego serwera lub główne platformy streamingowe projektu? (Odpowiedz: LangusPJN)', ephemeral: false });
-            return;
-        }
-
-        if (commandName === 'odznaki') {
-            await interaction.deferReply({ ephemeral: true });
-            const targetUser = interaction.options.getUser('uzytkownik') || interaction.user;
-            let user = await UserModel.findOne({ userId: targetUser.id });
-            if (!user) user = await UserModel.create({ userId: targetUser.id });
-
-            const badgeText = user.badges && user.badges.length > 0 ? user.badges.join('\n') : 'Brak odznak.';
-            await interaction.editReply({
-                embeds: [{
-                    color: 0x9B59B6,
-                    title: `🛡️ Profil Odznak i Osiągnięć`,
-                    description: `Użytkownik: <@${targetUser.id}>`,
-                    thumbnail: { url: targetUser.displayAvatarURL() },
-                    fields: [
-                        { name: '🏅 Zdobyte Odznaki', value: badgeText, inline: false },
-                        { name: '📊 Statystyki', value: `💬 Wiadomości: **${user.messageCount || 0}**\n🎙️ Głos: **${user.voiceMinutes || 0} min**\n💰 Portfel: **${user.balance || 0}**`, inline: false }
-                    ]
-                }]
-            });
-            return;
-        }
-
-        if (commandName === 'daj-odznake' || commandName === 'zabierz-odznake') {
-            if (!isAuthorized(interaction.user.id)) return interaction.reply({ content: '❌ Brak uprawnień!', ephemeral: true });
-            await interaction.deferReply({ ephemeral: true });
-            const targetUser = interaction.options.getUser('uzytkownik', true);
-            const odznaka = interaction.options.getString('odznaka', true);
-            let user = await UserModel.findOne({ userId: targetUser.id });
-            if (!user) user = await UserModel.create({ userId: targetUser.id });
-
-            if (commandName === 'daj-odznake') {
-                if (!user.badges.includes(odznaka)) {
-                    user.badges.push(odznaka);
-                    await user.save();
-                    await interaction.editReply({ content: `✅ Przyznano odznakę!` });
-                } else {
-                    await interaction.editReply({ content: `⚠️ Użytkownik ma już tę odznakę.` });
-                }
-            } else {
-                user.badges = user.badges.filter((b: string) => b !== odznaka);
-                await user.save();
-                await interaction.editReply({ content: `✅ Zabrano odznakę!` });
-            }
             return;
         }
 
@@ -2033,8 +1448,8 @@ client.on('interactionCreate', async interaction => {
 
             let dailyAmount = 100;
             const memberObj = await interaction.guild?.members.fetch(interaction.user.id).catch(() => null);
-            const hasVipRole = memberObj?.roles?.cache?.has(ID_ROLI_VIP);
-            const hasDailyBoost = user.dailyBoostUntil && new Date(user.dailyBoostUntil) > new Date();
+            const hasVipRole = memberObj?.roles?.cache?.has(ID_ROLI_VIP) || (user.vipExpiresAt && new Date(user.vipExpiresAt) > now);
+            const hasDailyBoost = user.dailyBoostUntil && new Date(user.dailyBoostUntil) > now;
 
             if (hasVipRole || hasDailyBoost) {
                 dailyAmount *= 2; 
@@ -2049,278 +1464,26 @@ client.on('interactionCreate', async interaction => {
             return;
         }
 
-        if (commandName === 'dajpunkty' || commandName === 'zabierzpunkty') {
-            if (!isAuthorized(interaction.user.id)) return interaction.reply({ content: '❌ Brak uprawnień!', ephemeral: true });
-            await interaction.deferReply({ ephemeral: true });
-            const targetUser = interaction.options.getUser('uzytkownik', true);
-            const ilosc = interaction.options.getInteger('ilosc', true);
-            let user = await UserModel.findOne({ userId: targetUser.id });
-            if (!user) user = await UserModel.create({ userId: targetUser.id });
-
-            if (commandName === 'dajpunkty') {
-                user.balance += ilosc;
-                await user.save();
-                await interaction.editReply({ content: `✅ Dodano ${ilosc} punktów.` });
-            } else {
-                user.balance = Math.max(0, user.balance - ilosc);
-                await user.save();
-                await interaction.editReply({ content: `✅ Zabrano ${ilosc} punktów.` });
-            }
-            return;
-        }
-
-        if (commandName === 'cytat') {
-            await interaction.deferReply({ ephemeral: true });
-            await sendQuoteToChannel(ID_KANALU_CYTATY);
-            await interaction.editReply({ content: `✅ Wysłano cytat!` });
-            return;
-        }
-
-        if (commandName === 'dodaj-cytat') {
-            if (!isAuthorized(interaction.user.id)) return interaction.reply({ content: '❌ Brak uprawnień!', ephemeral: true });
-            await interaction.deferReply({ ephemeral: true });
-            const text = interaction.options.getString('tekst', true);
-            const author = interaction.options.getString('autor', true);
-            await QuoteModel.create({ text, author, addedBy: interaction.user.id });
-            
-            let user = await UserModel.findOne({ userId: interaction.user.id });
-            if (!user) user = await UserModel.create({ userId: interaction.user.id });
-            user.quotesAdded = (user.quotesAdded || 0) + 1;
-            await user.save();
-            const memberObj = await interaction.guild?.members.fetch(interaction.user.id).catch(() => null);
-            await checkAndAwardBadges(user, memberObj);
-            await interaction.editReply({ content: `✅ Dodano cytat!` });
-            return;
-        }
-
-        if (commandName === 'mem') {
-            await interaction.deferReply();
-            const templateId = interaction.options.getString('szablon', true);
-            const gora = interaction.options.getString('gora') || '';
-            const dol = interaction.options.getString('dol') || '';
-
-            try {
-                const params = new URLSearchParams();
-                params.append('template_id', templateId);
-                params.append('username', 'ellader');
-                params.append('password', 'ellader123');
-                params.append('text0', gora);
-                params.append('text1', dol);
-
-                const response = await fetch('https://api.imgflip.com/caption_image', { method: 'POST', body: params });
-                const data = await response.json() as any;
-
-                if (data && data.success) {
-                    await interaction.editReply({ content: `🖼️ Mem wygenerowany przez <@${interaction.user.id}>:`, files: [data.data.url] });
-                } else {
-                    await interaction.editReply({ content: `❌ Błąd generatora memów.` });
-                }
-            } catch (err) {
-                await interaction.editReply({ content: '❌ Błąd komunikacji.' });
-            }
-            return;
-        }
-
     } catch (error) {
         console.error(error);
     }
 });
 
-async function updateLFGMessage(message: any, lfgDoc: any) {
-    try {
-        const gameInfo = LFG_CONFIG.GAMES[lfgDoc.game as keyof typeof LFG_CONFIG.GAMES];
-        const playersListText = lfgDoc.currentPlayers.map((id: string) => `• <@${id}>`).join('\n');
-
-        let embedColor = 0x5865F2;
-        let statusText = `👥 **Skład:** ${lfgDoc.currentPlayers.length} / ${lfgDoc.maxPlayers} osób`;
-
-        if (lfgDoc.status === 'full') embedColor = 0xE67E22;
-        else if (lfgDoc.status === 'closed') {
-            embedColor = 0xED4245;
-            statusText = `🔒 **OGŁOSZENIE ZAMKNIĘTE**`;
-        }
-
-        const embed = new EmbedBuilder()
-            .setColor(embedColor)
-            .setTitle(`${gameInfo.emoji} Szukanie Ekipy: ${gameInfo.name}`)
-            .setDescription(
-                `👤 **Organizator:** <@${lfgDoc.authorId}>\n` +
-                `${statusText}\n` +
-                `📝 **Opis:** ${lfgDoc.description}\n\n` +
-                `📋 **Aktualni członkowie:**\n${playersListText}` +
-                (lfgDoc.voiceChannelId ? `\n\n🎙️ **Kanał Głosowy:** <#${lfgDoc.voiceChannelId}>` : '')
-            )
-            .setTimestamp()
-            .setFooter({ text: 'PJN System LFG • Dołącz do gry!' });
-
-        if (lfgDoc.status === 'closed') {
-            await message.edit({ embeds: [embed], components: [] });
-        } else {
-            const row1 = new ActionRowBuilder<ButtonBuilder>().addComponents(
-                new ButtonBuilder().setCustomId('lfg_join').setLabel('Dołącz do ekipy').setStyle(ButtonStyle.Success).setEmoji('➕'),
-                new ButtonBuilder().setCustomId('lfg_leave').setLabel('Opuść').setStyle(ButtonStyle.Danger).setEmoji('➖'),
-                new ButtonBuilder().setCustomId('lfg_create_voice').setLabel('🎙️ Utwórz pokój').setStyle(ButtonStyle.Primary),
-                new ButtonBuilder().setCustomId('lfg_close').setLabel('Zamknij ogłoszenie').setStyle(ButtonStyle.Secondary).setEmoji('🔒')
-            );
-            await message.edit({ embeds: [embed], components: [row1] });
-        }
-    } catch (e) {}
-}
-
 client.on('messageCreate', async message => {
     if (message.author.bot || !message.guild) return;
-
-    if (message.channel.id === ID_KANAL_REPUTACJI) {
-        const content = message.content.trim();
-        const isPlus = content.toLowerCase().startsWith('+rep');
-        const isMinus = content.toLowerCase().startsWith('-rep');
-
-        if (isPlus || isMinus) {
-            const mentionedUser = message.mentions.users.first();
-            if (!mentionedUser) {
-                await message.reply({ content: '❌ Musisz oznaczyć użytkownika (np. `+rep @użytkownik`).' }).catch(() => {});
-                return;
-            }
-            if (mentionedUser.id === message.author.id) {
-                await message.reply({ content: '❌ Nie możesz przyznać reputacji samemu sobie!' }).catch(() => {});
-                return;
-            }
-
-            const giverId = message.author.id;
-            const receiverId = mentionedUser.id;
-            const existingCooldown = await RepCooldownModel.findOne({ giverId, receiverId });
-            const now = new Date();
-
-            if (existingCooldown) {
-                const diffTime = now.getTime() - new Date(existingCooldown.lastGiven).getTime();
-                const twentyFourHours = 24 * 60 * 60 * 1000;
-                if (diffTime < twentyFourHours) {
-                    const timeLeft = twentyFourHours - diffTime;
-                    const hoursLeft = Math.floor(timeLeft / (1000 * 60 * 60));
-                    await message.reply({ content: `⏳ Poczekaj jeszcze ${hoursLeft}h przed kolejną oceną tego użytkownika.` }).catch(() => {});
-                    return;
-                }
-            }
-
-            await RepCooldownModel.findOneAndUpdate({ giverId, receiverId }, { lastGiven: now }, { upsert: true, new: true });
-
-            let receiverUser = await UserModel.findOne({ userId: receiverId });
-            if (!receiverUser) receiverUser = await UserModel.create({ userId: receiverId });
-
-            const pointsChange = isPlus ? 1 : -1;
-            const expChange = isPlus ? 15 : 5;
-            receiverUser.reputation = (receiverUser.reputation || 0) + pointsChange;
-            receiverUser.exp = (receiverUser.exp || 0) + expChange;
-            await receiverUser.save();
-
-            const receiverMember = await message.guild.members.fetch(receiverId).catch(() => null);
-            if (receiverMember) await updateTraderRoles(receiverMember, receiverUser.reputation);
-
-            const sign = receiverUser.reputation >= 0 ? `+${receiverUser.reputation}` : `${receiverUser.reputation}`;
-            const embed = new EmbedBuilder()
-                .setColor(isPlus ? 0x2ECC71 : 0xE67E22)
-                .setTitle(isPlus ? '🌟 Przyznano Reputację' : '⚠️ Punkt Negatywny')
-                .setDescription(`Użytkownik <@${giverId}> ocenił tradera <@${receiverId}>!\n\n📈 **Nowy bilans:** ${sign} pkt`);
-            await message.channel.send({ embeds: [embed] });
-            return;
-        }
-    }
-
     try {
         let user = await UserModel.findOne({ userId: message.author.id });
         if (!user) user = await UserModel.create({ userId: message.author.id });
 
-        const hasVipRole = message.member?.roles?.cache?.has(ID_ROLI_VIP);
+        const now = new Date();
+        const hasVipRole = message.member?.roles?.cache?.has(ID_ROLI_VIP) || (user.vipExpiresAt && new Date(user.vipExpiresAt) > now);
         const coinsEarned = hasVipRole ? 2 : 1;
 
         user.messageCount = (user.messageCount || 0) + 1;
         user.balance += coinsEarned;
-        
-        const currentHour = new Date().getHours();
-        if (currentHour >= 0 && currentHour < 4) user.nightMessageCount = (user.nightMessageCount || 0) + 1;
-
-        const customEmojis = message.content.match(/<a?:\w+:\d+>/g);
-        if (customEmojis) user.emojiCount = (user.emojiCount || 0) + customEmojis.length;
-
         await user.save();
         await checkAndAwardBadges(user, message.member);
     } catch (error) {}
-});
-
-const voiceTimestamps = new Map<string, number>();
-
-client.on('voiceStateUpdate', async (oldState, newState) => {
-    if (newState.member?.user.bot) return;
-    const userId = newState.id;
-    const now = Date.now();
-
-    if (!oldState.channelId && newState.channelId) {
-        voiceTimestamps.set(userId, now);
-    } else if (oldState.channelId && !newState.channelId) {
-        const joinTime = voiceTimestamps.get(userId);
-        if (joinTime) {
-            const minutesSpent = Math.floor((now - joinTime) / (1000 * 60));
-            if (minutesSpent > 0) {
-                try {
-                    let user = await UserModel.findOne({ userId });
-                    if (!user) user = await UserModel.create({ userId });
-                    
-                    const hasVipRole = newState.member?.roles?.cache?.has(ID_ROLI_VIP);
-                    const earnedCoins = hasVipRole ? minutesSpent * 2 : minutesSpent;
-
-                    user.voiceMinutes = (user.voiceMinutes || 0) + minutesSpent;
-                    user.balance += earnedCoins;
-                    await user.save();
-                    if (newState.member) await checkAndAwardBadges(user, newState.member);
-                } catch (e) {}
-            }
-            voiceTimestamps.delete(userId);
-        }
-    }
-});
-
-client.on('guildMemberAdd', async member => {
-    try {
-        let user = await UserModel.findOne({ userId: member.id });
-        if (!user) user = await UserModel.create({ userId: member.id });
-        user.balance += 200;
-        await user.save();
-        await checkAndAwardBadges(user, member);
-
-        const channel = member.guild.channels.cache.find(ch => ch.isTextBased() && 'name' in ch && ch.name === CHANNEL_POWITANIA) as TextChannel;
-        if (channel) {
-            const embed = new EmbedBuilder()
-                .setColor(0x2ECC71)
-                .setDescription(`📌 Witaj na serwerze! Na start otrzymujesz **200 PJN-Coins**!`)
-                .setThumbnail(member.user.displayAvatarURL());
-            await channel.send({ content: `👋 Witaj, <@${member.id}>!`, embeds: [embed] });
-        }
-    } catch (e) {}
-});
-
-client.on('guildMemberRemove', async member => {
-    try {
-        const logChannel = await member.guild.channels.fetch(NOTIF_CONFIG.leaveLogChannelId) as TextChannel;
-        if (!logChannel) return;
-
-        let color = 0xED4245;
-        let title = '📤 Użytkownik opuścił serwer';
-        let description = `**${member.user.tag}** opuścił naszą społeczność.`;
-
-        const embed = new EmbedBuilder().setColor(color).setTitle(title).setDescription(description).setTimestamp();
-        await logChannel.send({ embeds: [embed] });
-    } catch (error) {}
-});
-
-import http from 'http';
-const server = http.createServer((req, res) => {
-  res.writeHead(200, { 'Content-Type': 'text/plain' });
-  res.end('Bot is running 24/7!\n');
-});
-
-const PORT = process.env.PORT || 10000;
-server.listen(PORT, () => {
-  console.log(`Serwer HTTP nasłuchuje na porcie ${PORT}`);
 });
 
 client.login(token);
