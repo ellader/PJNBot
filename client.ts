@@ -44,6 +44,7 @@ const userSchema = new mongoose.Schema({
     badges: { type: [String], default: [] },
     reputation: { type: Number, default: 0 },
     exp: { type: Number, default: 0 },
+    vipExpiresAt: { type: Date, default: null },        // <-- Nowe pole dla wygasania VIP
     doubleChanceUntil: { type: Date, default: null }, 
     dailyBoostUntil: { type: Date, default: null },     
     customRoleExpiresAt: { type: Date, default: null }, 
@@ -156,7 +157,7 @@ const ID_ROLI_VIP = "1545691786289221632";
 const ADMIN_LOG_CHANNEL_ID = "1532399010785263799"; 
 
 const SHOP_ITEMS = [
-    { id: 'vip_role', name: '🟡 Rola VIP (Stała/Dostęp)', price: 15000, description: 'Zwiększona szansa w kasynie, dostęp do zablokowanych kanałów + 2x PJN-Coins za wiadomości!', type: 'vip' },
+    { id: 'vip_role', name: '🟡 Rola VIP (na 30 dni)', price: 15000, description: 'Zwiększona szansa w kasynie, dostęp do zablokowanych kanałów + 2x PJN-Coins za wiadomości przez 30 dni!', type: 'vip' },
     { id: 'double_chance', name: '🍀 Podwójna szansa w kasynie (30 dni)', price: 5000, description: 'Zwiększa szansę na wygraną w grach kasynowych.', type: 'double_chance' },
     { id: 'custom_role', name: '✨ Własna rola na 30 dni', price: 10000, description: 'Możliwość posiadania spersonalizowanej rangi na serwerze.', type: 'custom_role' },
     { id: 'priority_ghost', name: '👻 Bilet po duszka poza kolejką', price: 7000, description: 'Odbiór dowolnego duszka poza kolejką podczas streama.', type: 'priority_ghost' },
@@ -223,6 +224,64 @@ function startDailyQuotes() {
             await sendQuoteToChannel(ID_KANALU_CYTATY);
         } catch (err) {
             console.error('Błąd podczas wysyłania codziennego cytatu:', err);
+        }
+    });
+}
+
+// === AUTOMATYCZNE SPRAWDZANIE WYGAŚNIĘCIA RÓL VIP I USŁUG CO GODZINĘ ===
+function startExpirationChecker() {
+    cron.schedule('0 * * * *', async () => {
+        try {
+            const now = new Date();
+            const expiredUsers = await UserModel.find({
+                $or: [
+                    { vipExpiresAt: { $ne: null, $lte: now } },
+                    { doubleChanceUntil: { $ne: null, $lte: now } },
+                    { dailyBoostUntil: { $ne: null, $lte: now } },
+                    { customRoleExpiresAt: { $ne: null, $lte: now } },
+                    { customVoiceExpiresAt: { $ne: null, $lte: now } }
+                ]
+            });
+
+            for (const userDoc of expiredUsers) {
+                for (const [_, guild] of client.guilds.cache) {
+                    const member = await guild.members.fetch(userDoc.userId).catch(() => null);
+                    if (!member) continue;
+
+                    // Wygaśnięcie VIP
+                    if (userDoc.vipExpiresAt && new Date(userDoc.vipExpiresAt) <= now) {
+                        if (member.roles.cache.has(ID_ROLI_VIP)) {
+                            await member.roles.remove(ID_ROLI_VIP).catch(() => {});
+                        }
+                        userDoc.vipExpiresAt = null;
+                        await userDoc.save();
+
+                        await member.send({
+                            embeds: [
+                                new EmbedBuilder()
+                                    .setColor(0xE74C3C)
+                                    .setTitle('⏰ Twoja ranga VIP wygasła')
+                                    .setDescription('Minął okres 30 dni ważności Twojej rangi **VIP**. Ranga została automatycznie usunięta z Twojego konta. Możesz ją w każdej chwili odnowić w sklepie serwerowym!')
+                                    .setTimestamp()
+                            ]
+                        }).catch(() => {});
+                    }
+
+                    // Wygaśnięcie podwójnej szansy
+                    if (userDoc.doubleChanceUntil && new Date(userDoc.doubleChanceUntil) <= now) {
+                        userDoc.doubleChanceUntil = null;
+                        await userDoc.save();
+                    }
+
+                    // Wygaśnięcie daily boost
+                    if (userDoc.dailyBoostUntil && new Date(userDoc.dailyBoostUntil) <= now) {
+                        userDoc.dailyBoostUntil = null;
+                        await userDoc.save();
+                    }
+                }
+            }
+        } catch (err) {
+            console.error('Błąd w cronie sprawdzającym wygasające usługi:', err);
         }
     });
 }
@@ -383,7 +442,7 @@ async function setupShopChannel() {
             }
         }
 
-        let desc = 'Witaj w oficjalnym sklepie serwera PJN! Wydawaj swoje PJN-Coins na unikalne przedmioty, role i usługi.\n\n**📋 Dostępny asortyment:**\n\n';
+        let desc = 'Witaj w oficjalnym sklepie serwera PJN! Wydawaj swoje PJN-Coins na unikalne przedmioty, role i usługi.\n\n*Wszystkie rangi czasowe (w tym VIP) są ważne przez 30 dni, po czym automatycznie wygasają.*\n\n**📋 Dostępny asortyment:**\n\n';
         SHOP_ITEMS.forEach((item, index) => {
             desc += `**${index + 1}. ${item.name}** — 💰 **${item.price} PJN-Coins**\n> *${item.description}*\n\n`;
         });
@@ -1045,6 +1104,7 @@ client.once('ready', async () => {
     startReputationTopUpdater();
     startYouTubeRssChecker();
     startLfgAutoCloser();
+    startExpirationChecker(); // <-- Uruchomienie automatycznego sprawdzania wygasania ról i usług
 });
 
 // === CENTRALNA OBSŁUGA INTERAKCJI ===
@@ -1131,18 +1191,21 @@ client.on('interactionCreate', async interaction => {
 
             // Logika przyznawania nagrody
             if (item.type === 'vip') {
+                user.vipExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 dni ważności VIP
+                await user.save();
+
                 if (member) {
                     try {
                         await member.roles.add(ID_ROLI_VIP);
                         console.log(`[SKLEP] Pomyślnie nadano rolę VIP użytkownikowi ${interaction.user.tag}`);
                         
-                        // Wysyłanie powiadomienia na PW (DM) o nadaniu rangi VIP
+                        // Powiadomienie na PW (DM) o nadaniu rangi VIP
                         await interaction.user.send({
                             embeds: [
                                 new EmbedBuilder()
                                     .setColor(0xF1C40F)
-                                    .setTitle('🎉 Gratulacje! Otrzymałeś rangę VIP')
-                                    .setDescription(`Twoja transakcja w sklepie serwera **PJN** została pomyślnie zrealizowana!\n\n🟡 Ranga **VIP** została właśnie automatycznie przypisana do Twojego konta na serwerze **${interaction.guild?.name}**.\n\nCiesz się ze swoich nowych przywilejów! 🚀`)
+                                    .setTitle('🎉 Gratulacje! Otrzymałeś rangę VIP na 30 dni')
+                                    .setDescription(`Twoja transakcja w sklepie serwera **PJN** została pomyślnie zrealizowana!\n\n🟡 Ranga **VIP** została właśnie automatycznie przypisana do Twojego konta na okres **30 dni** na serwerze **${interaction.guild?.name}**.\n\nCiesz się ze swoich nowych przywilejów! 🚀`)
                                     .setTimestamp()
                             ]
                         }).catch(() => {});
@@ -1426,11 +1489,9 @@ client.on('interactionCreate', async interaction => {
                 return `Pozostało: **${days} dni, ${hours} godz.** (<t:${Math.floor(new Date(date).getTime() / 1000)}:R>)`;
             };
 
-            const member = await interaction.guild?.members.fetch(interaction.user.id).catch(() => null);
-            const hasVip = member?.roles?.cache?.has(ID_ROLI_VIP);
-            if (hasVip) {
+            if (user.vipExpiresAt && new Date(user.vipExpiresAt) > now) {
                 activeCount++;
-                desc += `🟡 **Rola VIP**\n> Status: Aktywna (Stały dostęp / korzyści)\n\n`;
+                desc += `🟡 **Rola VIP**\n> ${formatTimeLeft(user.vipExpiresAt)}\n\n`;
             }
 
             if (user.doubleChanceUntil && new Date(user.doubleChanceUntil) > now) {
@@ -1454,7 +1515,7 @@ client.on('interactionCreate', async interaction => {
             }
 
             if (activeCount === 0) {
-                desc += `*Nie masz obecnie żadnych aktywnych usług czasowych ani VIP ze sklepu.*`;
+                desc += `*Nie masz obecnie żadnych aktywnych usług czasowych ze sklepu.*`;
             }
 
             const embed = new EmbedBuilder()
