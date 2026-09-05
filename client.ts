@@ -2158,7 +2158,7 @@ client.on('messageCreate', async message => {
                 return;
             }
             if (mentionedUser.id === message.author.id) {
-                await message.reply({ content: '❌ Не możesz przyznać reputacji samemu sobie!' }).catch(() => {});
+                await message.reply({ content: '❌ Nie możesz przyznać reputacji samemu sobie!' }).catch(() => {});
                 return;
             }
 
@@ -2269,23 +2269,22 @@ client.on('guildMemberAdd', async member => {
         if (channel) {
             const embed = new EmbedBuilder()
                 .setColor(0x2ECC71)
-                .setTitle('🎉 Witamy na serwerze PJN!')
+                .setTitle('🎮 Centrum Dowodzenia • Od tego możesz zacząć ⬇️')
                 .setDescription(
-                    `Witaj <@${member.id}>! Cieszymy się, że dołączyłeś do naszej społeczności. 🚀\n\n` +
-                    `🎁 **Na start otrzymujesz w prezencie 200 PJN-Coins!**`
+                    `• Wybierz płeć: <#1532374188634144898>\n` +
+                    `• Dostosuj role: <#1532397673842217010>\n` +
+                    `• Wybierz swój sprzęt: <#1532398069524594708>\n` +
+                    `• Szukaj do gry: <#1532449084559069214>`
                 )
-                .setThumbnail(member.user.displayAvatarURL({ dynamic: true }))
                 .setImage(LIVE_IMAGE_URL)
                 .setTimestamp()
                 .setFooter({ text: 'PJN System Powitań' });
 
             const textContent = 
                 `👋 Witaj, <@${member.id}>!\n\n` +
-                `📌 **Od tego możesz zacząć ⬇️**\n` +
-                `• Wybierz płeć: <#1532374188634144898>\n` +
-                `• Dostosuj role: <#1532397673842217010>\n` +
-                `• Wybierz swój sprzęt: <#1532398069524594708>\n` +
-                `• Szukaj do gry: <#1532449084559069214>`;
+                `🎉 **Witamy na serwerze PJN!**\n` +
+                `Witaj <@${member.id}>! Cieszymy się, że dołączyłeś do naszej społeczności. 🚀\n\n` +
+                `🎁 **Na start otrzymujesz w prezencie 200 PJN-Coins!**`;
 
             await channel.send({ content: textContent, embeds: [embed] });
         }
