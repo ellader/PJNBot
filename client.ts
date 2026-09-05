@@ -2269,7 +2269,7 @@ client.on('guildMemberAdd', async member => {
         if (channel) {
             const embed = new EmbedBuilder()
                 .setColor(0x2ECC71)
-                .setTitle('🎉 Nowy członek w ekipie PJN!')
+                .setTitle('🎉 Witamy na serwerze PJN!')
                 .setDescription(
                     `Witaj <@${member.id}>! Cieszymy się, że dołączyłeś do naszej społeczności. 🚀\n\n` +
                     `🎁 **Na start otrzymujesz w prezencie 200 PJN-Coins!**\n\n` +
@@ -2277,11 +2277,7 @@ client.on('guildMemberAdd', async member => {
                     `• Wybierz płeć: <#1532374188634144898>\n` +
                     `• Dostosuj role: <#1532397673842217010>\n` +
                     `• Wybierz swój sprzęt: <#1532398069524594708>\n` +
-                    `• Szukaj do gry: <#1532449084559069214>\n\n` +
-                    `🖤 **Przydatne sekcje:**\n` +
-                    `• Informacje o grach: <#1534060343473475644>\n` +
-                    `• Oficjalny sklep serwera: <#1545690716309553212> *(sprawdź nasz nowy system zakupów i usług!)*\n\n` +
-                    `*Życzymy miłego pobytu na serwerze!*`
+                    `• Szukaj do gry: <#1532449084559069214>`
                 )
                 .setThumbnail(member.user.displayAvatarURL({ dynamic: true }))
                 .setImage(LIVE_IMAGE_URL)
