@@ -2269,8 +2269,25 @@ client.on('guildMemberAdd', async member => {
         if (channel) {
             const embed = new EmbedBuilder()
                 .setColor(0x2ECC71)
-                .setDescription(`📌 Witaj na serwerze! Na start otrzymujesz **200 PJN-Coins**!`)
-                .setThumbnail(member.user.displayAvatarURL());
+                .setTitle('🎉 Nowy członek w ekipie PJN!')
+                .setDescription(
+                    `Witaj <@${member.id}>! Cieszymy się, że dołączyłeś do naszej społeczności. 🚀\n\n` +
+                    `🎁 **Na start otrzymujesz w prezencie 200 PJN-Coins!**\n\n` +
+                    `📌 **Skonfiguruj swój profil i sprawdź najważniejsze miejsca:**\n` +
+                    `• Wybierz płeć: <#1532374188634144898>\n` +
+                    `• Dostosuj role: <#1532397673842217010>\n` +
+                    `• Wybierz swój sprzęt: <#1532398069524594708>\n` +
+                    `• Szukaj do gry: <#1532449084559069214>\n\n` +
+                    `🖤 **Przydatne sekcje:**\n` +
+                    `• Informacje o grach: <#1534060343473475644>\n` +
+                    `• Oficjalny sklep serwera: <#1545690716309553212> *(sprawdź nasz nowy system zakupów i usług!)*\n\n` +
+                    `*Życzymy miłego pobytu na serwerze!*`
+                )
+                .setThumbnail(member.user.displayAvatarURL({ dynamic: true }))
+                .setImage(LIVE_IMAGE_URL)
+                .setTimestamp()
+                .setFooter({ text: 'PJN System Powitań' });
+
             await channel.send({ content: `👋 Witaj, <@${member.id}>!`, embeds: [embed] });
         }
     } catch (e) {}
