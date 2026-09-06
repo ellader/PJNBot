@@ -884,7 +884,7 @@ async function cleanupOrphanedLfgVoices() {
 }
 
 function startHourlyAnnouncements() {
-    cron.schedule('0 * * * *', async () => {
+    cron.schedule('0 */5 * * *', async () => {
         try {
             const channel = await client.channels.fetch(ANNOUNCE_CHANNEL_ID).catch(() => null) as TextChannel;
             if (!channel) return;
@@ -1279,10 +1279,49 @@ client.on('interactionCreate', async interaction => {
         }
 
         if (interaction.customId === 'close_ticket') {
+            await interaction.deferReply({ ephemeral: true });
             const channel = interaction.channel as TextChannel;
             if (!channel) return;
-            await interaction.reply({ content: `🔒 Ticket zostanie zamknięty za 5 sekund...` });
-            setTimeout(async () => { await channel.delete().catch(() => {}); }, 5000);
+
+            try {
+                // Znajdź użytkownika, który otworzył ticket (po nazwie kanału lub uprawnieniach)
+                const overwrites = channel.permissionOverwrites.cache;
+                let ticketCreatorId: string | null = null;
+                for (const [id, overwrite] of overwrites) {
+                    if (id !== interaction.guild?.id && (overwrite.allow.has(PermissionFlagsBits.SendMessages))) {
+                        // Sprawdź czy to nie rola
+                        const role = interaction.guild?.roles.cache.get(id);
+                        if (!role) {
+                            ticketCreatorId = id;
+                            break;
+                        }
+                    }
+                }
+
+                // Odbierz uprawnienia do pisania użytkownikowi (jeśli został znaleziony) oraz zaktualizuj nazwę kanału na zamknięty
+                if (ticketCreatorId) {
+                    await channel.permissionOverwrites.edit(ticketCreatorId, {
+                        SendMessages: false,
+                        ViewChannel: true
+                    }).catch(() => {});
+                }
+
+                const currentName = channel.name;
+                if (!currentName.startsWith('zamkniety-')) {
+                    await channel.setName(`zamkniety-${currentName.replace('ticket-', '')}`).catch(() => {});
+                }
+
+                const closedEmbed = new EmbedBuilder()
+                    .setColor(0xE74C3C)
+                    .setTitle('🔒 Ticket Został Zamknięty')
+                    .setDescription(`Ten ticket został zamknięty przez <@${interaction.user.id}>.\nKanał został zarchiwizowany – użytkownik nie może już tutaj pisać.`)
+                    .setTimestamp();
+
+                await channel.send({ embeds: [closedEmbed] });
+                await interaction.editReply({ content: `✅ Pomyślnie zamknięto i zarchiwizowano ten ticket.` });
+            } catch (e) {
+                await interaction.editReply({ content: `❌ Wystąpił błąd podczas zamykania ticketu.` });
+            }
             return;
         }
 
