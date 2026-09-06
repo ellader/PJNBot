@@ -156,6 +156,24 @@ const ID_KANAL_SKLEPU = "1545690716309553212";
 const ID_ROLI_VIP = "1545691786289221632";
 const ADMIN_LOG_CHANNEL_ID = "1532399010785263799"; 
 
+// === MAPOWANIE RÓL DO PANELU DOSTOSUJ RANGĘ ===
+const ID_KANAL_RANG = "1532397673842217010";
+const ROLE_BUTTONS_MAP: { [key: string]: { roleId: string, label: string, emoji: string } } = {
+    'role_bezrobotny': { roleId: '1532400774015881246', label: 'Bezrobotny', emoji: '😜' },
+    'role_kolekcjoner': { roleId: '1532400880479895734', label: 'Kolekcjoner Duszków', emoji: '👻' },
+    'role_fortnite': { roleId: '1532400998625181907', label: 'Gram w: Fortnite', emoji: '🗺️' },
+    'role_cs2': { roleId: '1532401066832822404', label: 'Gram w: CS2', emoji: '🔪' },
+    'role_minecraft': { roleId: '1532401160596750398', label: 'Gram w: Minecraft', emoji: '📦' },
+    'role_gta': { roleId: '1545290821568438352', label: 'Gram w: GTA V', emoji: '🚗' },
+    'role_valorant': { roleId: '1545290283787354113', label: 'Gram w: Valorant', emoji: '⚡' },
+    'role_lol': { roleId: '1545290424904843284', label: 'Gram w: LoL', emoji: '⚔️' },
+    'role_zerobuild': { roleId: '1532401282491355167', label: 'BR Zero Budowania', emoji: '🔥' },
+    'role_reaktywacja': { roleId: '1532401356118163526', label: 'Reaktywacja', emoji: '🚨' },
+    'role_budowanie': { roleId: '1532401420504928496', label: 'BR Budowanie', emoji: '🪵' },
+    'role_forfun': { roleId: '1532401604953637025', label: 'ForFun', emoji: '🤖' },
+    'role_najlepszy': { roleId: '1532401678433914951', label: 'Najlepszy gracz', emoji: '💪' }
+};
+
 const SHOP_ITEMS = [
     { id: 'vip_role', name: '🟡 Rola VIP (na 30 dni)', price: 15000, description: 'Zwiększona szansa w kasynie, dostęp do zablokowanych kanałów + 2x PJN-Coins za wiadomości przez 30 dni!', type: 'vip' },
     { id: 'double_chance', name: '🍀 Podwójna szansa w kasynie (30 dni)', price: 5000, description: 'Zwiększa szansę na wygraną w grach kasynowych.', type: 'double_chance' },
@@ -389,6 +407,63 @@ async function setupTicketChannel() {
         await channel.send({ embeds: [embed], components: [row] });
     } catch (e) {
         console.error('Błąd podczas inicjalizacji panelu ticketów:', e);
+    }
+}
+
+async function setupRolesChannel() {
+    try {
+        const channel = await client.channels.fetch(ID_KANAL_RANG).catch(() => null) as TextChannel;
+        if (!channel) return;
+
+        const messages = await channel.messages.fetch({ limit: 10 }).catch(() => null);
+        if (messages) {
+            for (const [_, msg] of messages) {
+                if (msg.author.id === client.user?.id) {
+                    await msg.delete().catch(() => {});
+                }
+            }
+        }
+
+        const embed = new EmbedBuilder()
+            .setColor(0x5865F2)
+            .setTitle('⚡ Dostosuj swoje role na serwerze PJN!')
+            .setDescription('Kliknij odpowiedni przycisk poniżej, aby otrzymać lub zdjąć wybraną rangę. Bądź na bieżąco i spersonalizuj swój profil!')
+            .setTimestamp();
+
+        const row1 = new ActionRowBuilder<ButtonBuilder>().addComponents(
+            new ButtonBuilder().setCustomId('role_bezrobotny').setLabel('Bezrobotny').setStyle(ButtonStyle.Primary).setEmoji('😜'),
+            new ButtonBuilder().setCustomId('role_kolekcjoner').setLabel('Kolekcjoner Duszków').setStyle(ButtonStyle.Primary).setEmoji('👻')
+        );
+
+        const row2 = new ActionRowBuilder<ButtonBuilder>().addComponents(
+            new ButtonBuilder().setCustomId('role_fortnite').setLabel('Fortnite').setStyle(ButtonStyle.Secondary).setEmoji('🗺️'),
+            new ButtonBuilder().setCustomId('role_cs2').setLabel('CS2').setStyle(ButtonStyle.Secondary).setEmoji('🔪'),
+            new ButtonBuilder().setCustomId('role_minecraft').setLabel('Minecraft').setStyle(ButtonStyle.Secondary).setEmoji('📦')
+        );
+
+        const row3 = new ActionRowBuilder<ButtonBuilder>().addComponents(
+            new ButtonBuilder().setCustomId('role_gta').setLabel('GTA V').setStyle(ButtonStyle.Secondary).setEmoji('🚗'),
+            new ButtonBuilder().setCustomId('role_valorant').setLabel('Valorant').setStyle(ButtonStyle.Secondary).setEmoji('⚡'),
+            new ButtonBuilder().setCustomId('role_lol').setLabel('LoL').setStyle(ButtonStyle.Secondary).setEmoji('⚔️')
+        );
+
+        const row4 = new ActionRowBuilder<ButtonBuilder>().addComponents(
+            new ButtonBuilder().setCustomId('role_zerobuild').setLabel('BR Zero Budowania').setStyle(ButtonStyle.Success).setEmoji('🔥'),
+            new ButtonBuilder().setCustomId('role_reaktywacja').setLabel('Reaktywacja').setStyle(ButtonStyle.Danger).setEmoji('🚨')
+        );
+
+        const row5 = new ActionRowBuilder<ButtonBuilder>().addComponents(
+            new ButtonBuilder().setCustomId('role_budowanie').setLabel('BR Budowanie').setStyle(ButtonStyle.Success).setEmoji('🪵'),
+            new ButtonBuilder().setCustomId('role_forfun').setLabel('ForFun').setStyle(ButtonStyle.Primary).setEmoji('🤖')
+        );
+
+        const row6 = new ActionRowBuilder<ButtonBuilder>().addComponents(
+            new ButtonBuilder().setCustomId('role_najlepszy').setLabel('Najlepszy gracz').setStyle(ButtonStyle.Success).setEmoji('💪')
+        );
+
+        await channel.send({ embeds: [embed], components: [row1, row2, row3, row4, row5, row6] });
+    } catch (e) {
+        console.error('Błąd podczas ustawiania kanału ról:', e);
     }
 }
 
@@ -1083,6 +1158,7 @@ client.once('ready', async () => {
     await setupMemeChannelInstruction();
     await setupLfgChannelInstruction(); 
     await setupTicketChannel(); 
+    await setupRolesChannel(); // <-- Inicjalizacja ładnego panelu ról
     await setupShowcaseChannelInstruction();
     await setupReputationChannelInstruction();
     await setupShopChannel();
@@ -1152,6 +1228,41 @@ client.on('interactionCreate', async interaction => {
     }
 
     if (interaction.isButton()) {
+        // Obsługa przycisków wyboru ról
+        if (interaction.customId.startsWith('role_')) {
+            await interaction.deferReply({ ephemeral: true });
+            const roleConfig = ROLE_BUTTONS_MAP[interaction.customId];
+            if (!roleConfig) {
+                return interaction.editReply({ content: '❌ Nie znaleziono takiej rangi.' });
+            }
+
+            const guild = interaction.guild;
+            if (!guild) return;
+
+            const member = await guild.members.fetch(interaction.user.id).catch(() => null);
+            if (!member) {
+                return interaction.editReply({ content: '❌ Nie udało się pobrać Twoich danych na serwerze.' });
+            }
+
+            const role = guild.roles.cache.get(roleConfig.roleId);
+            if (!role) {
+                return interaction.editReply({ content: '❌ Ta rola nie istnieje już na serwerze (skontaktuj się z administratorem).' });
+            }
+
+            try {
+                if (member.roles.cache.has(roleConfig.roleId)) {
+                    await member.roles.remove(role);
+                    await interaction.editReply({ content: `✅ Pomyślnie **usunięto** rangę **${role.name}** z Twojego konta.` });
+                } else {
+                    await member.roles.add(role);
+                    await interaction.editReply({ content: `✅ Pomyślnie **przyznano** rangę **${role.name}**!` });
+                }
+            } catch (err) {
+                await interaction.editReply({ content: '❌ Wystąpił błąd podczas zmiany rangi. Upewnij się, że bot ma odpowiednie uprawnienia.' });
+            }
+            return;
+        }
+
         if (interaction.customId.startsWith('shop_buy_')) {
             await interaction.deferReply({ ephemeral: true });
             const itemId = interaction.customId.replace('shop_buy_', '');
@@ -1284,12 +1395,10 @@ client.on('interactionCreate', async interaction => {
             if (!channel) return;
 
             try {
-                // Znajdź użytkownika, który otworzył ticket (po nazwie kanału lub uprawnieniach)
                 const overwrites = channel.permissionOverwrites.cache;
                 let ticketCreatorId: string | null = null;
                 for (const [id, overwrite] of overwrites) {
                     if (id !== interaction.guild?.id && (overwrite.allow.has(PermissionFlagsBits.SendMessages))) {
-                        // Sprawdź czy to nie rola
                         const role = interaction.guild?.roles.cache.get(id);
                         if (!role) {
                             ticketCreatorId = id;
@@ -1298,7 +1407,6 @@ client.on('interactionCreate', async interaction => {
                     }
                 }
 
-                // Odbierz uprawnienia do pisania użytkownikowi (jeśli został znaleziony) oraz zaktualizuj nazwę kanału na zamknięty
                 if (ticketCreatorId) {
                     await channel.permissionOverwrites.edit(ticketCreatorId, {
                         SendMessages: false,
@@ -2334,7 +2442,6 @@ client.on('guildMemberRemove', async member => {
         const logChannel = await member.guild.channels.fetch(NOTIF_CONFIG.leaveLogChannelId) as TextChannel;
         if (!logChannel) return;
 
-        // Sprawdzenie czy użytkownik został wyrzucony lub zbanowany (Audyt logi)
         const fetchedKickLogs = await member.guild.fetchAuditLogs({
             limit: 1,
             type: AuditLogEvent.MemberKick,
