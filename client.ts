@@ -386,7 +386,7 @@ async function setupTicketChannel() {
         const channel = await client.channels.fetch(ID_KANALU_DUSZKI).catch(() => null) as TextChannel;
         if (!channel) return;
 
-        const messages = await channel.messages.fetch({ limit: 10 }).catch(() => null);
+        const messages = await channel.messages.fetch({ limit: 100 }).catch(() => null);
         if (messages) {
             for (const [_, msg] of messages) {
                 if (msg.author.id === client.user?.id) {
@@ -413,9 +413,12 @@ async function setupTicketChannel() {
 async function setupRolesChannel() {
     try {
         const channel = await client.channels.fetch(ID_KANAL_RANG).catch(() => null) as TextChannel;
-        if (!channel) return;
+        if (!channel) {
+            console.error(`[ROLE] Nie znaleziono kanału o ID: ${ID_KANAL_RANG}`);
+            return;
+        }
 
-        const messages = await channel.messages.fetch({ limit: 10 }).catch(() => null);
+        const messages = await channel.messages.fetch({ limit: 100 }).catch(() => null);
         if (messages) {
             for (const [_, msg] of messages) {
                 if (msg.author.id === client.user?.id) {
@@ -462,6 +465,7 @@ async function setupRolesChannel() {
         );
 
         await channel.send({ embeds: [embed], components: [row1, row2, row3, row4, row5, row6] });
+        console.log('[ROLE] Pomyślnie wysłano panel ról na kanał!');
     } catch (e) {
         console.error('Błąd podczas ustawiania kanału ról:', e);
     }
@@ -472,7 +476,7 @@ async function setupMemeChannelInstruction() {
         const channel = await client.channels.fetch(ID_KANALU_MEMOW).catch(() => null) as TextChannel;
         if (!channel) return;
 
-        const messages = await channel.messages.fetch({ limit: 10 }).catch(() => null);
+        const messages = await channel.messages.fetch({ limit: 100 }).catch(() => null);
         if (messages) {
             for (const [_, msg] of messages) {
                 if (msg.author.id === client.user?.id) {
@@ -508,7 +512,7 @@ async function setupShopChannel() {
         const channel = await client.channels.fetch(ID_KANAL_SKLEPU).catch(() => null) as TextChannel;
         if (!channel) return;
 
-        const messages = await channel.messages.fetch({ limit: 10 }).catch(() => null);
+        const messages = await channel.messages.fetch({ limit: 100 }).catch(() => null);
         if (messages) {
             for (const [_, msg] of messages) {
                 if (msg.author.id === client.user?.id) {
@@ -554,10 +558,10 @@ async function setupLfgChannelInstruction() {
         const channel = await client.channels.fetch(ID_KANALU_SZUKAM_DO_GRY).catch(() => null) as TextChannel;
         if (!channel) return;
 
-        const messages = await channel.messages.fetch({ limit: 20 }).catch(() => null);
+        const messages = await channel.messages.fetch({ limit: 100 }).catch(() => null);
         if (messages) {
             for (const [_, msg] of messages) {
-                if (msg.author.id === client.user?.id && msg.embeds[0]?.title?.includes('Centrum LFG')) {
+                if (msg.author.id === client.user?.id) {
                     await msg.delete().catch(() => {});
                 }
             }
@@ -594,7 +598,7 @@ async function setupShowcaseChannelInstruction() {
         const channel = await client.channels.fetch('1536365057997283469').catch(() => null) as TextChannel;
         if (!channel) return;
 
-        const messages = await channel.messages.fetch({ limit: 10 }).catch(() => null);
+        const messages = await channel.messages.fetch({ limit: 100 }).catch(() => null);
         if (messages) {
             for (const [_, msg] of messages) {
                 if (msg.author.id === client.user?.id) {
@@ -629,7 +633,7 @@ async function setupReputationChannelInstruction() {
         const channel = await client.channels.fetch(ID_KANAL_REPUTACJI).catch(() => null) as TextChannel;
         if (!channel) return;
 
-        const messages = await channel.messages.fetch({ limit: 10 }).catch(() => null);
+        const messages = await channel.messages.fetch({ limit: 100 }).catch(() => null);
         if (messages) {
             for (const [_, msg] of messages) {
                 if (msg.author.id === client.user?.id) {
@@ -855,7 +859,7 @@ async function startReputationTopUpdater() {
             const channel = await client.channels.fetch(ID_ALEJA_SLAW_REPUTACJI).catch(() => null) as TextChannel;
             if (!channel) return;
 
-            const messages = await channel.messages.fetch({ limit: 10 }).catch(() => null);
+            const messages = await channel.messages.fetch({ limit: 100 }).catch(() => null);
             if (messages) {
                 for (const [_, msg] of messages) {
                     if (msg.author.id === client.user?.id) {
