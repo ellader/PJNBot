@@ -318,7 +318,7 @@ async function updateAllFortniteStats() {
     }
 }
 
-function generateFortniteRankingEmbeds(topUsers: any[], page: number = 0) {
+async function generateFortniteRankingEmbeds(guild: any, topUsers: any[], page: number = 0) {
     const pageSize = 10;
     const totalPages = Math.ceil(topUsers.length / pageSize) || 1;
     const currentPage = Math.max(0, Math.min(page, totalPages - 1));
@@ -329,11 +329,23 @@ function generateFortniteRankingEmbeds(topUsers: any[], page: number = 0) {
     if (slice.length === 0) {
         desc += `Brak zarejestrowanych graczy w rankingu. Użyj \`/fn-rejestracja\`, aby dołączyć!`;
     } else {
-        slice.forEach((u, idx) => {
+        for (let idx = 0; idx < slice.length; idx++) {
+            const u = slice[idx];
             const globalIdx = currentPage * pageSize + idx;
             const medal = globalIdx === 0 ? '🥇' : globalIdx === 1 ? '🥈' : globalIdx === 2 ? '🥉' : `**${globalIdx + 1}.**`;
-            desc += `${medal} — <@${u.userId}> (${u.epicNick}) — **${u.fortniteKills || 0} zabójstw**\n`;
-        });
+            
+            let displayName = `<@${u.userId}>`;
+            if (guild) {
+                try {
+                    const member = await guild.members.fetch(u.userId).catch(() => null);
+                    if (member) {
+                        displayName = member.displayName;
+                    }
+                } catch (e) {}
+            }
+
+            desc += `${medal} — **${displayName}** (${u.epicNick}) — **${u.fortniteKills || 0} zabójstw**\n`;
+        }
     }
 
     const embed = new EmbedBuilder()
@@ -360,9 +372,9 @@ function generateFortniteRankingEmbeds(topUsers: any[], page: number = 0) {
     return { embeds: [embed], components: [row] };
 }
 
-async function refreshFortniteRankingMessage() {
+async function refreshFortniteRankingMessage(guild: any) {
     try {
-        const channel = await client.channels.fetch(ID_KANAL_RANKING_FORTNITE).catch(() => null) as TextChannel;
+        const channel = await guild.channels.fetch(ID_KANAL_RANKING_FORTNITE).catch(() => null) as TextChannel;
         if (!channel) return;
 
         await updateAllFortniteStats();
@@ -377,7 +389,7 @@ async function refreshFortniteRankingMessage() {
             }
         }
 
-        const payload = generateFortniteRankingEmbeds(topUsers, 0);
+        const payload = await generateFortniteRankingEmbeds(guild, topUsers, 0);
         await channel.send(payload);
     } catch (e) {
         console.error('Błąd podczas odświeżania rankingu Fortnite:', e);
@@ -386,7 +398,9 @@ async function refreshFortniteRankingMessage() {
 
 function startFortniteRankingCron() {
     cron.schedule('0 0 * * *', async () => {
-        await refreshFortniteRankingMessage();
+        for (const [_, guild] of client.guilds.cache) {
+            await refreshFortniteRankingMessage(guild);
+        }
     });
 }
 
@@ -1444,7 +1458,7 @@ client.on('interactionCreate', async interaction => {
             if (direction === 'next') currentPage++;
 
             const topUsers = await UserModel.find({ epicNick: { $ne: null } }).sort({ fortniteKills: -1 }).limit(100);
-            const payload = generateFortniteRankingEmbeds(topUsers, currentPage);
+            const payload = await generateFortniteRankingEmbeds(interaction.guild, topUsers, currentPage);
             await interaction.editReply(payload);
             return;
         }
@@ -1827,7 +1841,7 @@ client.on('interactionCreate', async interaction => {
         if (commandName === 'fn-top') {
             if (!isAuthorized(interaction.user.id)) return interaction.reply({ content: '❌ Brak uprawnień!', ephemeral: true });
             await interaction.deferReply({ ephemeral: true });
-            await refreshFortniteRankingMessage();
+            await refreshFortniteRankingMessage(interaction.guild);
             await interaction.editReply({ content: `✅ Pomyślnie odświeżono i wysłano ranking Fortnite zabójstw na kanale <#${ID_KANAL_RANKING_FORTNITE}>!` });
             return;
         }
