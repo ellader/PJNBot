@@ -44,7 +44,7 @@ const userSchema = new mongoose.Schema({
     badges: { type: [String], default: [] },
     reputation: { type: Number, default: 0 },
     exp: { type: Number, default: 0 },
-    level: { type: Number, default: 1 },                  // <-- Nowe pole poziomu
+    level: { type: Number, default: 1 },                  
     vipExpiresAt: { type: Date, default: null },        
     doubleChanceUntil: { type: Date, default: null }, 
     dailyBoostUntil: { type: Date, default: null },     
@@ -157,11 +157,9 @@ const ID_KANAL_SKLEPU = "1545690716309553212";
 const ID_ROLI_VIP = "1545691786289221632";
 const ADMIN_LOG_CHANNEL_ID = "1532399010785263799"; 
 
-// === NOWE ID KANAŁÓW DLA FORTNITE I EXP ===
 const ID_KANAL_FORTNITE = '1546405381717233704';
 const ID_KANAL_AWANSOW = '1546407009262370866';
 
-// === MAPOWANIE RÓL DO PANELU DOSTOSUJ RANGĘ ===
 const ID_KANAL_RANG = "1532397673842217010";
 const ROLE_BUTTONS_MAP: { [key: string]: { roleId: string, label: string, emoji: string } } = {
     'role_bezrobotny': { roleId: '1532400774015881246', label: 'Bezrobotny', emoji: '😜' },
@@ -258,23 +256,8 @@ function startDailyShopAutoPoster() {
             const channel = await client.channels.fetch(ID_KANAL_FORTNITE).catch(() => null) as TextChannel;
             if (!channel) return;
 
-            const apiKey = process.env.FORTNITE_API_KEY || '';
-            const headers: any = {};
-            if (apiKey) headers['Authorization'] = apiKey;
-
-            const res = await fetch('https://fortnite-api.com/v2/shop', { headers });
-            const data = await res.json() as any;
-
-            let shopImage = null;
-            if (data && data.status === 200 && data.data && data.data.entries) {
-                for (const entry of data.data.entries) {
-                    if (entry.items && entry.items.length > 0 && entry.items[0].images) {
-                        shopImage = entry.items[0].images.large || entry.items[0].images.icon;
-                        break;
-                    }
-                }
-            }
-            if (!shopImage) shopImage = "https://fnbr.co/images/shop/icon.png";
+            const today = new Date().toISOString().split('T')[0];
+            const shopImage = `https://fortnite-api.com/images/shop/br/coming?date=${today}`;
 
             const embed = new EmbedBuilder()
                 .setColor(0x00D9FF)
@@ -792,14 +775,12 @@ async function checkAndAwardBadges(user: any, memberOrUser: any) {
     }
 }
 
-// === FUNKCJA OBSŁUGI EXP I AWANSÓW ===
 async function addExp(userId: string, amount: number, guild: any, channelToSend: any) {
     let user = await UserModel.findOne({ userId });
     if (!user) user = await UserModel.create({ userId });
 
     user.exp = (user.exp || 0) + amount;
     
-    // Wzór na poziom: Wymagany exp = poziom * 150
     let requiredExpForNextLevel = user.level * 150;
     let leveledUp = false;
 
@@ -1148,7 +1129,6 @@ const commands = [
         .setName('reputacja')
         .setDescription('Wyświetla profil handlowy, punkty reputacji i exp tradera')
         .addUserOption(o => o.setName('uzytkownik').setDescription('Sprawdź profil innego użytkownika').setRequired(false)),
-    // === NOWE KOMENDY FORTNITE ===
     new SlashCommandBuilder()
         .setName('fn-sklep')
         .setDescription('Wyświetla dzisiejszy sklep w grze Fortnite'),
@@ -1159,7 +1139,6 @@ const commands = [
     new SlashCommandBuilder()
         .setName('fn-mapa')
         .setDescription('Wyświetla aktualną mapę Fortnite'),
-    // =============================
     new SlashCommandBuilder()
         .setName('daj-wszystkim')
         .setDescription('Rozdaje PJN-Coins absolutnie każdemu użytkownikowi w bazie (Admin)')
@@ -1283,7 +1262,6 @@ client.once('ready', async () => {
     startDailyShopAutoPoster(); 
 });
 
-// === CENTRALNA OBSŁUGA INTERAKCJI ===
 client.on('interactionCreate', async interaction => {
     if (interaction.isStringSelectMenu()) {
         if (interaction.customId === 'shop_select') {
@@ -1674,7 +1652,6 @@ client.on('interactionCreate', async interaction => {
     const { commandName } = interaction;
 
     try {
-        // === OBSŁUGA KOMEND FORTNITE Z BLOKADĄ KANAŁU ===
         if (commandName === 'fn-sklep' || commandName === 'fn-stats' || commandName === 'fn-mapa') {
             if (interaction.channelId !== ID_KANAL_FORTNITE) {
                 return interaction.reply({
@@ -1686,28 +1663,13 @@ client.on('interactionCreate', async interaction => {
             if (commandName === 'fn-sklep') {
                 await interaction.deferReply();
                 try {
-                    const apiKey = process.env.FORTNITE_API_KEY || '';
-                    const headers: any = {};
-                    if (apiKey) headers['Authorization'] = apiKey;
-
-                    const res = await fetch('https://fortnite-api.com/v2/shop', { headers });
-                    const data = await res.json() as any;
-
-                    let shopImage = null;
-                    if (data && data.status === 200 && data.data && data.data.entries) {
-                        for (const entry of data.data.entries) {
-                            if (entry.items && entry.items.length > 0 && entry.items[0].images) {
-                                shopImage = entry.items[0].images.large || entry.items[0].images.icon;
-                                break;
-                            }
-                        }
-                    }
-                    if (!shopImage) shopImage = "https://fnbr.co/images/shop/icon.png";
+                    const today = new Date().toISOString().split('T')[0];
+                    const shopImage = `https://fortnite-api.com/images/shop/br/coming?date=${today}`;
 
                     const embed = new EmbedBuilder()
                         .setColor(0x00D9FF)
                         .setTitle('🛒 Codzienny Sklep Fortnite')
-                        .setDescription('Oto podgląd jednego z głównych przedmiotów z dzisiejszego sklepu w grze!')
+                        .setDescription('Oto podgląd aktualnego sklepu w grze Fortnite!')
                         .setImage(shopImage)
                         .setTimestamp()
                         .setFooter({ text: 'PJN Fortnite API • fortnite-api.com' });
@@ -1773,7 +1735,6 @@ client.on('interactionCreate', async interaction => {
                 return;
             }
         }
-        // ===========================================
 
         if (commandName === 'sklep') {
             await interaction.deferReply({ ephemeral: true });
@@ -2490,7 +2451,6 @@ async function updateLFGMessage(message: any, lfgDoc: any) {
     } catch (e) {}
 }
 
-// === OBSŁUGA WIADOMOŚCI I EXP + REPUTACJA ===
 client.on('messageCreate', async message => {
     if (message.author.bot || !message.guild) return;
 
@@ -2572,7 +2532,6 @@ client.on('messageCreate', async message => {
         await user.save();
         await checkAndAwardBadges(user, message.member);
 
-        // Dodawanie Exp za wiadomość (np. 10 exp za wiadomość)
         const targetAwansChannel = message.guild.channels.cache.get(ID_KANAL_AWANSOW);
         await addExp(message.author.id, 10, message.guild, targetAwansChannel);
 
@@ -2606,7 +2565,6 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
                     await user.save();
                     if (newState.member) await checkAndAwardBadges(user, newState.member);
 
-                    // Dodawanie Exp za czas spędzony na głosie (np. 5 exp za każdą minutę)
                     const targetAwansChannel = newState.guild.channels.cache.get(ID_KANAL_AWANSOW);
                     await addExp(userId, minutesSpent * 5, newState.guild, targetAwansChannel);
 
