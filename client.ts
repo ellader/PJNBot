@@ -258,7 +258,23 @@ function startDailyShopAutoPoster() {
             const channel = await client.channels.fetch(ID_KANAL_FORTNITE).catch(() => null) as TextChannel;
             if (!channel) return;
 
-            const shopImage = "https://media.fortniteapi.com/images/shop/banner.png";
+            const apiKey = process.env.FORTNITE_API_KEY || '';
+            const headers: any = {};
+            if (apiKey) headers['Authorization'] = apiKey;
+
+            const res = await fetch('https://fortnite-api.com/v2/shop', { headers });
+            const data = await res.json() as any;
+
+            let shopImage = null;
+            if (data && data.status === 200 && data.data && data.data.entries) {
+                for (const entry of data.data.entries) {
+                    if (entry.items && entry.items.length > 0 && entry.items[0].images) {
+                        shopImage = entry.items[0].images.large || entry.items[0].images.icon;
+                        break;
+                    }
+                }
+            }
+            if (!shopImage) shopImage = "https://fnbr.co/images/shop/icon.png";
 
             const embed = new EmbedBuilder()
                 .setColor(0x00D9FF)
@@ -1264,7 +1280,7 @@ client.once('ready', async () => {
     startYouTubeRssChecker();
     startLfgAutoCloser();
     startExpirationChecker();
-    startDailyShopAutoPoster(); // <-- Uruchomienie automatycznego wysyłania sklepu o 02:05
+    startDailyShopAutoPoster(); 
 });
 
 // === CENTRALNA OBSŁUGA INTERAKCJI ===
@@ -1670,13 +1686,28 @@ client.on('interactionCreate', async interaction => {
             if (commandName === 'fn-sklep') {
                 await interaction.deferReply();
                 try {
-                    // Bezpośredni i zawsze aktualny link graficzny siatki sklepu z Fortnite API
-                    const shopImage = "https://media.fortniteapi.com/images/shop/banner.png";
+                    const apiKey = process.env.FORTNITE_API_KEY || '';
+                    const headers: any = {};
+                    if (apiKey) headers['Authorization'] = apiKey;
+
+                    const res = await fetch('https://fortnite-api.com/v2/shop', { headers });
+                    const data = await res.json() as any;
+
+                    let shopImage = null;
+                    if (data && data.status === 200 && data.data && data.data.entries) {
+                        for (const entry of data.data.entries) {
+                            if (entry.items && entry.items.length > 0 && entry.items[0].images) {
+                                shopImage = entry.items[0].images.large || entry.items[0].images.icon;
+                                break;
+                            }
+                        }
+                    }
+                    if (!shopImage) shopImage = "https://fnbr.co/images/shop/icon.png";
 
                     const embed = new EmbedBuilder()
                         .setColor(0x00D9FF)
                         .setTitle('🛒 Codzienny Sklep Fortnite')
-                        .setDescription('Oto podgląd aktualnego sklepu w grze Fortnite!')
+                        .setDescription('Oto podgląd jednego z głównych przedmiotów z dzisiejszego sklepu w grze!')
                         .setImage(shopImage)
                         .setTimestamp()
                         .setFooter({ text: 'PJN Fortnite API • fortnite-api.com' });
