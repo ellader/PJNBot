@@ -795,7 +795,6 @@ async function checkAndAwardBadges(user: any, memberOrUser: any) {
     }
 }
 
-// === NAPRAWIONA FUNKCJA DOŚWIADCZENIA (EXP) ===
 async function addExp(userId: string, amount: number, guild: any) {
     let user = await UserModel.findOne({ userId });
     if (!user) user = await UserModel.create({ userId });
@@ -1158,8 +1157,9 @@ const commands = [
         .setDescription('Wyświetla dzisiejszy sklep w grze Fortnite'),
     new SlashCommandBuilder()
         .setName('fn-stats')
-        .setDescription('Sprawdza statystyki gracza w Fortnite')
-        .addStringOption(o => o.setName('nick').setDescription('Nazwa użytkownika Epic Games').setRequired(true)),
+        .setDescription('Sprawdza statystyki gracza w Fortnite (po nicku lub Account ID)')
+        .addStringOption(o => o.setName('nick').setDescription('Nazwa użytkownika Epic Games').setRequired(false))
+        .addStringOption(o => o.setName('id').setDescription('Epic Account ID (opcjonalnie)').setRequired(false)),
     new SlashCommandBuilder()
         .setName('fn-mapa')
         .setDescription('Wyświetla aktualną mapę Fortnite'),
@@ -1732,10 +1732,24 @@ client.on('interactionCreate', async interaction => {
 
             if (commandName === 'fn-stats') {
                 await interaction.deferReply();
-                const nick = interaction.options.getString('nick', true);
+                const nick = interaction.options.getString('nick');
+                const accountId = interaction.options.getString('id');
+
+                if (!nick && !accountId) {
+                    return interaction.editReply({ content: '❌ Musisz podać przynajmniej jeden parametr: **nick** lub **id**!' });
+                }
+
                 try {
-                    const res = await fetch(`https://fortnite-api.com/v2/stats/br/v2?name=${encodeURIComponent(nick)}`);
+                    let url = '';
+                    if (accountId) {
+                        url = `https://fortnite-api.com/v2/stats/br/v2?accountId=${encodeURIComponent(accountId)}`;
+                    } else {
+                        url = `https://fortnite-api.com/v2/stats/br/v2?name=${encodeURIComponent(nick!)}`;
+                    }
+
+                    const res = await fetch(url);
                     const data = await res.json() as any;
+
                     if (data && data.status === 200 && data.data && data.data.stats) {
                         const overall = data.data.stats.all?.overall || {};
                         const embed = new EmbedBuilder()
@@ -1754,12 +1768,13 @@ client.on('interactionCreate', async interaction => {
                         await interaction.editReply({ embeds: [embed] });
                     } else {
                         await interaction.editReply({ 
-                            content: `❌ Nie znaleziono gracza o nicku **${nick}**.\n\n` +
-                                     `💡 **Wskazówka:** Epic Games domyślnie ukrywa statystyki. Upewnij się, że w ustawieniach prywatności w grze masz włączoną opcję **„Wyświetlaj statystyki w rankingach”** lub profil gracza jest publiczny.` 
+                            content: `❌ Nie znaleziono statystyk dla zapytania (**${accountId ? 'ID: ' + accountId : 'Nick: ' + nick}**).\n\n` +
+                                     `💡 **Wskazówka:** Epic Games domyślnie ukrywa statystyki. Upewnij się, że w ustawieniach prywatności w grze masz włączoną opcję **„Wyświetlaj statystyki w rankingach”**.` 
                         });
                     }
                 } catch (e) {
-                    await interaction.editReply({ content: '❌ Wystąpił błąd podczas pobierania statystyk z API.' });
+                    console.error('Błąd pobierania statystyk:', e);
+                    await interaction.editReply({ content: '❌ Wystąpił błąd podczas komunikacji z API statystyk.' });
                 }
                 return;
             }
@@ -2548,7 +2563,6 @@ client.on('messageCreate', async message => {
             receiverUser.reputation = (receiverUser.reputation || 0) + pointsChange;
             await receiverUser.save();
 
-            // Przydzielenie expa z użyciem ID_KANAL_AWANSOW
             await addExp(receiverId, expChange, message.guild);
 
             const receiverMember = await message.guild.members.fetch(receiverId).catch(() => null);
@@ -2584,7 +2598,6 @@ client.on('messageCreate', async message => {
         await user.save();
         await checkAndAwardBadges(user, message.member);
 
-        // Dodawanie exp za wiadomość na chacie
         await addExp(message.author.id, 10, message.guild);
 
     } catch (error) {}
@@ -2617,7 +2630,6 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
                     await user.save();
                     if (newState.member) await checkAndAwardBadges(user, newState.member);
 
-                    // Dodawanie exp za aktywność głosową
                     await addExp(userId, minutesSpent * 5, newState.guild);
 
                 } catch (e) {}
