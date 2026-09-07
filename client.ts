@@ -1653,11 +1653,11 @@ client.on('interactionCreate', async interaction => {
                     const data = await res.json() as any;
 
                     if (data && data.status === 200 && data.data) {
-                        const shopImage = data.data.daily?.banner?.image || data.data.v3?.banner?.image || data.data.image;
-
-                        if (!shopImage) {
-                            return interaction.editReply({ content: '❌ API zwróciło dane, ale brak wygenerowanego obrazka banera sklepu.' });
-                        }
+                        const shopImage = data.data.daily?.banner?.image 
+                            || data.data.banner?.image 
+                            || (data.data.entries && data.data.entries[0]?.items?.[0]?.images?.large)
+                            || data.data.v3?.banner?.image
+                            || LIVE_IMAGE_URL;
 
                         const embed = new EmbedBuilder()
                             .setColor(0x00D9FF)
@@ -1668,7 +1668,7 @@ client.on('interactionCreate', async interaction => {
                             .setFooter({ text: 'PJN Fortnite API • fortnite-api.com' });
                         await interaction.editReply({ embeds: [embed] });
                     } else {
-                        await interaction.editReply({ content: `❌ Nie udało się pobrać dzisiejszego sklepu Fortnite. Status API: ${data.status}` });
+                        await interaction.editReply({ content: `❌ Nie udało się pobrać dzisiejszego sklepu Fortnite. Status API: ${data?.status || 'Brak'}` });
                     }
                 } catch (e) {
                     await interaction.editReply({ content: '❌ Wystąpił błąd komunikacji z API Fortnite.' });
