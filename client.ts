@@ -1767,6 +1767,9 @@ client.on('interactionCreate', async interaction => {
                             .setFooter({ text: 'PJN Fortnite API' });
                         await interaction.editReply({ embeds: [embed] });
                     } else {
+                        // Tutaj wypisujemy dokładną odpowiedź z API do konsoli, żeby zobaczyć powód błędu
+                        console.log("Odpowiedź API Fortnite:", JSON.stringify(data, null, 2));
+
                         await interaction.editReply({ 
                             content: `❌ Nie znaleziono statystyk dla zapytania (**${accountId ? 'ID: ' + accountId : 'Nick: ' + nick}**).\n\n` +
                                      `💡 **Wskazówka:** Epic Games domyślnie ukrywa statystyki. Upewnij się, że w ustawieniach prywatności w grze masz włączoną opcję **„Wyświetlaj statystyki w rankingach”**.` 
