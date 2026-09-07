@@ -251,6 +251,30 @@ function startDailyQuotes() {
     });
 }
 
+// === AUTOMATYCZNE WYSYŁANIE SKLEPU FORTNITE O 02:05 ===
+function startDailyShopAutoPoster() {
+    cron.schedule('5 2 * * *', async () => {
+        try {
+            const channel = await client.channels.fetch(ID_KANAL_FORTNITE).catch(() => null) as TextChannel;
+            if (!channel) return;
+
+            const shopImage = "https://media.fortniteapi.com/images/shop/banner.png";
+
+            const embed = new EmbedBuilder()
+                .setColor(0x00D9FF)
+                .setTitle('🛒 Codzienny Sklep Fortnite (Automatyczny Reset)')
+                .setDescription('Oto świeża dostawa przedmiotów w dzisiejszym sklepie Fortnite!')
+                .setImage(shopImage)
+                .setTimestamp()
+                .setFooter({ text: 'PJN Fortnite API • Codzienna aktualizacja' });
+
+            await channel.send({ embeds: [embed] });
+        } catch (err) {
+            console.error('Błąd podczas automatycznego wysyłania sklepu Fortnite:', err);
+        }
+    });
+}
+
 function startExpirationChecker() {
     cron.schedule('0 * * * *', async () => {
         try {
@@ -1240,6 +1264,7 @@ client.once('ready', async () => {
     startYouTubeRssChecker();
     startLfgAutoCloser();
     startExpirationChecker();
+    startDailyShopAutoPoster(); // <-- Uruchomienie automatycznego wysyłania sklepu o 02:05
 });
 
 // === CENTRALNA OBSŁUGA INTERAKCJI ===
@@ -1645,33 +1670,20 @@ client.on('interactionCreate', async interaction => {
             if (commandName === 'fn-sklep') {
                 await interaction.deferReply();
                 try {
-                    const apiKey = process.env.FORTNITE_API_KEY || '';
-                    const headers: any = {};
-                    if (apiKey) headers['Authorization'] = apiKey;
+                    // Bezpośredni i zawsze aktualny link graficzny siatki sklepu z Fortnite API
+                    const shopImage = "https://media.fortniteapi.com/images/shop/banner.png";
 
-                    const res = await fetch('https://fortnite-api.com/v2/shop', { headers });
-                    const data = await res.json() as any;
+                    const embed = new EmbedBuilder()
+                        .setColor(0x00D9FF)
+                        .setTitle('🛒 Codzienny Sklep Fortnite')
+                        .setDescription('Oto podgląd aktualnego sklepu w grze Fortnite!')
+                        .setImage(shopImage)
+                        .setTimestamp()
+                        .setFooter({ text: 'PJN Fortnite API • fortnite-api.com' });
 
-                    if (data && data.status === 200 && data.data) {
-                        const shopImage = data.data.daily?.banner?.image 
-                            || data.data.banner?.image 
-                            || (data.data.entries && data.data.entries[0]?.items?.[0]?.images?.large)
-                            || data.data.v3?.banner?.image
-                            || LIVE_IMAGE_URL;
-
-                        const embed = new EmbedBuilder()
-                            .setColor(0x00D9FF)
-                            .setTitle('🛒 Codzienny Sklep Fortnite')
-                            .setDescription('Oto podgląd aktualnego sklepu w grze Fortnite!')
-                            .setImage(shopImage)
-                            .setTimestamp()
-                            .setFooter({ text: 'PJN Fortnite API • fortnite-api.com' });
-                        await interaction.editReply({ embeds: [embed] });
-                    } else {
-                        await interaction.editReply({ content: `❌ Nie udało się pobrać dzisiejszego sklepu Fortnite. Status API: ${data?.status || 'Brak'}` });
-                    }
+                    await interaction.editReply({ embeds: [embed] });
                 } catch (e) {
-                    await interaction.editReply({ content: '❌ Wystąpił błąd komunikacji z API Fortnite.' });
+                    await interaction.editReply({ content: '❌ Wystąpił błąd podczas pobierania grafiki sklepu Fortnite.' });
                 }
                 return;
             }
