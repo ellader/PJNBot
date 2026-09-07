@@ -255,7 +255,11 @@ function startDailyShopAutoPoster() {
             const channel = await client.channels.fetch(ID_KANAL_FORTNITE).catch(() => null) as TextChannel;
             if (!channel) return;
 
-            const res = await fetch('https://fortnite-api.com/v2/shop');
+            const res = await fetch('https://fortnite-api.com/v2/shop', {
+                headers: {
+                    'Authorization': process.env.FORTNITE_API_KEY || ''
+                }
+            });
             const data = await res.json() as any;
 
             const embed = new EmbedBuilder()
@@ -1687,7 +1691,11 @@ client.on('interactionCreate', async interaction => {
             if (commandName === 'fn-sklep') {
                 await interaction.deferReply();
                 try {
-                    const res = await fetch('https://fortnite-api.com/v2/shop');
+                    const res = await fetch('https://fortnite-api.com/v2/shop', {
+                        headers: {
+                            'Authorization': process.env.FORTNITE_API_KEY || ''
+                        }
+                    });
                     const data = await res.json() as any;
 
                     const embed = new EmbedBuilder()
@@ -1747,7 +1755,11 @@ client.on('interactionCreate', async interaction => {
                         url = `https://fortnite-api.com/v2/stats/br/v2?name=${encodeURIComponent(nick!)}`;
                     }
 
-                    const res = await fetch(url);
+                    const res = await fetch(url, {
+                        headers: {
+                            'Authorization': process.env.FORTNITE_API_KEY || ''
+                        }
+                    });
                     const data = await res.json() as any;
 
                     if (data && data.status === 200 && data.data && data.data.stats) {
@@ -1767,7 +1779,6 @@ client.on('interactionCreate', async interaction => {
                             .setFooter({ text: 'PJN Fortnite API' });
                         await interaction.editReply({ embeds: [embed] });
                     } else {
-                        // Tutaj wypisujemy dokładną odpowiedź z API do konsoli, żeby zobaczyć powód błędu
                         console.log("Odpowiedź API Fortnite:", JSON.stringify(data, null, 2));
 
                         await interaction.editReply({ 
@@ -1785,7 +1796,11 @@ client.on('interactionCreate', async interaction => {
             if (commandName === 'fn-mapa') {
                 await interaction.deferReply();
                 try {
-                    const res = await fetch('https://fortnite-api.com/v1/map');
+                    const res = await fetch('https://fortnite-api.com/v1/map', {
+                        headers: {
+                            'Authorization': process.env.FORTNITE_API_KEY || ''
+                        }
+                    });
                     const data = await res.json() as any;
                     if (data && data.status === 200 && data.data && data.data.images) {
                         const mapImg = data.data.images.pois || data.data.images.image;
