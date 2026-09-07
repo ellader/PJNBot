@@ -249,7 +249,7 @@ function startDailyQuotes() {
     });
 }
 
-// === AUTOMATYCZNE WYSYŁANIE SKLEPU FORTNITE O 02:05 (BEZPIECZNY EMBED) ===
+// === AUTOMATYCZNE WYSYŁANIE SKLEPU FORTNITE O 02:05 (Z POPRAWIONYM WYCIĄGANIEM NAZW) ===
 function startDailyShopAutoPoster() {
     cron.schedule('5 2 * * *', async () => {
         try {
@@ -271,8 +271,12 @@ function startDailyShopAutoPoster() {
                 const entries = data.data.entries.slice(0, 10);
                 let desc = 'Najciekawsze pozycje z nowego resetu:\n\n';
                 for (const entry of entries) {
-                    const itemName = entry.items?.[0]?.name || 'Przedmiot';
-                    const price = entry.finalPrice || 'N/D';
+                    const itemName = entry.items?.[0]?.name 
+                        || entry.bundle?.name 
+                        || entry.devName 
+                        || entry.track?.title 
+                        || 'Oferta Specjalna Fortnite';
+                    const price = entry.finalPrice || entry.regularPrice || 'N/D';
                     desc += `• **${itemName}** — 🪙 \`${price} V-Bucks\`\n`;
                 }
                 embed.setDescription(desc);
@@ -1690,8 +1694,12 @@ client.on('interactionCreate', async interaction => {
                         let descriptionText = 'Oto wybrane wyróżnione przedmioty z dzisiejszej oferty:\n\n';
                         
                         for (const entry of entries) {
-                            const itemName = entry.items?.[0]?.name || 'Przedmiot specjalny';
-                            const price = entry.finalPrice || 'N/D';
+                            const itemName = entry.items?.[0]?.name 
+                                || entry.bundle?.name 
+                                || entry.devName 
+                                || entry.track?.title 
+                                || 'Oferta Specjalna Fortnite';
+                            const price = entry.finalPrice || entry.regularPrice || 'N/D';
                             descriptionText += `• **${itemName}** — 🪙 \`${price} V-Bucks\`\n`;
                         }
                         embed.setDescription(descriptionText);
