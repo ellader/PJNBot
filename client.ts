@@ -329,7 +329,7 @@ function createBadgesInfoEmbed() {
         .setDescription(
             'Witaj w oficjalnym systemie osiągnięć serwera! Będąc aktywnym, rozmawiając, grając w kasynie czy spędzając z nami czas, automatycznie zdobywasz unikalne odznaki, które pojawiają się w Twoim profilu.\n\n' +
             '🔍 **Jak sprawdzić swoje odznaki?**\n' +
-            'Wpisz w dowolnym kanale komendę: `/odznaki` (Możesz też sprawdzić profil kogoś innego, wybierając opcję `@użytkownik`).'
+            'Wpisz w dowolnym kanale komendę: `/odznaki` (Możesz też sprawdzyć profil kogoś innego, wybierając opcję `@użytkownik`).'
         )
         .addFields(
             {
@@ -775,7 +775,6 @@ async function addExp(userId: string, amount: number, guild: any, channelToSend:
     if (leveledUp && channelToSend) {
         try {
             const member = await guild.members.fetch(userId).catch(() => null);
-            const userTag = member ? member.user.tag : `Użytkownik (${userId})`;
             const avatarUrl = member ? member.user.displayAvatarURL() : client.user?.displayAvatarURL();
 
             const embed = new EmbedBuilder()
@@ -1646,10 +1645,20 @@ client.on('interactionCreate', async interaction => {
             if (commandName === 'fn-sklep') {
                 await interaction.deferReply();
                 try {
-                    const res = await fetch('https://fortnite-api.com/v2/shop');
+                    const apiKey = process.env.FORTNITE_API_KEY || '';
+                    const headers: any = {};
+                    if (apiKey) headers['Authorization'] = apiKey;
+
+                    const res = await fetch('https://fortnite-api.com/v2/shop', { headers });
                     const data = await res.json() as any;
-                    if (data && data.status === 200 && data.data && data.data.daily) {
-                        const shopImage = data.data.daily.banner?.image || LIVE_IMAGE_URL;
+
+                    if (data && data.status === 200 && data.data) {
+                        const shopImage = data.data.daily?.banner?.image || data.data.v3?.banner?.image || data.data.image;
+
+                        if (!shopImage) {
+                            return interaction.editReply({ content: '❌ API zwróciło dane, ale brak wygenerowanego obrazka banera sklepu.' });
+                        }
+
                         const embed = new EmbedBuilder()
                             .setColor(0x00D9FF)
                             .setTitle('🛒 Codzienny Sklep Fortnite')
@@ -1659,7 +1668,7 @@ client.on('interactionCreate', async interaction => {
                             .setFooter({ text: 'PJN Fortnite API • fortnite-api.com' });
                         await interaction.editReply({ embeds: [embed] });
                     } else {
-                        await interaction.editReply({ content: '❌ Nie udało się pobrać dzisiejszego sklepu Fortnite.' });
+                        await interaction.editReply({ content: `❌ Nie udało się pobrać dzisiejszego sklepu Fortnite. Status API: ${data.status}` });
                     }
                 } catch (e) {
                     await interaction.editReply({ content: '❌ Wystąpił błąd komunikacji z API Fortnite.' });
