@@ -256,7 +256,6 @@ function startDailyShopAutoPoster() {
             const channel = await client.channels.fetch(ID_KANAL_FORTNITE).catch(() => null) as TextChannel;
             if (!channel) return;
 
-            // Pobieramy z alternatywnego, bardziej stabilnego endpointu lub serwisu zapasowego
             const res = await fetch('https://fortnite-api.com/v2/shop');
             const data = await res.json() as any;
 
@@ -266,7 +265,7 @@ function startDailyShopAutoPoster() {
             }
 
             if (!shopImageUrl) {
-                shopImageUrl = 'https://media.fortniteapi.com/images/shop/banner.png'; // Zapasowy baner w razie niedostępności API
+                shopImageUrl = 'https://fortnite-api.com/images/shop/banner.png';
             }
                 
             const imageRes = await fetch(shopImageUrl);
@@ -1691,7 +1690,7 @@ client.on('interactionCreate', async interaction => {
                     }
 
                     if (!shopImageUrl) {
-                        shopImageUrl = 'https://media.fortniteapi.com/images/shop/banner.png';
+                        shopImageUrl = 'https://fortnite-api.com/images/shop/banner.png';
                     }
                         
                     const imageRes = await fetch(shopImageUrl);
