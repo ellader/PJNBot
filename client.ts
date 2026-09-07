@@ -256,8 +256,11 @@ function startDailyShopAutoPoster() {
             const channel = await client.channels.fetch(ID_KANAL_FORTNITE).catch(() => null) as TextChannel;
             if (!channel) return;
 
-            const today = new Date().toISOString().split('T')[0];
-            const shopImage = `https://fortnite-api.com/images/shop/br/coming?date=${today}`;
+            const now = new Date();
+            const year = now.getUTCFullYear();
+            const month = String(now.getUTCMonth() + 1).padStart(2, '0');
+            const day = String(now.getUTCDate()).padStart(2, '0');
+            const shopImage = `https://bot.fnbr.co/shop/render/fnbr-shop-${day}-${month}-${year}.png`;
 
             const embed = new EmbedBuilder()
                 .setColor(0x00D9FF)
@@ -265,7 +268,7 @@ function startDailyShopAutoPoster() {
                 .setDescription('Oto świeża dostawa przedmiotów w dzisiejszym sklepie Fortnite!')
                 .setImage(shopImage)
                 .setTimestamp()
-                .setFooter({ text: 'PJN Fortnite API • Codzienna aktualizacja' });
+                .setFooter({ text: 'PJN Fortnite Shop • fnbr.co' });
 
             await channel.send({ embeds: [embed] });
         } catch (err) {
@@ -1663,19 +1666,19 @@ client.on('interactionCreate', async interaction => {
             if (commandName === 'fn-sklep') {
                 await interaction.deferReply();
                 try {
-                    const today = new Date().toISOString().split('T')[0];
-                    const shopImage = `https://fortnite-api.com/images/shop/br/coming?date=${today}`;
+                    const now = new Date();
+                    const year = now.getUTCFullYear();
+                    const month = String(now.getUTCMonth() + 1).padStart(2, '0');
+                    const day = String(now.getUTCDate()).padStart(2, '0');
+                    const shopImageUrl = `https://bot.fnbr.co/shop/render/fnbr-shop-${day}-${month}-${year}.png`;
 
                     const embed = new EmbedBuilder()
                         .setColor(0x00D9FF)
                         .setTitle('🛒 Codzienny Sklep Fortnite')
-                        .setDescription('Oto podgląd aktualnego sklepu w grze Fortnite!')
-                        .setImage("https://media.fortniteapi.com/images/shop/banner.png")
+                        .setDescription('Oto podgląd aktualnego zestawu przedmiotów w grze:')
+                        .setImage(shopImageUrl)
                         .setTimestamp()
-                        .setFooter({ text: 'PJN Fortnite API • fortnite-api.com' });
-
-                    // Poprawione przypisanie bezpośredniej grafiki sklepu
-                    embed.setImage(shopImage);
+                        .setFooter({ text: 'PJN Fortnite Shop • fnbr.co' });
 
                     await interaction.editReply({ embeds: [embed] });
                 } catch (e) {
