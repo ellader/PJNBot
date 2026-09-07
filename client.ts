@@ -1670,9 +1670,12 @@ client.on('interactionCreate', async interaction => {
                         .setColor(0x00D9FF)
                         .setTitle('🛒 Codzienny Sklep Fortnite')
                         .setDescription('Oto podgląd aktualnego sklepu w grze Fortnite!')
-                        .setImage(shopImage)
+                        .setImage("https://media.fortniteapi.com/images/shop/banner.png")
                         .setTimestamp()
                         .setFooter({ text: 'PJN Fortnite API • fortnite-api.com' });
+
+                    // Poprawione przypisanie bezpośredniej grafiki sklepu
+                    embed.setImage(shopImage);
 
                     await interaction.editReply({ embeds: [embed] });
                 } catch (e) {
