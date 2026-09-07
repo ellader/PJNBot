@@ -50,7 +50,9 @@ const userSchema = new mongoose.Schema({
     dailyBoostUntil: { type: Date, default: null },     
     customRoleExpiresAt: { type: Date, default: null }, 
     customVoiceExpiresAt: { type: Date, default: null },
-    customRoleId: { type: String, default: null }
+    customRoleId: { type: String, default: null },
+    epicNick: { type: String, default: null },
+    fortniteKills: { type: Number, default: 0 }
 });
 
 const UserModel = mongoose.model('User', userSchema);
@@ -158,6 +160,7 @@ const ID_ROLI_VIP = "1545691786289221632";
 const ADMIN_LOG_CHANNEL_ID = "1532399010785263799"; 
 
 const ID_KANAL_FORTNITE = '1546405381717233704';
+const ID_KANAL_RANKING_FORTNITE = '1546593557526216816';
 const ID_KANAL_AWANSOW = '1546407009262370866'; // Exp - PJN
 
 const ID_KANAL_RANG = "1532397673842217010";
@@ -295,6 +298,95 @@ function startDailyShopAutoPoster() {
         } catch (err) {
             console.error('Błąd podczas automatycznego wysyłania sklepu Fortnite:', err);
         }
+    });
+}
+
+async function updateAllFortniteStats() {
+    const users = await UserModel.find({ epicNick: { $ne: null } });
+    for (const u of users) {
+        try {
+            const res = await fetch(`https://fortnite-api.com/v2/stats/br/v2?name=${encodeURIComponent(u.epicNick!)}`, {
+                headers: { 'Authorization': process.env.FORTNITE_API_KEY || '' }
+            });
+            const data = await res.json() as any;
+            if (data && data.status === 200 && data.data && data.data.stats) {
+                const overall = data.data.stats.all?.overall || {};
+                u.fortniteKills = overall.kills || 0;
+                await u.save();
+            }
+        } catch (e) {}
+    }
+}
+
+function generateFortniteRankingEmbeds(topUsers: any[], page: number = 0) {
+    const pageSize = 10;
+    const totalPages = Math.ceil(topUsers.length / pageSize) || 1;
+    const currentPage = Math.max(0, Math.min(page, totalPages - 1));
+    const slice = topUsers.slice(currentPage * pageSize, (currentPage + 1) * pageSize);
+
+    let desc = `Zabójstwa graczy z naszego serwera (Top 100)\nAktualizowane automatycznie co 24h.\n\n`;
+    
+    if (slice.length === 0) {
+        desc += `Brak zarejestrowanych graczy w rankingu. Użyj \`/fn-rejestracja\`, aby dołączyć!`;
+    } else {
+        slice.forEach((u, idx) => {
+            const globalIdx = currentPage * pageSize + idx;
+            const medal = globalIdx === 0 ? '🥇' : globalIdx === 1 ? '🥈' : globalIdx === 2 ? '🥉' : `**${globalIdx + 1}.**`;
+            desc += `${medal} — <@${u.userId}> (${u.epicNick}) — **${u.fortniteKills || 0} zabójstw**\n`;
+        });
+    }
+
+    const embed = new EmbedBuilder()
+        .setColor(0x00D9FF)
+        .setTitle(`🏆 TOP 100 • Ranking Zabójstw Fortnite (Strona ${currentPage + 1}/${totalPages})`)
+        .setDescription(desc)
+        .setImage(LIVE_IMAGE_URL)
+        .setTimestamp()
+        .setFooter({ text: 'PJN Fortnite Ranking • Automatyczny system' });
+
+    const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+        new ButtonBuilder()
+            .setCustomId(`fn_rank_prev_${currentPage}`)
+            .setLabel('⬅️ Wstecz')
+            .setStyle(ButtonStyle.Primary)
+            .setDisabled(currentPage === 0),
+        new ButtonBuilder()
+            .setCustomId(`fn_rank_next_${currentPage}`)
+            .setLabel('Dalej ➡️')
+            .setStyle(ButtonStyle.Primary)
+            .setDisabled(currentPage >= totalPages - 1)
+    );
+
+    return { embeds: [embed], components: [row] };
+}
+
+async function refreshFortniteRankingMessage() {
+    try {
+        const channel = await client.channels.fetch(ID_KANAL_RANKING_FORTNITE).catch(() => null) as TextChannel;
+        if (!channel) return;
+
+        await updateAllFortniteStats();
+        const topUsers = await UserModel.find({ epicNick: { $ne: null } }).sort({ fortniteKills: -1 }).limit(100);
+
+        const messages = await channel.messages.fetch({ limit: 10 }).catch(() => null);
+        if (messages) {
+            for (const [_, msg] of messages) {
+                if (msg.author.id === client.user?.id) {
+                    await msg.delete().catch(() => {});
+                }
+            }
+        }
+
+        const payload = generateFortniteRankingEmbeds(topUsers, 0);
+        await channel.send(payload);
+    } catch (e) {
+        console.error('Błąd podczas odświeżania rankingu Fortnite:', e);
+    }
+}
+
+function startFortniteRankingCron() {
+    cron.schedule('0 0 * * *', async () => {
+        await refreshFortniteRankingMessage();
     });
 }
 
@@ -1168,6 +1260,13 @@ const commands = [
         .setName('fn-mapa')
         .setDescription('Wyświetla aktualną mapę Fortnite'),
     new SlashCommandBuilder()
+        .setName('fn-rejestracja')
+        .setDescription('Zarejestruj swój nick Epic Games do rankingu zabójstw na serwerze')
+        .addStringOption(o => o.setName('nick').setDescription('Twój dokładny nick z Epic Games').setRequired(true)),
+    new SlashCommandBuilder()
+        .setName('fn-top')
+        .setDescription('Ręcznie wymuś odświeżenie i wyświetlenie rankingów zabójstw Fortnite'),
+    new SlashCommandBuilder()
         .setName('daj-wszystkim')
         .setDescription('Rozdaje PJN-Coins absolutnie każdemu użytkownikowi w bazie (Admin)')
         .addIntegerOption(o => o.setName('ilosc').setDescription('Ile PJN-Coins ma otrzymać każdy').setRequired(true))
@@ -1288,6 +1387,7 @@ client.once('ready', async () => {
     startLfgAutoCloser();
     startExpirationChecker();
     startDailyShopAutoPoster(); 
+    startFortniteRankingCron();
 });
 
 client.on('interactionCreate', async interaction => {
@@ -1334,6 +1434,21 @@ client.on('interactionCreate', async interaction => {
     }
 
     if (interaction.isButton()) {
+        if (interaction.customId.startsWith('fn_rank_')) {
+            await interaction.deferUpdate();
+            const parts = interaction.customId.split('_');
+            const direction = parts[2]; // prev lub next
+            let currentPage = parseInt(parts[3]) || 0;
+
+            if (direction === 'prev') currentPage--;
+            if (direction === 'next') currentPage++;
+
+            const topUsers = await UserModel.find({ epicNick: { $ne: null } }).sort({ fortniteKills: -1 }).limit(100);
+            const payload = generateFortniteRankingEmbeds(topUsers, currentPage);
+            await interaction.editReply(payload);
+            return;
+        }
+
         if (interaction.customId.startsWith('role_')) {
             await interaction.deferReply({ ephemeral: true });
             const roleConfig = ROLE_BUTTONS_MAP[interaction.customId];
@@ -1680,6 +1795,43 @@ client.on('interactionCreate', async interaction => {
     const { commandName } = interaction;
 
     try {
+        if (commandName === 'fn-rejestracja') {
+            await interaction.deferReply({ ephemeral: true });
+            const nick = interaction.options.getString('nick', true);
+
+            try {
+                const res = await fetch(`https://fortnite-api.com/v2/stats/br/v2?name=${encodeURIComponent(nick)}`, {
+                    headers: { 'Authorization': process.env.FORTNITE_API_KEY || '' }
+                });
+                const data = await res.json() as any;
+
+                if (!data || data.status !== 200 || !data.data) {
+                    return interaction.editReply({ content: `❌ Nie znaleziono gracza o nicku **${nick}** w Fortnite lub statystyki są ukryte w grze!` });
+                }
+
+                let user = await UserModel.findOne({ userId: interaction.user.id });
+                if (!user) user = await UserModel.create({ userId: interaction.user.id });
+
+                user.epicNick = data.data.account.name;
+                const overall = data.data.stats.all?.overall || {};
+                user.fortniteKills = overall.kills || 0;
+                await user.save();
+
+                await interaction.editReply({ content: `✅ Pomyślnie zarejestrowano nick **${user.epicNick}**! Twoje zabójstwa zostały zsynchronizowane (${user.fortniteKills} killi). Zostaniesz uwzględniony w rankingu.` });
+            } catch (e) {
+                await interaction.editReply({ content: '❌ Wystąpił błąd podczas weryfikacji nicku z API Fortnite.' });
+            }
+            return;
+        }
+
+        if (commandName === 'fn-top') {
+            if (!isAuthorized(interaction.user.id)) return interaction.reply({ content: '❌ Brak uprawnień!', ephemeral: true });
+            await interaction.deferReply({ ephemeral: true });
+            await refreshFortniteRankingMessage();
+            await interaction.editReply({ content: `✅ Pomyślnie odświeżono i wysłano ranking Fortnite zabójstw na kanale <#${ID_KANAL_RANKING_FORTNITE}>!` });
+            return;
+        }
+
         if (commandName === 'fn-sklep' || commandName === 'fn-stats' || commandName === 'fn-mapa') {
             if (interaction.channelId !== ID_KANAL_FORTNITE) {
                 return interaction.reply({
