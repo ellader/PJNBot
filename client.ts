@@ -256,7 +256,7 @@ function startDailyShopAutoPoster() {
             const channel = await client.channels.fetch(ID_KANAL_FORTNITE).catch(() => null) as TextChannel;
             if (!channel) return;
 
-            const res = await fetch('https://fortnite-api.com/v2/shop/br');
+            const res = await fetch('https://fortnite-api.com/v2/shop');
             const data = await res.json() as any;
 
             if (data && data.status === 200 && data.data && data.data.daily) {
@@ -1676,7 +1676,7 @@ client.on('interactionCreate', async interaction => {
             if (commandName === 'fn-sklep') {
                 await interaction.deferReply();
                 try {
-                    const res = await fetch('https://fortnite-api.com/v2/shop/br');
+                    const res = await fetch('https://fortnite-api.com/v2/shop');
                     const data = await res.json() as any;
 
                     if (data && data.status === 200 && data.data && data.data.daily) {
