@@ -256,21 +256,31 @@ function startDailyShopAutoPoster() {
             const channel = await client.channels.fetch(ID_KANAL_FORTNITE).catch(() => null) as TextChannel;
             if (!channel) return;
 
-            const now = new Date();
-            const year = now.getUTCFullYear();
-            const month = String(now.getUTCMonth() + 1).padStart(2, '0');
-            const day = String(now.getUTCDate()).padStart(2, '0');
-            const shopImage = `https://bot.fnbr.co/shop/render/fnbr-shop-${day}-${month}-${year}.png`;
+            const res = await fetch('https://fortnite-api.com/v2/shop/br');
+            const data = await res.json() as any;
 
-            const embed = new EmbedBuilder()
-                .setColor(0x00D9FF)
-                .setTitle('🛒 Codzienny Sklep Fortnite (Automatyczny Reset)')
-                .setDescription('Oto świeża dostawa przedmiotów w dzisiejszym sklepie Fortnite!')
-                .setImage(shopImage)
-                .setTimestamp()
-                .setFooter({ text: 'PJN Fortnite Shop • fnbr.co' });
+            if (data && data.status === 200 && data.data && data.data.daily) {
+                const shopImageUrl = data.data.daily.shoppings?.background || data.data.meta?.banner?.image || 'https://fortnite-api.com/images/shop/banner.png';
+                
+                const imageRes = await fetch(shopImageUrl);
+                if (!imageRes.ok) return;
+                const buffer = Buffer.from(await imageRes.arrayBuffer());
 
-            await channel.send({ embeds: [embed] });
+                const attachment = {
+                    attachment: buffer,
+                    name: 'sklep-fortnite.png'
+                };
+
+                const embed = new EmbedBuilder()
+                    .setColor(0x00D9FF)
+                    .setTitle('🛒 Codzienny Sklep Fortnite (Automatyczny Reset)')
+                    .setDescription('Oto świeża dostawa przedmiotów w dzisiejszym sklepie Fortnite!')
+                    .setImage('attachment://sklep-fortnite.png')
+                    .setTimestamp()
+                    .setFooter({ text: 'PJN Fortnite Shop • Fortnite-API.com' });
+
+                await channel.send({ embeds: [embed], files: [attachment] });
+            }
         } catch (err) {
             console.error('Błąd podczas automatycznego wysyłania sklepu Fortnite:', err);
         }
@@ -1666,21 +1676,33 @@ client.on('interactionCreate', async interaction => {
             if (commandName === 'fn-sklep') {
                 await interaction.deferReply();
                 try {
-                    const now = new Date();
-                    const year = now.getUTCFullYear();
-                    const month = String(now.getUTCMonth() + 1).padStart(2, '0');
-                    const day = String(now.getUTCDate()).padStart(2, '0');
-                    const shopImageUrl = `https://bot.fnbr.co/shop/render/fnbr-shop-${day}-${month}-${year}.png`;
+                    const res = await fetch('https://fortnite-api.com/v2/shop/br');
+                    const data = await res.json() as any;
 
-                    const embed = new EmbedBuilder()
-                        .setColor(0x00D9FF)
-                        .setTitle('🛒 Codzienny Sklep Fortnite')
-                        .setDescription('Oto podgląd aktualnego zestawu przedmiotów w grze:')
-                        .setImage(shopImageUrl)
-                        .setTimestamp()
-                        .setFooter({ text: 'PJN Fortnite Shop • fnbr.co' });
+                    if (data && data.status === 200 && data.data && data.data.daily) {
+                        const shopImageUrl = data.data.daily.shoppings?.background || data.data.meta?.banner?.image || 'https://fortnite-api.com/images/shop/banner.png';
+                        
+                        const imageRes = await fetch(shopImageUrl);
+                        if (!imageRes.ok) throw new Error('Nie udało się pobrać grafiki sklepu.');
+                        const buffer = Buffer.from(await imageRes.arrayBuffer());
 
-                    await interaction.editReply({ embeds: [embed] });
+                        const attachment = {
+                            attachment: buffer,
+                            name: 'sklep-fortnite.png'
+                        };
+
+                        const embed = new EmbedBuilder()
+                            .setColor(0x00D9FF)
+                            .setTitle('🛒 Codzienny Sklep Fortnite')
+                            .setDescription('Oto podgląd aktualnego zestawu przedmiotów w grze:')
+                            .setImage('attachment://sklep-fortnite.png')
+                            .setTimestamp()
+                            .setFooter({ text: 'PJN Fortnite Shop • Fortnite-API.com' });
+
+                        await interaction.editReply({ embeds: [embed], files: [attachment] });
+                    } else {
+                        await interaction.editReply({ content: '❌ Nie udało się pobrać dzisiejszego sklepu Fortnite.' });
+                    }
                 } catch (e) {
                     await interaction.editReply({ content: '❌ Wystąpił błąd podczas pobierania grafiki sklepu Fortnite.' });
                 }
