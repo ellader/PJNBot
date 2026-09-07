@@ -158,7 +158,7 @@ const ID_ROLI_VIP = "1545691786289221632";
 const ADMIN_LOG_CHANNEL_ID = "1532399010785263799"; 
 
 const ID_KANAL_FORTNITE = '1546405381717233704';
-const ID_KANAL_AWANSOW = '1546407009262370866';
+const ID_KANAL_AWANSOW = '1546407009262370866'; // Exp - PJN
 
 const ID_KANAL_RANG = "1532397673842217010";
 const ROLE_BUTTONS_MAP: { [key: string]: { roleId: string, label: string, emoji: string } } = {
@@ -249,7 +249,6 @@ function startDailyQuotes() {
     });
 }
 
-// === AUTOMATYCZNE WYSYŁANIE SKLEPU FORTNITE O 02:05 (Z CZYSTYMI NAZWAMI) ===
 function startDailyShopAutoPoster() {
     cron.schedule('5 2 * * *', async () => {
         try {
@@ -796,7 +795,8 @@ async function checkAndAwardBadges(user: any, memberOrUser: any) {
     }
 }
 
-async function addExp(userId: string, amount: number, guild: any, channelToSend: any) {
+// === NAPRAWIONA FUNKCJA DOŚWIADCZENIA (EXP) ===
+async function addExp(userId: string, amount: number, guild: any) {
     let user = await UserModel.findOne({ userId });
     if (!user) user = await UserModel.create({ userId });
 
@@ -814,8 +814,11 @@ async function addExp(userId: string, amount: number, guild: any, channelToSend:
 
     await user.save();
 
-    if (leveledUp && channelToSend) {
+    if (leveledUp) {
         try {
+            const channelToSend = await guild.channels.fetch(ID_KANAL_AWANSOW).catch(() => null) as TextChannel;
+            if (!channelToSend) return;
+
             const member = await guild.members.fetch(userId).catch(() => null);
             const avatarUrl = member ? member.user.displayAvatarURL() : client.user?.displayAvatarURL();
 
@@ -2545,8 +2548,8 @@ client.on('messageCreate', async message => {
             receiverUser.reputation = (receiverUser.reputation || 0) + pointsChange;
             await receiverUser.save();
 
-            const targetAwansChannel = message.guild.channels.cache.get(ID_KANAL_AWANSOW);
-            await addExp(receiverId, expChange, message.guild, targetAwansChannel);
+            // Przydzielenie expa z użyciem ID_KANAL_AWANSOW
+            await addExp(receiverId, expChange, message.guild);
 
             const receiverMember = await message.guild.members.fetch(receiverId).catch(() => null);
             if (receiverMember) await updateTraderRoles(receiverMember, receiverUser.reputation);
@@ -2581,8 +2584,8 @@ client.on('messageCreate', async message => {
         await user.save();
         await checkAndAwardBadges(user, message.member);
 
-        const targetAwansChannel = message.guild.channels.cache.get(ID_KANAL_AWANSOW);
-        await addExp(message.author.id, 10, message.guild, targetAwansChannel);
+        // Dodawanie exp za wiadomość na chacie
+        await addExp(message.author.id, 10, message.guild);
 
     } catch (error) {}
 });
@@ -2614,8 +2617,8 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
                     await user.save();
                     if (newState.member) await checkAndAwardBadges(user, newState.member);
 
-                    const targetAwansChannel = newState.guild.channels.cache.get(ID_KANAL_AWANSOW);
-                    await addExp(userId, minutesSpent * 5, newState.guild, targetAwansChannel);
+                    // Dodawanie exp za aktywność głosową
+                    await addExp(userId, minutesSpent * 5, newState.guild);
 
                 } catch (e) {}
             }
