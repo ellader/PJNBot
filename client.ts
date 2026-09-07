@@ -249,7 +249,7 @@ function startDailyQuotes() {
     });
 }
 
-// === AUTOMATYCZNE WYSYŁANIE SKLEPU FORTNITE O 02:05 (Z POPRAWIONYM WYCIĄGANIEM NAZW) ===
+// === AUTOMATYCZNE WYSYŁANIE SKLEPU FORTNITE O 02:05 (Z CZYSTYMI NAZWAMI) ===
 function startDailyShopAutoPoster() {
     cron.schedule('5 2 * * *', async () => {
         try {
@@ -271,11 +271,17 @@ function startDailyShopAutoPoster() {
                 const entries = data.data.entries.slice(0, 10);
                 let desc = 'Najciekawsze pozycje z nowego resetu:\n\n';
                 for (const entry of entries) {
-                    const itemName = entry.items?.[0]?.name 
+                    const rawName = entry.items?.[0]?.name 
                         || entry.bundle?.name 
                         || entry.devName 
                         || entry.track?.title 
                         || 'Oferta Specjalna Fortnite';
+
+                    const itemName = rawName
+                        .replace(/^\[VIRTUAL\]\d+\s*x\s*/i, '')
+                        .replace(/\s*for\s*-?\d+\s*MtxCurrency/i, '')
+                        .trim();
+
                     const price = entry.finalPrice || entry.regularPrice || 'N/D';
                     desc += `• **${itemName}** — 🪙 \`${price} V-Bucks\`\n`;
                 }
@@ -1694,11 +1700,17 @@ client.on('interactionCreate', async interaction => {
                         let descriptionText = 'Oto wybrane wyróżnione przedmioty z dzisiejszej oferty:\n\n';
                         
                         for (const entry of entries) {
-                            const itemName = entry.items?.[0]?.name 
+                            const rawName = entry.items?.[0]?.name 
                                 || entry.bundle?.name 
                                 || entry.devName 
                                 || entry.track?.title 
                                 || 'Oferta Specjalna Fortnite';
+
+                            const itemName = rawName
+                                .replace(/^\[VIRTUAL\]\d+\s*x\s*/i, '')
+                                .replace(/\s*for\s*-?\d+\s*MtxCurrency/i, '')
+                                .trim();
+
                             const price = entry.finalPrice || entry.regularPrice || 'N/D';
                             descriptionText += `• **${itemName}** — 🪙 \`${price} V-Bucks\`\n`;
                         }
@@ -1738,10 +1750,13 @@ client.on('interactionCreate', async interaction => {
                             .setFooter({ text: 'PJN Fortnite API' });
                         await interaction.editReply({ embeds: [embed] });
                     } else {
-                        await interaction.editReply({ content: `❌ Nie znaleziono gracza o nicku **${nick}** lub profil jest prywatny.` });
+                        await interaction.editReply({ 
+                            content: `❌ Nie znaleziono gracza o nicku **${nick}**.\n\n` +
+                                     `💡 **Wskazówka:** Epic Games domyślnie ukrywa statystyki. Upewnij się, że w ustawieniach prywatności w grze masz włączoną opcję **„Wyświetlaj statystyki w rankingach”** lub profil gracza jest publiczny.` 
+                        });
                     }
                 } catch (e) {
-                    await interaction.editReply({ content: '❌ Wystąpił błąd podczas pobierania statystyk.' });
+                    await interaction.editReply({ content: '❌ Wystąpił błąd podczas pobierania statystyk z API.' });
                 }
                 return;
             }
