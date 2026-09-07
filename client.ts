@@ -44,7 +44,8 @@ const userSchema = new mongoose.Schema({
     badges: { type: [String], default: [] },
     reputation: { type: Number, default: 0 },
     exp: { type: Number, default: 0 },
-    vipExpiresAt: { type: Date, default: null },        // <-- Nowe pole dla wygasania VIP
+    level: { type: Number, default: 1 },                  // <-- Nowe pole poziomu
+    vipExpiresAt: { type: Date, default: null },        
     doubleChanceUntil: { type: Date, default: null }, 
     dailyBoostUntil: { type: Date, default: null },     
     customRoleExpiresAt: { type: Date, default: null }, 
@@ -156,6 +157,10 @@ const ID_KANAL_SKLEPU = "1545690716309553212";
 const ID_ROLI_VIP = "1545691786289221632";
 const ADMIN_LOG_CHANNEL_ID = "1532399010785263799"; 
 
+// === NOWE ID KANAŁÓW DLA FORTNITE I EXP ===
+const ID_KANAL_FORTNITE = '1546405381717233704';
+const ID_KANAL_AWANSOW = '1546407009262370866';
+
 // === MAPOWANIE RÓL DO PANELU DOSTOSUJ RANGĘ ===
 const ID_KANAL_RANG = "1532397673842217010";
 const ROLE_BUTTONS_MAP: { [key: string]: { roleId: string, label: string, emoji: string } } = {
@@ -246,7 +251,6 @@ function startDailyQuotes() {
     });
 }
 
-// === AUTOMATYCZNE SPRAWDZANIE WYGAŚNIĘCIA RÓL VIP I USŁUG CO GODZINĘ ===
 function startExpirationChecker() {
     cron.schedule('0 * * * *', async () => {
         try {
@@ -266,7 +270,6 @@ function startExpirationChecker() {
                     const member = await guild.members.fetch(userDoc.userId).catch(() => null);
                     if (!member) continue;
 
-                    // Wygaśnięcie VIP
                     if (userDoc.vipExpiresAt && new Date(userDoc.vipExpiresAt) <= now) {
                         if (member.roles.cache.has(ID_ROLI_VIP)) {
                             await member.roles.remove(ID_ROLI_VIP).catch(() => {});
@@ -285,13 +288,11 @@ function startExpirationChecker() {
                         }).catch(() => {});
                     }
 
-                    // Wygaśnięcie podwójnej szansy
                     if (userDoc.doubleChanceUntil && new Date(userDoc.doubleChanceUntil) <= now) {
                         userDoc.doubleChanceUntil = null;
                         await userDoc.save();
                     }
 
-                    // Wygaśnięcie daily boost
                     if (userDoc.dailyBoostUntil && new Date(userDoc.dailyBoostUntil) <= now) {
                         userDoc.dailyBoostUntil = null;
                         await userDoc.save();
@@ -413,10 +414,7 @@ async function setupTicketChannel() {
 async function setupRolesChannel() {
     try {
         const channel = await client.channels.fetch(ID_KANAL_RANG).catch(() => null) as TextChannel;
-        if (!channel) {
-            console.error(`[ROLE] Nie znaleziono kanału o ID: ${ID_KANAL_RANG}`);
-            return;
-        }
+        if (!channel) return;
 
         const messages = await channel.messages.fetch({ limit: 100 }).catch(() => null);
         if (messages) {
@@ -462,7 +460,6 @@ async function setupRolesChannel() {
         );
 
         await channel.send({ embeds: [embed], components: [row1, row2, row3, row4, row5] });
-        console.log('[ROLE] Pomyślnie wysłano panel ról na kanał!');
     } catch (e) {
         console.error('Błąd podczas ustawiania kanału ról:', e);
     }
@@ -752,6 +749,56 @@ async function checkAndAwardBadges(user: any, memberOrUser: any) {
                 }]
             }).catch(() => {});
         } catch (e) {}
+    }
+}
+
+// === FUNKCJA OBSŁUGI EXP I AWANSÓW ===
+async function addExp(userId: string, amount: number, guild: any, channelToSend: any) {
+    let user = await UserModel.findOne({ userId });
+    if (!user) user = await UserModel.create({ userId });
+
+    user.exp = (user.exp || 0) + amount;
+    
+    // Wzór na poziom: Wymagany exp = poziom * 150
+    let requiredExpForNextLevel = user.level * 150;
+    let leveledUp = false;
+
+    while (user.exp >= requiredExpForNextLevel) {
+        user.exp -= requiredExpForNextLevel;
+        user.level = (user.level || 1) + 1;
+        leveledUp = true;
+        requiredExpForNextLevel = user.level * 150;
+    }
+
+    await user.save();
+
+    if (leveledUp && channelToSend) {
+        try {
+            const member = await guild.members.fetch(userId).catch(() => null);
+            const userTag = member ? member.user.tag : `Użytkownik (${userId})`;
+            const avatarUrl = member ? member.user.displayAvatarURL() : client.user?.displayAvatarURL();
+
+            const embed = new EmbedBuilder()
+                .setColor(0x9B59B6)
+                .setTitle('🚀 AWANS NA WYŻSZY POZIOM!')
+                .setThumbnail(avatarUrl)
+                .setDescription(
+                    `Gratulacje <@${userId}>! Właśnie wskoczyłeś na wyższy poziom na serwerze! 🌟\n\n` +
+                    `⭐ **Nowy Poziom:** \`${user.level}\`\n` +
+                    `🎯 **Twój Postęp:** \`${user.exp} / ${user.level * 150} XP\`\n\n` +
+                    `*Tak trzymaj! Bądź aktywny na czacie oraz kanałach głosowych, aby pobić kolejny rekord!*`
+                )
+                .setTimestamp()
+                .setFooter({ text: 'PJN System Doświadczenia • Awans' });
+
+            await channelToSend.send({ 
+                content: `<@${userId}>`, 
+                embeds: [embed],
+                allowedMentions: { users: [userId] }
+            });
+        } catch (e) {
+            console.error('Błąd wysyłania powiadomienia o awansie:', e);
+        }
     }
 }
 
@@ -1062,6 +1109,18 @@ const commands = [
         .setName('reputacja')
         .setDescription('Wyświetla profil handlowy, punkty reputacji i exp tradera')
         .addUserOption(o => o.setName('uzytkownik').setDescription('Sprawdź profil innego użytkownika').setRequired(false)),
+    // === NOWE KOMENDY FORTNITE ===
+    new SlashCommandBuilder()
+        .setName('fn-sklep')
+        .setDescription('Wyświetla dzisiejszy sklep w grze Fortnite'),
+    new SlashCommandBuilder()
+        .setName('fn-stats')
+        .setDescription('Sprawdza statystyki gracza w Fortnite')
+        .addStringOption(o => o.setName('nick').setDescription('Nazwa użytkownika Epic Games').setRequired(true)),
+    new SlashCommandBuilder()
+        .setName('fn-mapa')
+        .setDescription('Wyświetla aktualną mapę Fortnite'),
+    // =============================
     new SlashCommandBuilder()
         .setName('daj-wszystkim')
         .setDescription('Rozdaje PJN-Coins absolutnie każdemu użytkownikowi w bazie (Admin)')
@@ -1159,7 +1218,7 @@ client.once('ready', async () => {
     await setupMemeChannelInstruction();
     await setupLfgChannelInstruction(); 
     await setupTicketChannel(); 
-    await setupRolesChannel(); // <-- Inicjalizacja ładnego panelu ról
+    await setupRolesChannel(); 
     await setupShowcaseChannelInstruction();
     await setupReputationChannelInstruction();
     await setupShopChannel();
@@ -1229,7 +1288,6 @@ client.on('interactionCreate', async interaction => {
     }
 
     if (interaction.isButton()) {
-        // Obsługa przycisków wyboru ról
         if (interaction.customId.startsWith('role_')) {
             await interaction.deferReply({ ephemeral: true });
             const roleConfig = ROLE_BUTTONS_MAP[interaction.customId];
@@ -1247,7 +1305,7 @@ client.on('interactionCreate', async interaction => {
 
             const role = guild.roles.cache.get(roleConfig.roleId);
             if (!role) {
-                return interaction.editReply({ content: '❌ Ta rola nie istnieje już na serwerze (skontaktuj się z administratorem).' });
+                return interaction.editReply({ content: '❌ Ta rola nie istnieje już na serwerze.' });
             }
 
             try {
@@ -1259,7 +1317,7 @@ client.on('interactionCreate', async interaction => {
                     await interaction.editReply({ content: `✅ Pomyślnie **przyznano** rangę **${role.name}**!` });
                 }
             } catch (err) {
-                await interaction.editReply({ content: '❌ Wystąpił błąd podczas zmiany rangi. Upewnij się, że bot ma odpowiednie uprawnienia.' });
+                await interaction.editReply({ content: '❌ Wystąpił błąd podczas zmiany rangi.' });
             }
             return;
         }
@@ -1322,8 +1380,6 @@ client.on('interactionCreate', async interaction => {
             } else if (item.type === 'custom_role') {
                 user.customRoleExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
                 await user.save();
-            } else if (item.type === 'priority_ghost') {
-                // Obsługa biletu
             } else if (item.type === 'badge') {
                 if (!user.badges.includes(item.badgeName)) {
                     user.badges.push(item.badgeName);
@@ -1423,7 +1479,7 @@ client.on('interactionCreate', async interaction => {
                 const closedEmbed = new EmbedBuilder()
                     .setColor(0xE74C3C)
                     .setTitle('🔒 Ticket Został Zamknięty')
-                    .setDescription(`Ten ticket został zamknięty przez <@${interaction.user.id}>.\nKanał został zarchiwizowany – użytkownik nie może już tutaj pisać.`)
+                    .setDescription(`Ten ticket został zamknięty przez <@${interaction.user.id}>.\nKanał został zarchiwizowany.`)
                     .setTimestamp();
 
                 await channel.send({ embeds: [closedEmbed] });
@@ -1439,7 +1495,7 @@ client.on('interactionCreate', async interaction => {
             const lfgDoc = await LFGModel.findOne({ messageId: interaction.message.id });
 
             if (!lfgDoc) {
-                return interaction.editReply({ content: '❌ To ogłoszenie LFG jest już nieaktualne lub zostało usunięte z bazy.' });
+                return interaction.editReply({ content: '❌ To ogłoszenie LFG jest już nieaktualne.' });
             }
 
             if (lfgDoc.status === 'closed') {
@@ -1468,7 +1524,7 @@ client.on('interactionCreate', async interaction => {
                 }
 
                 await updateLFGMessage(interaction.message, lfgDoc);
-                return interaction.editReply({ content: '✅ Pomyślnie zamknięto ogłoszenie LFG i usunięto przypisany kanał głosowy.' });
+                return interaction.editReply({ content: '✅ Pomyślnie zamknięto ogłoszenie LFG.' });
             }
 
             if (interaction.customId === 'lfg_join') {
@@ -1512,7 +1568,7 @@ client.on('interactionCreate', async interaction => {
                     return interaction.editReply({ content: '⚠️ Nie jesteś na liście tej ekipy.' });
                 }
                 if (lfgDoc.authorId === userId) {
-                    return interaction.editReply({ content: '❌ Autor ogłoszenia nie może opuścić własnej ekipy. Użyj przycisku "Zamknij ogłoszenie".' });
+                    return interaction.editReply({ content: '❌ Autor ogłoszenia nie może opuścić własnej ekipy.' });
                 }
 
                 lfgDoc.currentPlayers = lfgDoc.currentPlayers.filter(id => id !== userId);
@@ -1578,6 +1634,95 @@ client.on('interactionCreate', async interaction => {
     const { commandName } = interaction;
 
     try {
+        // === OBSŁUGA KOMEND FORTNITE Z BLOKADĄ KANAŁU ===
+        if (commandName === 'fn-sklep' || commandName === 'fn-stats' || commandName === 'fn-mapa') {
+            if (interaction.channelId !== ID_KANAL_FORTNITE) {
+                return interaction.reply({
+                    content: `❌ Tę komendę możesz wykonać wyłącznie na dedykowanym kanale Fortnite: <#${ID_KANAL_FORTNITE}>!`,
+                    ephemeral: true
+                });
+            }
+
+            if (commandName === 'fn-sklep') {
+                await interaction.deferReply();
+                try {
+                    const res = await fetch('https://fortnite-api.com/v2/shop');
+                    const data = await res.json() as any;
+                    if (data && data.status === 200 && data.data && data.data.daily) {
+                        const shopImage = data.data.daily.banner?.image || LIVE_IMAGE_URL;
+                        const embed = new EmbedBuilder()
+                            .setColor(0x00D9FF)
+                            .setTitle('🛒 Codzienny Sklep Fortnite')
+                            .setDescription('Oto podgląd aktualnego sklepu w grze Fortnite!')
+                            .setImage(shopImage)
+                            .setTimestamp()
+                            .setFooter({ text: 'PJN Fortnite API • fortnite-api.com' });
+                        await interaction.editReply({ embeds: [embed] });
+                    } else {
+                        await interaction.editReply({ content: '❌ Nie udało się pobrać dzisiejszego sklepu Fortnite.' });
+                    }
+                } catch (e) {
+                    await interaction.editReply({ content: '❌ Wystąpił błąd komunikacji z API Fortnite.' });
+                }
+                return;
+            }
+
+            if (commandName === 'fn-stats') {
+                await interaction.deferReply();
+                const nick = interaction.options.getString('nick', true);
+                try {
+                    const res = await fetch(`https://fortnite-api.com/v2/stats/br/v2?name=${encodeURIComponent(nick)}`);
+                    const data = await res.json() as any;
+                    if (data && data.status === 200 && data.data && data.data.stats) {
+                        const overall = data.data.stats.all?.overall || {};
+                        const embed = new EmbedBuilder()
+                            .setColor(0x9B59B6)
+                            .setTitle(`📊 Statystyki Fortnite: ${data.data.account.name}`)
+                            .addFields(
+                                { name: '🏆 Wygrane (Wins)', value: `${overall.wins || 0}`, inline: true },
+                                { name: '🎯 Zabójstwa (Kills)', value: `${overall.kills || 0}`, inline: true },
+                                { name: '💀 Śmierci (Deaths)', value: `${overall.deaths || 0}`, inline: true },
+                                { name: '📈 K/D Ratio', value: `${overall.kd || 0}`, inline: true },
+                                { name: '🎮 Rozegrane mecze', value: `${overall.matches || 0}`, inline: true },
+                                { name: '⭐ Poziom', value: `${data.data.battlePass?.level || 'Brak'}`, inline: true }
+                            )
+                            .setTimestamp()
+                            .setFooter({ text: 'PJN Fortnite API' });
+                        await interaction.editReply({ embeds: [embed] });
+                    } else {
+                        await interaction.editReply({ content: `❌ Nie znaleziono gracza o nicku **${nick}** lub profil jest prywatny.` });
+                    }
+                } catch (e) {
+                    await interaction.editReply({ content: '❌ Wystąpił błąd podczas pobierania statystyk.' });
+                }
+                return;
+            }
+
+            if (commandName === 'fn-mapa') {
+                await interaction.deferReply();
+                try {
+                    const res = await fetch('https://fortnite-api.com/v1/map');
+                    const data = await res.json() as any;
+                    if (data && data.status === 200 && data.data && data.data.images) {
+                        const mapImg = data.data.images.pois || data.data.images.image;
+                        const embed = new EmbedBuilder()
+                            .setColor(0x2ECC71)
+                            .setTitle('🗺️ Aktualna Mapa Fortnite')
+                            .setImage(mapImg)
+                            .setTimestamp()
+                            .setFooter({ text: 'PJN Fortnite API' });
+                        await interaction.editReply({ embeds: [embed] });
+                    } else {
+                        await interaction.editReply({ content: '❌ Nie udało się pobrać aktualnej mapy.' });
+                    }
+                } catch (e) {
+                    await interaction.editReply({ content: '❌ Błąd komunikacji z API mapy.' });
+                }
+                return;
+            }
+        }
+        // ===========================================
+
         if (commandName === 'sklep') {
             await interaction.deferReply({ ephemeral: true });
             let user = await UserModel.findOne({ userId: interaction.user.id });
@@ -1786,10 +1931,10 @@ client.on('interactionCreate', async interaction => {
 
             const rep = user.reputation || 0;
             const exp = user.exp || 0;
+            const lvl = user.level || 1;
             const sign = rep > 0 ? '+' : '';
-            const currentLevel = Math.floor(exp / 100) + 1;
-            const progressInLevel = exp % 100;
-            const progressBar = '█'.repeat(Math.floor(progressInLevel / 10)) + '░'.repeat(10 - Math.floor(progressInLevel / 10));
+            const progressInLevel = exp % 150;
+            const progressBar = '█'.repeat(Math.floor(progressInLevel / 15)) + '░'.repeat(10 - Math.floor(progressInLevel / 15));
 
             let traderRankName = 'Brak rangi tradera';
             let rankColor = 0x3498DB;
@@ -1810,12 +1955,12 @@ client.on('interactionCreate', async interaction => {
 
             const embed = new EmbedBuilder()
                 .setColor(rankColor)
-                .setTitle(`⭐ Profil Handlowy • ${targetUser.tag}`)
+                .setTitle(`⭐ Profil i Poziom • ${targetUser.tag}`)
                 .setThumbnail(targetUser.displayAvatarURL())
                 .addFields(
-                    { name: '📊 Punkty Reputacji', value: `**${sign}${rep} pkt**`, inline: true },
+                    { name: '📊 Reputacja Handlowa', value: `**${sign}${rep} pkt**`, inline: true },
                     { name: '🎖️ Ranga Tradera', value: `**${traderRankName}**`, inline: true },
-                    { name: '⭐ Poziom Doświadczenia (Exp)', value: `Poziom **${currentLevel}** (${exp} XP)\n\`[${progressBar}]\` ${progressInLevel}/100 XP`, inline: false }
+                    { name: '⭐ Poziom Serwerowy (Exp)', value: `Poziom **${lvl}** (${exp} XP)\n\`[${progressBar}]\` ${progressInLevel}/150 XP`, inline: false }
                 )
                 .setTimestamp();
             await interaction.editReply({ embeds: [embed] });
@@ -1825,7 +1970,6 @@ client.on('interactionCreate', async interaction => {
         if (commandName === 'daj-wszystkim') {
             if (!isAuthorized(interaction.user.id)) return interaction.reply({ content: '❌ Brak uprawnień!', ephemeral: true });
             const ilosc = interaction.options.getInteger('ilosc', true);
-            const powod = interaction.options.getString('powod') || 'Brak';
             if (ilosc <= 0) return interaction.reply({ content: '❌ Ilość musi być większa od zera!', ephemeral: true });
 
             await interaction.deferReply({ ephemeral: true });
@@ -2083,6 +2227,9 @@ client.on('interactionCreate', async interaction => {
             let user = await UserModel.findOne({ userId: targetUser.id });
             if (!user) user = await UserModel.create({ userId: targetUser.id });
 
+            let userLvl = user.level || 1;
+            let userExp = user.exp || 0;
+
             const badgeText = user.badges && user.badges.length > 0 ? user.badges.join('\n') : 'Brak odznak.';
             await interaction.editReply({
                 embeds: [{
@@ -2092,7 +2239,7 @@ client.on('interactionCreate', async interaction => {
                     thumbnail: { url: targetUser.displayAvatarURL() },
                     fields: [
                         { name: '🏅 Zdobyte Odznaki', value: badgeText, inline: false },
-                        { name: '📊 Statystyki', value: `💬 Wiadomości: **${user.messageCount || 0}**\n🎙️ Głos: **${user.voiceMinutes || 0} min**\n💰 Portfel: **${user.balance || 0}**`, inline: false }
+                        { name: '📊 Statystyki', value: `💬 Wiadomości: **${user.messageCount || 0}**\n🎙️ Głos: **${user.voiceMinutes || 0} min**\n⭐ Poziom: **${userLvl}** (${userExp} XP)\n💰 Portfel: **${user.balance || 0}**`, inline: false }
                     ]
                 }]
             });
@@ -2291,6 +2438,7 @@ async function updateLFGMessage(message: any, lfgDoc: any) {
     } catch (e) {}
 }
 
+// === OBSŁUGA WIADOMOŚCI I EXP + REPUTACJA ===
 client.on('messageCreate', async message => {
     if (message.author.bot || !message.guild) return;
 
@@ -2334,8 +2482,10 @@ client.on('messageCreate', async message => {
             const pointsChange = isPlus ? 1 : -1;
             const expChange = isPlus ? 15 : 5;
             receiverUser.reputation = (receiverUser.reputation || 0) + pointsChange;
-            receiverUser.exp = (receiverUser.exp || 0) + expChange;
             await receiverUser.save();
+
+            const targetAwansChannel = message.guild.channels.cache.get(ID_KANAL_AWANSOW);
+            await addExp(receiverId, expChange, message.guild, targetAwansChannel);
 
             const receiverMember = await message.guild.members.fetch(receiverId).catch(() => null);
             if (receiverMember) await updateTraderRoles(receiverMember, receiverUser.reputation);
@@ -2369,6 +2519,11 @@ client.on('messageCreate', async message => {
 
         await user.save();
         await checkAndAwardBadges(user, message.member);
+
+        // Dodawanie Exp za wiadomość (np. 10 exp za wiadomość)
+        const targetAwansChannel = message.guild.channels.cache.get(ID_KANAL_AWANSOW);
+        await addExp(message.author.id, 10, message.guild, targetAwansChannel);
+
     } catch (error) {}
 });
 
@@ -2398,6 +2553,11 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
                     user.balance += earnedCoins;
                     await user.save();
                     if (newState.member) await checkAndAwardBadges(user, newState.member);
+
+                    // Dodawanie Exp za czas spędzony na głosie (np. 5 exp za każdą minutę)
+                    const targetAwansChannel = newState.guild.channels.cache.get(ID_KANAL_AWANSOW);
+                    await addExp(userId, minutesSpent * 5, newState.guild, targetAwansChannel);
+
                 } catch (e) {}
             }
             voiceTimestamps.delete(userId);
