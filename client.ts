@@ -741,10 +741,13 @@ async function setupLfgChannelInstruction() {
         const channel = await client.channels.fetch(ID_KANALU_SZUKAM_DO_GRY).catch(() => null) as TextChannel;
         if (!channel) return;
 
-        const messages = await channel.messages.fetch({ limit: 100 }).catch(() => null);
+        // POPRAWKA: Pobieramy tylko przypięte wiadomości lub szukamy głównej instrukcji LFG, 
+        // aby NIE kasować aktywnych ogłoszeń LFG stworzonych przez użytkowników!
+        const messages = await channel.messages.fetch({ limit: 50 }).catch(() => null);
         if (messages) {
             for (const [_, msg] of messages) {
-                if (msg.author.id === client.user?.id) {
+                // Usuwamy tylko starą instrukcję bota (tą z nagłówkiem "Centrum LFG (Looking For Group)")
+                if (msg.author.id === client.user?.id && msg.embeds.length > 0 && msg.embeds[0].title?.includes('Centrum LFG')) {
                     await msg.delete().catch(() => {});
                 }
             }
@@ -1332,7 +1335,7 @@ const commands = [
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
     new SlashCommandBuilder()
         .setName('nowości')
-        .setDescription('Wysyła ogłoszenie o nowościach na serwerze (Admin)')
+        .setDescription('Wyślij ogłoszenie o nowościach na serwerze (Admin)')
         .addStringOption(o => o.setName('tytul').setDescription('Tytuł ogłoszenia (np. System Odznak)').setRequired(true))
         .addStringOption(o => o.setName('co_nowego').setDescription('Krótko opisz co faktycznie dodano').setRequired(true))
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
