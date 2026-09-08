@@ -65,11 +65,10 @@ const shopHistorySchema = new mongoose.Schema({
 });
 const ShopHistoryModel = mongoose.model('ShopHistory', shopHistorySchema);
 
-// === NOWY SCHEMAT: HISTORIA TRANSAKCJI I KASYNA ===
 const transactionHistorySchema = new mongoose.Schema({
     userId: { type: String, required: true },
     targetUserId: { type: String, default: null },
-    type: { type: String, required: true }, // 'przelej', 'admin_add', 'admin_remove', 'admin_mass', 'casino_kostka', 'casino_moneta', 'casino_slot', 'casino_poker'
+    type: { type: String, required: true },
     amount: { type: Number, required: true },
     details: { type: String, default: '' },
     timestamp: { type: Date, default: Date.now }
@@ -1300,8 +1299,12 @@ const commands = [
     new SlashCommandBuilder().setName('quiz').setDescription('Odpowiedz na pytanie quizowe'),
     new SlashCommandBuilder().setName('odznaki').setDescription('Wyświetla profil z odznakami').addUserOption(o => o.setName('uzytkownik').setDescription('Użytkownik').setRequired(false)),
     new SlashCommandBuilder()
+        .setName('exp')
+        .setDescription('Sprawdź swój aktualny poziom, exp oraz brakujące punkty do awansu')
+        .addUserOption(o => o.setName('uzytkownik').setDescription('Sprawdź profil innego użytkownika').setRequired(false)),
+    new SlashCommandBuilder()
         .setName('reputacja')
-        .setDescription('Wyświetla profil handlowy, punkty reputacji i exp tradera')
+        .setDescription('Wyświetla profil handlowy i punkty reputacji tradera')
         .addUserOption(o => o.setName('uzytkownik').setDescription('Sprawdź profil innego użytkownika').setRequired(false)),
     new SlashCommandBuilder()
         .setName('fn-sklep')
@@ -2134,7 +2137,6 @@ client.on('interactionCreate', async interaction => {
             return;
         }
 
-        // === NOWA KOMENDA: HISTORIA TRANSAKCJI ===
         if (commandName === 'historia-transakcji') {
             if (!isAuthorized(interaction.user.id)) return interaction.reply({ content: '❌ Brak uprawnień!', ephemeral: true });
             await interaction.deferReply({ ephemeral: true });
@@ -2280,6 +2282,40 @@ client.on('interactionCreate', async interaction => {
             return;
         }
 
+        // === KOMENDA: /exp ===
+        if (commandName === 'exp') {
+            await interaction.deferReply();
+            const targetUser = interaction.options.getUser('uzytkownik') || interaction.user;
+            let user = await UserModel.findOne({ userId: targetUser.id });
+            if (!user) user = await UserModel.create({ userId: targetUser.id });
+
+            const currentLevel = user.level || 1;
+            const currentExp = user.exp || 0;
+            const requiredExp = currentLevel * 150;
+            const missingExp = Math.max(0, requiredExp - currentExp);
+            
+            const progressPercent = Math.min(100, Math.floor((currentExp / requiredExp) * 100));
+            const filledBlocks = Math.floor(progressPercent / 10);
+            const progressBar = '█'.repeat(filledBlocks) + '░'.repeat(10 - filledBlocks);
+
+            const embed = new EmbedBuilder()
+                .setColor(0x3498DB)
+                .setTitle(`⭐ Poziom i Doświadczenie • ${targetUser.tag}`)
+                .setThumbnail(targetUser.displayAvatarURL())
+                .addFields(
+                    { name: '📊 Aktualny Poziom', value: `**Poziom ${currentLevel}**`, inline: true },
+                    { name: '✨ Zebrane XP', value: `**${currentExp} / ${requiredExp} XP**`, inline: true },
+                    { name: '🎯 Brakuje do awansu', value: `**${missingExp} XP**`, inline: true },
+                    { name: '📈 Postęp', value: `\`[${progressBar}]\` **${progressPercent}%**`, inline: false }
+                )
+                .setTimestamp()
+                .setFooter({ text: 'PJN System Doświadczenia' });
+
+            await interaction.editReply({ embeds: [embed] });
+            return;
+        }
+
+        // === KOMENDA: /reputacja (bez zmian) ===
         if (commandName === 'reputacja') {
             await interaction.deferReply();
             const targetUser = interaction.options.getUser('uzytkownik') || interaction.user;
@@ -2287,11 +2323,7 @@ client.on('interactionCreate', async interaction => {
             if (!user) user = await UserModel.create({ userId: targetUser.id });
 
             const rep = user.reputation || 0;
-            const exp = user.exp || 0;
-            const lvl = user.level || 1;
             const sign = rep > 0 ? '+' : '';
-            const progressInLevel = exp % 150;
-            const progressBar = '█'.repeat(Math.floor(progressInLevel / 15)) + '░'.repeat(10 - Math.floor(progressInLevel / 15));
 
             let traderRankName = 'Brak rangi tradera';
             let rankColor = 0x3498DB;
@@ -2312,12 +2344,11 @@ client.on('interactionCreate', async interaction => {
 
             const embed = new EmbedBuilder()
                 .setColor(rankColor)
-                .setTitle(`⭐ Profil i Poziom • ${targetUser.tag}`)
+                .setTitle(`⭐ Profil Handlowy • ${targetUser.tag}`)
                 .setThumbnail(targetUser.displayAvatarURL())
                 .addFields(
                     { name: '📊 Reputacja Handlowa', value: `**${sign}${rep} pkt**`, inline: true },
-                    { name: '🎖️ Ranga Tradera', value: `**${traderRankName}**`, inline: true },
-                    { name: '⭐ Poziom Serwerowy (Exp)', value: `Poziom **${lvl}** (${exp} XP)\n\`[${progressBar}]\` ${progressInLevel}/150 XP`, inline: false }
+                    { name: '🎖️ Ranga Tradera', value: `**${traderRankName}**`, inline: true }
                 )
                 .setTimestamp();
             await interaction.editReply({ embeds: [embed] });
@@ -2419,7 +2450,6 @@ client.on('interactionCreate', async interaction => {
             await sender.save();
             await receiver.save();
 
-            // Zapis historii przelewu
             await TransactionHistoryModel.create({
                 userId: interaction.user.id,
                 targetUserId: targetUser.id,
@@ -2911,11 +2941,8 @@ client.on('messageCreate', async message => {
             if (!receiverUser) receiverUser = await UserModel.create({ userId: receiverId });
 
             const pointsChange = isPlus ? 1 : -1;
-            const expChange = isPlus ? 15 : 5;
             receiverUser.reputation = (receiverUser.reputation || 0) + pointsChange;
             await receiverUser.save();
-
-            await addExp(receiverId, expChange, message.guild);
 
             const receiverMember = await message.guild.members.fetch(receiverId).catch(() => null);
             if (receiverMember) await updateTraderRoles(receiverMember, receiverUser.reputation);
@@ -2950,8 +2977,8 @@ client.on('messageCreate', async message => {
         await user.save();
         await checkAndAwardBadges(user, message.member);
 
-        // Zwiększono EXP z 10 na 30
-        await addExp(message.author.id, 30, message.guild);
+        // Zmieniono EXP za wiadomość na 75
+        await addExp(message.author.id, 75, message.guild);
 
     } catch (error) {}
 });
