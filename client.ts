@@ -741,12 +741,9 @@ async function setupLfgChannelInstruction() {
         const channel = await client.channels.fetch(ID_KANALU_SZUKAM_DO_GRY).catch(() => null) as TextChannel;
         if (!channel) return;
 
-        // POPRAWKA: Pobieramy tylko przypięte wiadomości lub szukamy głównej instrukcji LFG, 
-        // aby NIE kasować aktywnych ogłoszeń LFG stworzonych przez użytkowników!
         const messages = await channel.messages.fetch({ limit: 50 }).catch(() => null);
         if (messages) {
             for (const [_, msg] of messages) {
-                // Usuwamy tylko starą instrukcję bota (tą z nagłówkiem "Centrum LFG (Looking For Group)")
                 if (msg.author.id === client.user?.id && msg.embeds.length > 0 && msg.embeds[0].title?.includes('Centrum LFG')) {
                     await msg.delete().catch(() => {});
                 }
@@ -1376,7 +1373,12 @@ const commands = [
         .addUserOption(o => o.setName('uzytkownik').setDescription('Komu').setRequired(true))
         .addStringOption(o => o.setName('odznaka').setDescription('Wybierz lub wpisz nazwę odznaki').setRequired(true).setAutocomplete(true)),
     new SlashCommandBuilder().setName('zabierz-odznake').setDescription('Odbierz odznakę (Admin)').addUserOption(o => o.setName('uzytkownik').setDescription('Komu').setRequired(true)).addStringOption(o => o.setName('odznaka').setDescription('Nazwa').setRequired(true).setAutocomplete(true)),
-    new SlashCommandBuilder().setName('dajpunkty').setDescription('Daj punkty').addUserOption(o => o.setName('uzytkownik').setDescription('User').setRequired(true)).addIntegerOption(o => o.setName('ilosc').setDescription('Ilość').setRequired(true)),
+    new SlashCommandBuilder()
+        .setName('dajpunkty')
+        .setDescription('Daj punkty użytkownikowi')
+        .addUserOption(o => o.setName('uzytkownik').setDescription('User').setRequired(true))
+        .addIntegerOption(o => o.setName('ilosc').setDescription('Ilość').setRequired(true))
+        .addStringOption(o => o.setName('powod').setDescription('Powód przyznania punktów (opcjonalnie)').setRequired(false)),
     new SlashCommandBuilder().setName('zabierzpunkty').setDescription('Zabierz punkty').addUserOption(o => o.setName('uzytkownik').setDescription('User').setRequired(true)).addIntegerOption(o => o.setName('ilosc').setDescription('Ilość').setRequired(true)),
     new SlashCommandBuilder().setName('cytat').setDescription('Wyślij cytat'),
     new SlashCommandBuilder().setName('dodaj-cytat').setDescription('Dodaj cytat').addStringOption(o => o.setName('tekst').setDescription('Tekst').setRequired(true)).addStringOption(o => o.setName('autor').setDescription('Autor').setRequired(true)),
@@ -2318,7 +2320,7 @@ client.on('interactionCreate', async interaction => {
             return;
         }
 
-        // === KOMENDA: /reputacja (bez zmian) ===
+        // === KOMENDA: /reputacja ===
         if (commandName === 'reputacja') {
             await interaction.deferReply();
             const targetUser = interaction.options.getUser('uzytkownik') || interaction.user;
@@ -2462,6 +2464,19 @@ client.on('interactionCreate', async interaction => {
 
             const memberObj = await interaction.guild?.members.fetch(interaction.user.id).catch(() => null);
             await checkAndAwardBadges(sender, memberObj);
+
+            // Powiadomienie PW dla użytkownika, który otrzymał przelew
+            try {
+                await targetUser.send({
+                    embeds: [
+                        new EmbedBuilder()
+                            .setColor(0x2ECC71)
+                            .setTitle('💸 Otrzymałeś przelew!')
+                            .setDescription(`Użytkownik **${interaction.user.tag}** przelał Ci **${kwota} PJN-Coins**!\n\nTwój aktualny stan portfela: **${receiver.balance} PJN-Coins**`)
+                            .setTimestamp()
+                    ]
+                }).catch(() => {});
+            } catch (e) {}
 
             await interaction.editReply({ content: `✅ Przelano ${kwota} PJN-Coins dla <@${targetUser.id}>!` });
             return;
@@ -2778,6 +2793,7 @@ client.on('interactionCreate', async interaction => {
             await interaction.deferReply({ ephemeral: true });
             const targetUser = interaction.options.getUser('uzytkownik', true);
             const ilosc = interaction.options.getInteger('ilosc', true);
+            const powod = interaction.options.getString('powod') || 'Brak powódu';
             let user = await UserModel.findOne({ userId: targetUser.id });
             if (!user) user = await UserModel.create({ userId: targetUser.id });
 
@@ -2788,9 +2804,30 @@ client.on('interactionCreate', async interaction => {
                     userId: interaction.user.id,
                     targetUserId: targetUser.id,
                     type: 'admin_add',
-                    amount: ilosc
+                    amount: ilosc,
+                    details: powod
                 });
-                await interaction.editReply({ content: `✅ Dodano ${ilosc} punktów.` });
+
+                // Powiadomienie PW dla użytkownika, który dostał punkty od administracji
+                try {
+                    let desc = `Administracja przyznała Ci **${ilosc} PJN-Coins** na serwerze!\n\n`;
+                    if (powod && powod !== 'Brak powódu') {
+                        desc += `📌 **Powód:** ${powod}\n\n`;
+                    }
+                    desc += `Twój aktualny stan portfela: **${user.balance} PJN-Coins**`;
+
+                    await targetUser.send({
+                        embeds: [
+                            new EmbedBuilder()
+                                .setColor(0xF1C40F)
+                                .setTitle('🎁 Otrzymałeś punkty od administracji!')
+                                .setDescription(desc)
+                                .setTimestamp()
+                        ]
+                    }).catch(() => {});
+                } catch (e) {}
+
+                await interaction.editReply({ content: `✅ Dodano ${ilosc} punktów użytkownikowi <@${targetUser.id}>.` });
             } else {
                 user.balance = Math.max(0, user.balance - ilosc);
                 await user.save();
@@ -2798,9 +2835,10 @@ client.on('interactionCreate', async interaction => {
                     userId: interaction.user.id,
                     targetUserId: targetUser.id,
                     type: 'admin_remove',
-                    amount: ilosc
+                    amount: ilosc,
+                    details: powod
                 });
-                await interaction.editReply({ content: `✅ Zabrano ${ilosc} punktów.` });
+                await interaction.editReply({ content: `✅ Zabrano ${ilosc} punktów użytkownikowi <@${targetUser.id}>.` });
             }
             return;
         }
@@ -2980,7 +3018,6 @@ client.on('messageCreate', async message => {
         await user.save();
         await checkAndAwardBadges(user, message.member);
 
-        // Zmieniono EXP za wiadomość na 75
         await addExp(message.author.id, 75, message.guild);
 
     } catch (error) {}
