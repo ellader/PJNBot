@@ -351,7 +351,6 @@ async function updateAllFortniteStats() {
                 const overall = data.data.stats.all?.overall || {};
                 u.fortniteKills = overall.kills || 0;
                 u.matchesPlayed = overall.matches || 0;
-                // Szacowanie czasu gry: załóżmy średnio 15 minut (0.25h) na jeden rozegrany mecz
                 u.estimatedPlaytimeHours = Math.round(u.matchesPlayed * 0.25);
                 await u.save();
             }
@@ -430,12 +429,10 @@ async function refreshFortniteRankingMessage(guild: any) {
             }
         }
 
-        // Próg dla początkujących: np. poniżej 2800 rozegranych meczów (co odpowiada szacunkowo ~700h)
         const underUsers = await UserModel.find({ epicNick: { $ne: null }, matchesPlayed: { $lt: 2800 } }).sort({ fortniteKills: -1 }).limit(100);
         const payloadUnder = await generateFortniteRankingEmbeds(guild, underUsers, '🟢 TOP • Początkujący (<2800 meczów)', 0x2ECC71, 0);
         await channel.send(payloadUnder);
 
-        // Próg dla weteranów: 2800+ rozegranych meczów
         const overUsers = await UserModel.find({ epicNick: { $ne: null }, matchesPlayed: { $gte: 2800 } }).sort({ fortniteKills: -1 }).limit(100);
         const payloadOver = await generateFortniteRankingEmbeds(guild, overUsers, '🔥 TOP • Weterani (2800+ meczów)', 0xE74C3C, 0);
         await channel.send(payloadOver);
@@ -576,7 +573,7 @@ function createTicketPanelEmbed() {
         .setColor(0x2ECC71)
         .setTitle('🎫 Centrum Pomocy i Zgłoszeń PJN')
         .setDescription(
-            'Potrzebujesz pomocy z duszkami? Dobrze trafiłeś!\n\n' +
+            'Potrzebujesz pomocy z duszkiem? Dobrze trafiłeś!\n\n' +
             'Kliknij poniższy przycisk **"Stwórz Ticket"**, aby otworzyć prywatny kanał. Nasza ekipa pomoże Ci tak szybko, jak to możliwe!\n\n' +
             '⚠️ *Prosimy nie tworzyć zgłoszeń bez potrzeby – szanujmy swój czas.*'
         )
@@ -954,6 +951,22 @@ async function checkAndAwardBadges(user: any, memberOrUser: any) {
     }
 }
 
+// Funkcja pomocnicza zwracająca pozycję oraz całkowitą liczbę użytkowników w rankingu poziomu
+async function getUserLevelRankDetails(userId: string): Promise<{ rank: number, total: number }> {
+    const targetUser = await UserModel.findOne({ userId });
+    if (!targetUser) return { rank: 1, total: 1 };
+
+    const total = await UserModel.countDocuments({});
+    const higherCount = await UserModel.countDocuments({
+        $or: [
+            { level: { $gt: targetUser.level || 1 } },
+            { level: targetUser.level || 1, exp: { $gt: targetUser.exp || 0 } }
+        ]
+    });
+
+    return { rank: higherCount + 1, total: Math.max(1, total) };
+}
+
 async function addExp(userId: string, amount: number, guild: any) {
     let user = await UserModel.findOne({ userId });
     if (!user) user = await UserModel.create({ userId });
@@ -979,6 +992,7 @@ async function addExp(userId: string, amount: number, guild: any) {
 
             const member = await guild.members.fetch(userId).catch(() => null);
             const avatarUrl = member ? member.user.displayAvatarURL() : client.user?.displayAvatarURL();
+            const rankDetails = await getUserLevelRankDetails(userId);
 
             const embed = new EmbedBuilder()
                 .setColor(0x9B59B6)
@@ -987,6 +1001,7 @@ async function addExp(userId: string, amount: number, guild: any) {
                 .setDescription(
                     `Gratulacje <@${userId}>! Właśnie wskoczyłeś na wyższy poziom na serwerze! 🌟\n\n` +
                     `⭐ **Nowy Poziom:** \`${user.level}\`\n` +
+                    `🏆 **Miejsce w rankingu XP:** \`#${rankDetails.rank} z ${rankDetails.total}\`\n` +
                     `🎯 **Twój Postęp:** \`${user.exp} / ${user.level * 150} XP\`\n\n` +
                     `*Tak trzymaj! Bądź aktywny na czacie oraz kanałach głosowych, aby pobić kolejny rekord!*`
                 )
@@ -1910,8 +1925,6 @@ client.on('interactionCreate', async interaction => {
                 const overall = data.data.stats.all?.overall || {};
                 user.fortniteKills = overall.kills || 0;
                 user.matchesPlayed = overall.matches || 0;
-                
-                // Automatyczna analiza: szacowanie czasu gry na podstawie rozegranych meczów (~15 min na mecz)
                 user.estimatedPlaytimeHours = Math.round(user.matchesPlayed * 0.25);
                 await user.save();
 
@@ -2324,6 +2337,8 @@ client.on('interactionCreate', async interaction => {
             const requiredExp = currentLevel * 150;
             const missingExp = Math.max(0, requiredExp - currentExp);
             
+            const rankDetails = await getUserLevelRankDetails(targetUser.id);
+
             const progressPercent = Math.min(100, Math.floor((currentExp / requiredExp) * 100));
             const filledBlocks = Math.floor(progressPercent / 10);
             const progressBar = '█'.repeat(filledBlocks) + '░'.repeat(10 - filledBlocks);
@@ -2334,6 +2349,7 @@ client.on('interactionCreate', async interaction => {
                 .setThumbnail(targetUser.displayAvatarURL())
                 .addFields(
                     { name: '📊 Aktualny Poziom', value: `**Poziom ${currentLevel}**`, inline: true },
+                    { name: '🏆 Miejsce w rankingu', value: `**#${rankDetails.rank} z ${rankDetails.total}**`, inline: true },
                     { name: '✨ Zebrane XP', value: `**${currentExp} / ${requiredExp} XP**`, inline: true },
                     { name: '🎯 Brakuje do awansu', value: `**${missingExp} XP**`, inline: true },
                     { name: '📈 Postęp', value: `\`[${progressBar}]\` **${progressPercent}%**`, inline: false }
