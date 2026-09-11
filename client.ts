@@ -201,6 +201,10 @@ const ID_KANAL_FORTNITE = '1546405381717233704';
 const ID_KANAL_RANKING_FORTNITE = '1546593557526216816';
 const ID_KANAL_AWANSOW = '1546407009262370866';
 
+// Konfiguracja panelu informacyjnego aktualizacji Fortnite
+const ID_KANAL_AKTUALIZACJI_FORTNITE = '1547923010823004180';
+const ID_RANGI_AKTUALIZACJE_FORTNITE = '1547922790152282112';
+
 const ID_KANAL_RANG = "1532397673842217010";
 const ROLE_BUTTONS_MAP: { [key: string]: { roleId: string, label: string, emoji: string } } = {
     'role_bezrobotny': { roleId: '1532400774015881246', label: 'Bezrobotny', emoji: '😜' },
@@ -338,6 +342,151 @@ function startDailyShopAutoPoster() {
         }
     });
 }
+
+// === SYSTEM MONITOROWANIA AKTUALIZACJI I SERWERÓW FORTNITE ===
+let lastFortniteIncidentId: string | null = null;
+let lastFortniteStatusState: string | null = null;
+
+async function setupFortniteUpdateChannel() {
+    try {
+        const channel = await client.channels.fetch(ID_KANAL_AKTUALIZACJI_FORTNITE).catch(() => null) as TextChannel;
+        if (!channel) return;
+
+        const messages = await channel.messages.fetch({ limit: 50 }).catch(() => null);
+        if (messages) {
+            for (const [_, msg] of messages) {
+                if (msg.author.id === client.user?.id) {
+                    await msg.delete().catch(() => {});
+                }
+            }
+        }
+
+        const embed = new EmbedBuilder()
+            .setColor(0x00D9FF)
+            .setTitle('🚀 Centrum Powiadomień o Aktualizacjach Fortnite')
+            .setDescription(
+                'Ten kanał służy jako oficjalna tablica informacyjna dla graczy Fortnite.\n\n' +
+                '🤖 **Co tutaj znajdziesz?**\n' +
+                '• 📢 **Informacje o nadchodzących aktualizacjach** z wyprzedzeniem.\n' +
+                '• 🛑 **Ostrzeżenia o zamknięciu serwerów** (przerwy techniczne / downtime).\n' +
+                '• ✅ **Informację o ponownym otwarciu serwerów**, gdy gra znów będzie dostępna!\n\n' +
+                '🔔 *Kliknij poniższy przycisk, aby włączyć lub wyłączyć powiadomienia (rangę <@&' + ID_RANGI_AKTUALIZACJE_FORTNITE + '>) i otrzymywać powiadomienia dźwiękowe o przerwach w grze!*'
+            )
+            .setImage(LIVE_IMAGE_URL)
+            .setTimestamp()
+            .setFooter({ text: 'PJN System Monitorowania Fortnite' });
+
+        const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+            new ButtonBuilder()
+                .setCustomId('role_fn_updates_toggle')
+                .setLabel('Przełącz rangę powiadomień Fortnite')
+                .setStyle(ButtonStyle.Primary)
+                .setEmoji('🔔')
+        );
+
+        const sentMsg = await channel.send({ embeds: [embed], components: [row] });
+        await sentMsg.pin().catch(() => {});
+    } catch (e) {
+        console.error('Błąd inicjalizacji panelu aktualizacji Fortnite:', e);
+    }
+}
+
+async function checkFortniteServerStatus() {
+    try {
+        const res = await fetch('https://status.epicgames.com/api/v2/summary.json');
+        if (!res.ok) return;
+        const data = await res.json() as any;
+
+        if (!data || !data.components) return;
+
+        // Szukamy komponentu odpowiedzialnego za Fortnite
+        const fortniteComponent = data.components.find((comp: any) => 
+            comp.name.toLowerCase().includes('fortnite') && (comp.group === true || comp.name.toLowerCase() === 'fortnite')
+        );
+
+        const currentStatusState = fortniteComponent ? fortniteComponent.status : (data.status?.indicator || 'none');
+        const activeIncidents = data.scheduled_maintenances || [];
+        const activeIncident = activeIncidents.length > 0 ? activeIncidents[0] : null;
+
+        const channel = await client.channels.fetch(ID_KANAL_AKTUALIZACJI_FORTNITE).catch(() => null) as TextChannel;
+        if (!channel) return;
+
+        const rolePing = `<@&${ID_RANGI_AKTUALIZACJE_FORTNITE}>`;
+
+        // 1. Wykrywanie zaplanowanej aktualizacji / przerwy technicznej
+        if (activeIncident && activeIncident.id !== lastFortniteIncidentId && activeIncident.status === 'scheduled') {
+            lastFortniteIncidentId = activeIncident.id;
+            const embed = new EmbedBuilder()
+                .setColor(0xF1C40F)
+                .setTitle('📢 Zapowiedziano nową aktualizację / przerwę techniczną Fortnite!')
+                .setDescription(
+                    `**Nazwa wydarzenia:** ${activeIncident.name}\n` +
+                    `📌 **Status:** Zaplanowana konserwacja\n` +
+                    `🕒 **Zaplanowany start:** ${new Date(activeIncident.scheduled_for).toLocaleString('pl-PL')}\n` +
+                    `🕒 **Planowany koniec:** ${new Date(activeIncident.scheduled_until).toLocaleString('pl-PL')}\n\n` +
+                    `*Wkrótce serwery zostaną wyłączone. Przygotujcie się do zejścia z gry!*`
+                )
+                .setTimestamp()
+                .setFooter({ text: 'Epic Games Status • Fortnite' });
+
+            await channel.send({
+                content: `${rolePing} 🚨 Zapowiedziano nową przerwę techniczną w Fortnite!`,
+                embeds: [embed],
+                allowedMentions: { roles: [ID_RANGI_AKTUALIZACJE_FORTNITE] }
+            });
+        }
+
+        // 2. Wykrywanie zamknięcia serwerów (przejście w stan 'degraded', 'partial_outage' lub 'major_outage')
+        if (currentStatusState !== 'operational' && currentStatusState !== 'none' && lastFortniteStatusState === 'operational') {
+            const embed = new EmbedBuilder()
+                .setColor(0xE74C3C)
+                .setTitle('🛑 Serwery Fortnite zostały ZAMKNIĘTE (Przerwa techniczna)!')
+                .setDescription(
+                    `Serwery gry przestały odpowiadać lub rozpoczęła się właściwa aktualizacja. Matchmaking został wyłączony.\n\n` +
+                    `⚙️ Trwa wdrażanie nowej łatki/aktualizacji. Prosimy cierpliwie czekać na powrót serwerów!`
+                )
+                .setTimestamp()
+                .setFooter({ text: 'Epic Games Status • Serwery Offline' });
+
+            await channel.send({
+                content: `${rolePing} 🛑 Serwery Fortnite zostały wyłączone do aktualizacji!`,
+                embeds: [embed],
+                allowedMentions: { roles: [ID_RANGI_AKTUALIZACJE_FORTNITE] }
+            });
+        }
+
+        // 3. Wykrywanie ponownego otwarcia serwerów (powrót do 'operational')
+        if (currentStatusState === 'operational' && lastFortniteStatusState && lastFortniteStatusState !== 'operational' && lastFortniteStatusState !== 'none') {
+            const embed = new EmbedBuilder()
+                .setColor(0x2ECC71)
+                .setTitle('✅ Serwery Fortnite zostały OTWARTE!')
+                .setDescription(
+                    `Przerwa techniczna / aktualizacja dobiegła końca! Wszystkie systemy gry działają poprawnie.\n\n` +
+                    `🎮 Można już uruchamiać grę, pobierać aktualizację i wracać do walki! Powodzenia w meczach! 🚀`
+                )
+                .setTimestamp()
+                .setFooter({ text: 'Epic Games Status • Serwery Online' });
+
+            await channel.send({
+                content: `${rolePing} 🎉 Serwery Fortnite są już otwarte! Można wracać do gry!`,
+                embeds: [embed],
+                allowedMentions: { roles: [ID_RANGI_AKTUALIZACJE_FORTNITE] }
+            });
+        }
+
+        lastFortniteStatusState = currentStatusState;
+    } catch (err) {
+        console.error('Błąd podczas sprawdzania statusu Epic Games:', err);
+    }
+}
+
+function startFortniteStatusCron() {
+    // Sprawdzaj status co 2 minuty
+    cron.schedule('*/2 * * * *', async () => {
+        await checkFortniteServerStatus();
+    });
+}
+// ==================================================================
 
 async function updateAllFortniteStats() {
     const users = await UserModel.find({ epicNick: { $ne: null } });
@@ -685,7 +834,7 @@ async function setupMemeChannelInstruction() {
                 'W tym kanale możesz w pełni bezpiecznie i bez spamowania tworzyć własne memy za pomocą bota!\n\n' +
                 '🛠️ **Jak wygenerować mema?**\n' +
                 '1. Wpisz w oknie wiadomości komendę: `/mem`\n' +
-                '2. Wpisz nazwę w polu **szablon** – bot podpowie Ci setki dostępnych szablonów z całego świata!\n' +
+                '2. Wpisz nazwę w polu **szablon** – bot podpowie Ci setki dziesiątek szablonów z całego świata!\n' +
                 '3. Wpisz tekst górny i dolny (opcjonalnie).\n' +
                 '4. Naciśnij **Enter**, a bot w kilka sekund wygeneruje gotowy obrazek na czacie!\n\n' +
                 '⚠️ *Na tym kanale wysyłanie zwykłego tekstu jest zablokowane – korzystaj wyłącznie z komendy `/mem`!*'
@@ -951,7 +1100,6 @@ async function checkAndAwardBadges(user: any, memberOrUser: any) {
     }
 }
 
-// Funkcja pomocnicza zwracająca pozycję oraz całkowitą liczbę użytkowników w rankingu poziomu
 async function getUserLevelRankDetails(userId: string): Promise<{ rank: number, total: number }> {
     const targetUser = await UserModel.findOne({ userId });
     if (!targetUser) return { rank: 1, total: 1 };
@@ -1458,6 +1606,7 @@ client.once('ready', async () => {
     await setupShowcaseChannelInstruction();
     await setupReputationChannelInstruction();
     await setupShopChannel();
+    await setupFortniteUpdateChannel(); // Inicjalizacja przypiętego panelu powiadomień Fortnite
     await cleanupOrphanedLfgVoices();
 
     const rest = new REST({ version: '10' }).setToken(token);
@@ -1479,6 +1628,7 @@ client.once('ready', async () => {
     startExpirationChecker();
     startDailyShopAutoPoster(); 
     startFortniteRankingCron();
+    startFortniteStatusCron(); // Uruchomienie monitora statusu serwerów Fortnite
 });
 
 client.on('interactionCreate', async interaction => {
@@ -1525,6 +1675,35 @@ client.on('interactionCreate', async interaction => {
     }
 
     if (interaction.isButton()) {
+        if (interaction.customId === 'role_fn_updates_toggle') {
+            await interaction.deferReply({ ephemeral: true });
+            const guild = interaction.guild;
+            if (!guild) return;
+
+            const member = await guild.members.fetch(interaction.user.id).catch(() => null);
+            if (!member) {
+                return interaction.editReply({ content: '❌ Nie udało się pobrać Twoich danych na serwerze.' });
+            }
+
+            const role = guild.roles.cache.get(ID_RANGI_AKTUALIZACJE_FORTNITE);
+            if (!role) {
+                return interaction.editReply({ content: '❌ Ranga powiadomień Fortnite nie istnieje na serwerze.' });
+            }
+
+            try {
+                if (member.roles.cache.has(ID_RANGI_AKTUALIZACJE_FORTNITE)) {
+                    await member.roles.remove(role);
+                    await interaction.editReply({ content: `✅ Pomyślnie **usunięto** rangę powiadomień o aktualizacjach Fortnite z Twojego konta.` });
+                } else {
+                    await member.roles.add(role);
+                    await interaction.editReply({ content: `✅ Pomyślnie **przyznano** rangę powiadomień o aktualizacjach Fortnite! Od teraz będziesz otrzymywać powiadomienia.` });
+                }
+            } catch (err) {
+                await interaction.editReply({ content: '❌ Wystąpił błąd podczas zmiany rangi.' });
+            }
+            return;
+        }
+
         if (interaction.customId.startsWith('fn_rank_')) {
             await interaction.deferUpdate();
             const parts = interaction.customId.split('_');
