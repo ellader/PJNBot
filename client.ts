@@ -52,7 +52,9 @@ const userSchema = new mongoose.Schema({
     customVoiceExpiresAt: { type: Date, default: null },
     customRoleId: { type: String, default: null },
     epicNick: { type: String, default: null },
-    fortniteKills: { type: Number, default: 0 }
+    fortniteKills: { type: Number, default: 0 },
+    matchesPlayed: { type: Number, default: 0 },
+    estimatedPlaytimeHours: { type: Number, default: 0 }
 });
 
 const UserModel = mongoose.model('User', userSchema);
@@ -348,22 +350,25 @@ async function updateAllFortniteStats() {
             if (data && data.status === 200 && data.data && data.data.stats) {
                 const overall = data.data.stats.all?.overall || {};
                 u.fortniteKills = overall.kills || 0;
+                u.matchesPlayed = overall.matches || 0;
+                // Szacowanie czasu gry: załóżmy średnio 15 minut (0.25h) na jeden rozegrany mecz
+                u.estimatedPlaytimeHours = Math.round(u.matchesPlayed * 0.25);
                 await u.save();
             }
         } catch (e) {}
     }
 }
 
-async function generateFortniteRankingEmbeds(guild: any, topUsers: any[], page: number = 0) {
+async function generateFortniteRankingEmbeds(guild: any, topUsers: any[], categoryTitle: string, categoryColor: number, page: number = 0) {
     const pageSize = 10;
     const totalPages = Math.ceil(topUsers.length / pageSize) || 1;
     const currentPage = Math.max(0, Math.min(page, totalPages - 1));
     const slice = topUsers.slice(currentPage * pageSize, (currentPage + 1) * pageSize);
 
-    let desc = `Zabójstwa graczy z naszego serwera (Top 100)\nAktualizowane automatycznie co 24h.\n\n`;
+    let desc = `Zabójstwa graczy z naszego serwera (analiza na podstawie meczów).\nAktualizowane automatycznie co 24h.\n\n`;
     
     if (slice.length === 0) {
-        desc += `Brak zarejestrowanych graczy w rankingu. Użyj \`/fn-rejestracja\`, aby dołączyć!`;
+        desc += `Brak zarejestrowanych graczy w tej kategorii.`;
     } else {
         for (let idx = 0; idx < slice.length; idx++) {
             const u = slice[idx];
@@ -380,26 +385,27 @@ async function generateFortniteRankingEmbeds(guild: any, topUsers: any[], page: 
                 } catch (e) {}
             }
 
-            desc += `${medal} — **${displayName}** (${u.epicNick}) — **${u.fortniteKills || 0} zabójstw**\n`;
+            desc += `${medal} — **${displayName}** (${u.epicNick}) — **${u.fortniteKills || 0} zabójstw** | Meczów: \`${u.matchesPlayed || 0}\` *(Szac. czasu: ~${u.estimatedPlaytimeHours || 0}h)*\n`;
         }
     }
 
     const embed = new EmbedBuilder()
-        .setColor(0x00D9FF)
-        .setTitle(`🏆 TOP 100 • Ranking Zabójstw Fortnite (Strona ${currentPage + 1}/${totalPages})`)
+        .setColor(categoryColor)
+        .setTitle(`${categoryTitle} (Strona ${currentPage + 1}/${totalPages})`)
         .setDescription(desc)
         .setImage(LIVE_IMAGE_URL)
         .setTimestamp()
         .setFooter({ text: 'PJN Fortnite Ranking • Automatyczny system' });
 
+    const prefixId = categoryTitle.includes('Początkujący') ? 'fn_rank_under' : 'fn_rank_over';
     const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
         new ButtonBuilder()
-            .setCustomId(`fn_rank_prev_${currentPage}`)
+            .setCustomId(`${prefixId}_prev_${currentPage}`)
             .setLabel('⬅️ Wstecz')
             .setStyle(ButtonStyle.Primary)
             .setDisabled(currentPage === 0),
         new ButtonBuilder()
-            .setCustomId(`fn_rank_next_${currentPage}`)
+            .setCustomId(`${prefixId}_next_${currentPage}`)
             .setLabel('Dalej ➡️')
             .setStyle(ButtonStyle.Primary)
             .setDisabled(currentPage >= totalPages - 1)
@@ -414,7 +420,6 @@ async function refreshFortniteRankingMessage(guild: any) {
         if (!channel) return;
 
         await updateAllFortniteStats();
-        const topUsers = await UserModel.find({ epicNick: { $ne: null } }).sort({ fortniteKills: -1 }).limit(100);
 
         const messages = await channel.messages.fetch({ limit: 10 }).catch(() => null);
         if (messages) {
@@ -425,8 +430,16 @@ async function refreshFortniteRankingMessage(guild: any) {
             }
         }
 
-        const payload = await generateFortniteRankingEmbeds(guild, topUsers, 0);
-        await channel.send(payload);
+        // Próg dla początkujących: np. poniżej 2800 rozegranych meczów (co odpowiada szacunkowo ~700h)
+        const underUsers = await UserModel.find({ epicNick: { $ne: null }, matchesPlayed: { $lt: 2800 } }).sort({ fortniteKills: -1 }).limit(100);
+        const payloadUnder = await generateFortniteRankingEmbeds(guild, underUsers, '🟢 TOP • Początkujący (<2800 meczów)', 0x2ECC71, 0);
+        await channel.send(payloadUnder);
+
+        // Próg dla weteranów: 2800+ rozegranych meczów
+        const overUsers = await UserModel.find({ epicNick: { $ne: null }, matchesPlayed: { $gte: 2800 } }).sort({ fortniteKills: -1 }).limit(100);
+        const payloadOver = await generateFortniteRankingEmbeds(guild, overUsers, '🔥 TOP • Weterani (2800+ meczów)', 0xE74C3C, 0);
+        await channel.send(payloadOver);
+
     } catch (e) {
         console.error('Błąd podczas odświeżania rankingu Fortnite:', e);
     }
@@ -1319,7 +1332,7 @@ const commands = [
         .setDescription('Wyświetla aktualną mapę Fortnite'),
     new SlashCommandBuilder()
         .setName('fn-rejestracja')
-        .setDescription('Zarejestruj swój nick Epic Games do rankingu zabójstw na serwerze')
+        .setDescription('Zarejestruj swój nick Epic Games (bot sam przeanalizuje mecze i czas gry)')
         .addStringOption(o => o.setName('nick').setDescription('Twój dokładny nick z Epic Games').setRequired(true)),
     new SlashCommandBuilder()
         .setName('fn-top')
@@ -1332,7 +1345,7 @@ const commands = [
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
     new SlashCommandBuilder()
         .setName('nowości')
-        .setDescription('Wyślij ogłoszenie o nowościach na serwerze (Admin)')
+        .setDescription('Wyślij ogłoszenie o nowościach na serwer (Admin)')
         .addStringOption(o => o.setName('tytul').setDescription('Tytuł ogłoszenia (np. System Odznak)').setRequired(true))
         .addStringOption(o => o.setName('co_nowego').setDescription('Krótko opisz co faktycznie dodano').setRequired(true))
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
@@ -1500,15 +1513,22 @@ client.on('interactionCreate', async interaction => {
         if (interaction.customId.startsWith('fn_rank_')) {
             await interaction.deferUpdate();
             const parts = interaction.customId.split('_');
-            const direction = parts[2];
-            let currentPage = parseInt(parts[3]) || 0;
+            const type = parts[2]; // under lub over
+            const direction = parts[3];
+            let currentPage = parseInt(parts[4]) || 0;
 
             if (direction === 'prev') currentPage--;
             if (direction === 'next') currentPage++;
 
-            const topUsers = await UserModel.find({ epicNick: { $ne: null } }).sort({ fortniteKills: -1 }).limit(100);
-            const payload = await generateFortniteRankingEmbeds(interaction.guild, topUsers, currentPage);
-            await interaction.editReply(payload);
+            if (type === 'under') {
+                const topUsers = await UserModel.find({ epicNick: { $ne: null }, matchesPlayed: { $lt: 2800 } }).sort({ fortniteKills: -1 }).limit(100);
+                const payload = await generateFortniteRankingEmbeds(interaction.guild, topUsers, '🟢 TOP • Początkujący (<2800 meczów)', 0x2ECC71, currentPage);
+                await interaction.editReply(payload);
+            } else {
+                const topUsers = await UserModel.find({ epicNick: { $ne: null }, matchesPlayed: { $gte: 2800 } }).sort({ fortniteKills: -1 }).limit(100);
+                const payload = await generateFortniteRankingEmbeds(interaction.guild, topUsers, '🔥 TOP • Weterani (2800+ meczów)', 0xE74C3C, currentPage);
+                await interaction.editReply(payload);
+            }
             return;
         }
 
@@ -1889,9 +1909,14 @@ client.on('interactionCreate', async interaction => {
                 user.epicNick = data.data.account.name;
                 const overall = data.data.stats.all?.overall || {};
                 user.fortniteKills = overall.kills || 0;
+                user.matchesPlayed = overall.matches || 0;
+                
+                // Automatyczna analiza: szacowanie czasu gry na podstawie rozegranych meczów (~15 min na mecz)
+                user.estimatedPlaytimeHours = Math.round(user.matchesPlayed * 0.25);
                 await user.save();
 
-                await interaction.editReply({ content: `✅ Pomyślnie zarejestrowano nick **${user.epicNick}**! Twoje zabójstwa zostały zsynchronizowane (${user.fortniteKills} killi). Zostaniesz uwzględniony w rankingu.` });
+                const categoryStr = user.matchesPlayed < 2800 ? 'Początkujący (<2800 meczów)' : 'Weteran (2800+ meczów)';
+                await interaction.editReply({ content: `✅ Pomyślnie zarejestrowano nick **${user.epicNick}**!\n📊 Rozegrane mecze: **${user.matchesPlayed}**\n⏱️ Szacowany czas gry: **~${user.estimatedPlaytimeHours}h**\n📂 Kategoria: **${categoryStr}**\n🎯 Zsynchronizowano ${user.fortniteKills} killi.` });
             } catch (e) {
                 await interaction.editReply({ content: '❌ Wystąpił błąd podczas weryfikacji nicku z API Fortnite.' });
             }
@@ -1902,7 +1927,7 @@ client.on('interactionCreate', async interaction => {
             if (!isAuthorized(interaction.user.id)) return interaction.reply({ content: '❌ Brak uprawnień!', ephemeral: true });
             await interaction.deferReply({ ephemeral: true });
             await refreshFortniteRankingMessage(interaction.guild);
-            await interaction.editReply({ content: `✅ Pomyślnie odświeżono i wysłano ranking Fortnite zabójstw na kanale <#${ID_KANAL_RANKING_FORTNITE}>!` });
+            await interaction.editReply({ content: `✅ Pomyślnie odświeżono i wysłano rankingi Fortnite na kanale <#${ID_KANAL_RANKING_FORTNITE}>!` });
             return;
         }
 
@@ -2465,7 +2490,6 @@ client.on('interactionCreate', async interaction => {
             const memberObj = await interaction.guild?.members.fetch(interaction.user.id).catch(() => null);
             await checkAndAwardBadges(sender, memberObj);
 
-            // Powiadomienie PW dla użytkownika, który otrzymał przelew
             try {
                 await targetUser.send({
                     embeds: [
@@ -2808,7 +2832,6 @@ client.on('interactionCreate', async interaction => {
                     details: powod
                 });
 
-                // Powiadomienie PW dla użytkownika, który dostał punkty od administracji
                 try {
                     let desc = `Administracja przyznała Ci **${ilosc} PJN-Coins** na serwerze!\n\n`;
                     if (powod && powod !== 'Brak powódu') {
