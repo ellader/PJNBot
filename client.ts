@@ -3162,6 +3162,23 @@ async function updateLFGMessage(message: any, lfgDoc: any) {
 client.on('messageCreate', async message => {
     if (message.author.bot || !message.guild) return;
 
+    // === MODYFIKACJA: Usuwanie wiadomości nienależących do komendy /szukam na kanale 1532449084559069214 ===
+    if (message.channel.id === '1532449084559069214') {
+        if (!message.content.startsWith('/szukam')) {
+            await message.delete().catch(() => {});
+            const warningMsg = await message.channel.send({
+                content: `<@${message.author.id}>, na tym kanale używamy tylko komendy \`/szukam\`!`
+            }).catch(() => null);
+
+            if (warningMsg) {
+                setTimeout(() => {
+                    warningMsg.delete().catch(() => {});
+                }, 5000);
+            }
+            return;
+        }
+    }
+
     if (message.channel.id === ID_KANAL_REPUTACJI) {
         const content = message.content.trim();
         const isPlus = content.toLowerCase().startsWith('+rep');
