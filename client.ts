@@ -169,7 +169,8 @@ const pollSchema = new mongoose.Schema({
     question: { type: String, required: true },
     options: { type: [String], required: true },
     votes: { type: [[String]], required: true },
-    ended: { type: Boolean, default: false }
+    ended: { type: Boolean, default: false },
+    endsAt: { type: Date, default: null }
 });
 const PollModel = mongoose.model('Poll', pollSchema);
 
@@ -781,6 +782,50 @@ function startExpirationChecker() {
     });
 }
 
+// Sprawdzanie i automatyczne zamykanie ankiet
+function startPollChecker() {
+    setInterval(async () => {
+        try {
+            const now = new Date();
+            const activePolls = await PollModel.find({ ended: false, endsAt: { $ne: null, $lte: now } });
+
+            for (const poll of activePolls) {
+                poll.ended = true;
+                await poll.save();
+
+                for (const [_, guild] of client.guilds.cache) {
+                    const channel = await guild.channels.fetch(poll.channelId).catch(() => null) as TextChannel;
+                    if (channel) {
+                        const message = await channel.messages.fetch(poll.messageId).catch(() => null);
+                        if (message) {
+                            const totalVotes = poll.votes.reduce((acc, curr) => acc + curr.length, 0);
+                            let desc = `🔒 **ANKIETA ZAKOŃCZONA**\n\n`;
+                            for (let i = 0; i < poll.options.length; i++) {
+                                const count = poll.votes[i].length;
+                                const percent = totalVotes > 0 ? Math.round((count / totalVotes) * 100) : 0;
+                                desc += `**${i + 1}. ${poll.options[i]}** — **${percent}%** (${count} głosów)\n`;
+                            }
+
+                            const embed = new EmbedBuilder()
+                                .setColor(0xE74C3C)
+                                .setTitle(`🗳️ ${poll.question} (Wyniki końcowe)`)
+                                .setDescription(desc)
+                                .setTimestamp();
+
+                            const adminRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+                                new ButtonBuilder().setCustomId('poll_show_voters').setLabel('🔍 Kto głosował? (Admin)').setStyle(ButtonStyle.Primary)
+                            );
+
+                            await message.edit({ embeds: [embed], components: [adminRow] }).catch(() => {});
+                            break;
+                        }
+                    }
+                }
+            }
+        } catch (e) {}
+    }, 15 * 1000);
+}
+
 function createOgłoszenieEmbed() {
     return new EmbedBuilder()
         .setColor(0x3498DB)
@@ -798,7 +843,6 @@ function createOgłoszenieEmbed() {
         .setFooter({ text: 'PJN System Ogłoszeń' });
 }
 
-// BEZPIECZNE ROZDZIELENIE NA DWA EMBEDY DLA UNIKNIĘCIA LIMITÓW DISCORDA
 function createBadgesInfoEmbeds() {
     const embed1 = new EmbedBuilder()
         .setColor(0x9B59B6)
@@ -1688,9 +1732,20 @@ const commands = [
         .addUserOption(o => o.setName('uzytkownik').setDescription('Użytkownik').setRequired(false)),
     new SlashCommandBuilder()
         .setName('ankieta')
-        .setDescription('Stwórz interaktywną ankietę na żywo ze statusem głosowania')
+        .setDescription('Stwórz interaktywną ankietę na żywo ze statusem głosowania i licznikiem')
         .addStringOption(o => o.setName('pytanie').setDescription('Treść pytania ankiety').setRequired(true))
-        .addStringOption(o => o.setName('opcje').setDescription('Opcje oddzielone przecinkami (np. Opcja 1, Opcja 2, Opcja 3)').setRequired(true))
+        .addStringOption(o => o.setName('opcje').setDescription('Opcje oddzielone przecinkami (np. Opcja 1, Opcja 2)').setRequired(true))
+        .addStringOption(o => 
+            o.setName('czas')
+             .setDescription('Czas trwania ankiety')
+             .setRequired(false)
+             .addChoices(
+                 { name: '15 minut', value: '15m' },
+                 { name: '1 godzina', value: '1h' },
+                 { name: '6 godzin', value: '6h' },
+                 { name: '24 godziny', value: '24h' }
+             )
+        )
         .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages),
     new SlashCommandBuilder()
         .setName('fn-sklep')
@@ -1845,6 +1900,7 @@ client.once('ready', async () => {
     startFortniteRankingCron();
     startFortniteStatusCron(); 
     startServerStatsCron();
+    startPollChecker(); // Uruchomienie sprawdzania wygasających ankiet
 });
 
 client.on('interactionCreate', async interaction => {
@@ -1876,11 +1932,35 @@ client.on('interactionCreate', async interaction => {
         }
     }
 
-    if (interaction.isButton() && interaction.customId.startsWith('poll_vote_')) {
+    if (interaction.isButton() && (interaction.customId.startsWith('poll_vote_') || interaction.customId === 'poll_show_voters')) {
+        const poll = await PollModel.findOne({ messageId: interaction.message.id });
+        if (!poll) return interaction.reply({ content: '❌ Ta ankieta nie istnieje w bazie.', ephemeral: true });
+
+        // Obsługa przycisku podglądu głosujących (tylko administrator)
+        if (interaction.customId === 'poll_show_voters') {
+            if (!isAuthorized(interaction.user.id) && !interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) {
+                return interaction.reply({ content: '❌ Tylko administratorzy mogą podejrzeć, kto głosował!', ephemeral: true });
+            }
+
+            let votersDesc = `🔍 **Szczegóły głosowania dla ankiety:**\n*${poll.question}*\n\n`;
+            for (let i = 0; i < poll.options.length; i++) {
+                const optionVoters = poll.votes[i];
+                const votersTagList = optionVoters.length > 0 
+                    ? optionVoters.map(id => `<@${id}>`).join(', ') 
+                    : 'Brak głosów';
+                
+                votersDesc += `**${i + 1}. ${poll.options[i]}** (${optionVoters.length} głosów):\n${votersTagList}\n\n`;
+            }
+
+            return interaction.reply({ content: votersDesc, ephemeral: true });
+        }
+
+        if (poll.ended) {
+            return interaction.reply({ content: '❌ Ta ankieta została już zakończona!', ephemeral: true });
+        }
+
         await interaction.deferUpdate();
         const optionIndex = parseInt(interaction.customId.replace('poll_vote_', ''));
-        const poll = await PollModel.findOne({ messageId: interaction.message.id });
-        if (!poll || poll.ended) return;
 
         const userId = interaction.user.id;
         for (let i = 0; i < poll.votes.length; i++) {
@@ -1891,7 +1971,9 @@ client.on('interactionCreate', async interaction => {
         await poll.save();
 
         const totalVotes = poll.votes.reduce((acc, curr) => acc + curr.length, 0);
-        let desc = `📊 **Ankieta aktywna na żywo**\n\n`;
+        let timeInfo = poll.endsAt ? `⏳ Koniec: <t:${Math.floor(new Date(poll.endsAt).getTime() / 1000)}:R>` : '⏳ Ankieta bez limitu czasu';
+        let desc = `📊 **Ankieta aktywna na żywo**\n${timeInfo}\n\n`;
+
         const components: ActionRowBuilder<ButtonBuilder>[] = [];
         let currentRow = new ActionRowBuilder<ButtonBuilder>();
 
@@ -1907,6 +1989,11 @@ client.on('interactionCreate', async interaction => {
                 currentRow = new ActionRowBuilder<ButtonBuilder>();
             }
         }
+
+        const adminRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+            new ButtonBuilder().setCustomId('poll_show_voters').setLabel('🔍 Kto głosował? (Admin)').setStyle(ButtonStyle.Primary)
+        );
+        components.push(adminRow);
 
         const embed = new EmbedBuilder().setColor(0x3498DB).setTitle(`🗳️ ${poll.question}`).setDescription(desc).setTimestamp();
         await interaction.message.edit({ embeds: [embed], components });
@@ -2421,13 +2508,25 @@ client.on('interactionCreate', async interaction => {
             await interaction.deferReply();
             const pytanie = interaction.options.getString('pytanie', true);
             const opcjeTekst = interaction.options.getString('opcje', true);
+            const czasWybór = interaction.options.getString('czas');
             const opcje = opcjeTekst.split(',').map(o => o.trim()).filter(o => o.length > 0);
 
             if (opcje.length < 2 || opcje.length > 10) {
                 return interaction.editReply({ content: '❌ Podaj od 2 do 10 opcji oddzielonych przecinkami.' });
             }
 
-            let desc = `📊 **Ankieta aktywna na żywo**\n\n`;
+            let endsAt: Date | null = null;
+            if (czasWybór) {
+                const nowMs = Date.now();
+                if (czasWybór === '15m') endsAt = new Date(nowMs + 15 * 60 * 1000);
+                else if (czasWybór === '1h') endsAt = new Date(nowMs + 60 * 60 * 1000);
+                else if (czasWybór === '6h') endsAt = new Date(nowMs + 6 * 60 * 60 * 1000);
+                else if (czasWybór === '24h') endsAt = new Date(nowMs + 24 * 60 * 60 * 1000);
+            }
+
+            let timeInfo = endsAt ? `⏳ Koniec: <t:${Math.floor(endsAt.getTime() / 1000)}:R>` : '⏳ Ankieta bez limitu czasu';
+            let desc = `📊 **Ankieta aktywna na żywo**\n${timeInfo}\n\n`;
+
             for (let i = 0; i < opcje.length; i++) {
                 desc += `**${i + 1}. ${opcje[i]}**\n\`[░░░░░░░░░░]\` **0%** (0 głosów)\n\n`;
             }
@@ -2442,6 +2541,11 @@ client.on('interactionCreate', async interaction => {
                 }
             }
 
+            const adminRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+                new ButtonBuilder().setCustomId('poll_show_voters').setLabel('🔍 Kto głosował? (Admin)').setStyle(ButtonStyle.Primary)
+            );
+            components.push(adminRow);
+
             const embed = new EmbedBuilder().setColor(0x3498DB).setTitle(`🗳️ ${pytanie}`).setDescription(desc).setTimestamp();
             const sentMsg = await interaction.editReply({ embeds: [embed], components });
 
@@ -2450,7 +2554,9 @@ client.on('interactionCreate', async interaction => {
                 channelId: interaction.channelId,
                 question: pytanie,
                 options: opcje,
-                votes: opcje.map(() => [])
+                votes: opcje.map(() => []),
+                ended: false,
+                endsAt: endsAt
             });
             return;
         }
