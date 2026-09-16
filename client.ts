@@ -418,9 +418,9 @@ async function setupCasinoHubChannel() {
                 '✂️ **2. Kamień, Papier, Nożyce**\n> Komenda: `/kpn [wybór] [stawka]` — Klasyczny pojedynek z botem 1v1.\n\n' +
                 '🎲 **3. Rzut Kością**\n> Komenda: `/kostka [stawka]` — Sprawdź swój los w rzucie kostką.\n\n' +
                 '🪙 **4. Orzeł czy Reszka**\n> Komenda: `/moneta [wybór] [stawka]` — Obstaw stronę monety.\n\n' +
-                '🎰 **5. Maszyna Slotowa (Jednoręki Bandyta)**\n> Komenda: `/slot [stawka]` — Wylosuj układ symboli i traf Jackpot x5!\n\n' +
-                '🃏 **6. Poker**\n> Komenda: `/poker [tryb] [stawka]` — Zagraj w pokera z botem lub ludźmi.\n\n' +
-                '🎯 **7. Rosyjska Ruletka**\n> Kanał specjalny: <#1549791536336732240> — Ryzykuj stawkę w rewolwerze (wyniki widoczne tylko dla Ciebie)!\n\n' +
+                '🎰 **5. Maszyna Slotowa (Jednoręki Bandyta)**\n> Kanał dedykowany: <#1534066347452141639> (Komenda: `/slot [stawka]`)\n\n' +
+                '🃏 **6. Poker**\n> Kanał dedykowany: <#1534060082084577350> (Komenda: `/poker [tryb] [stawka]`)\n\n' +
+                '🎯 **7. Rosyjska Ruletka**\n> Kanał specjalny: <#1549791536336732240> — Ryzykuj stawkę w rewolwerze!\n\n' +
                 '📝 **8. Wisielec**\n> Kanał specjalny: <#1549791621942485120> — Odgaduj słowa na czacie i zdobywaj nagrody!'
             )
             .setImage(LIVE_IMAGE_URL)
@@ -2090,7 +2090,7 @@ client.on('interactionCreate', async interaction => {
     }
 
     if (interaction.isModalSubmit() && interaction.customId === 'rr_modal_submit') {
-        await interaction.deferReply({ ephemeral: true });
+        await interaction.deferReply({ ephemeral: false }); // <-- Poprawka: wiadomość widoczna publicznie
         const stakeStr = interaction.fields.getTextInputValue('rr_stake_input');
         const stake = parseInt(stakeStr);
 
@@ -2116,7 +2116,7 @@ client.on('interactionCreate', async interaction => {
             user.consecutiveWins = 0;
             await user.save();
             await TransactionHistoryModel.create({ userId: interaction.user.id, type: 'casino_roulette', amount: -stake, details: 'Przegrana (Strzał)' });
-            return interaction.editReply({ content: `💥 **BAM!** Trafiłeś na kulę w komorze ${bullet}. Straciłeś **${stake} PJN-Coins**. (Stan portfela: **${user.balance}**)` });
+            return interaction.editReply({ content: `🎯 **Rosyjska Ruletka:** <@${interaction.user.id}> pociągnął za spust ze stawką **${stake} PJN-Coins**...\n💥 **BAM!** Trafiłeś na kulę w komorze ${bullet}. Straciłeś monety! (Stan portfela: **${user.balance}**)` });
         } else {
             const winAmount = stake * 2;
             user.balance += winAmount;
@@ -2124,7 +2124,7 @@ client.on('interactionCreate', async interaction => {
             user.consecutiveLosses = 0;
             await user.save();
             await TransactionHistoryModel.create({ userId: interaction.user.id, type: 'casino_roulette', amount: stake, details: 'Wygrana (Przeżył)' });
-            return interaction.editReply({ content: `✨ **Klik!** Pusto w komorze ${choice}! Przeżyłeś i wygrywasz **${winAmount} PJN-Coins**! (Stan portfela: **${user.balance}**)` });
+            return interaction.editReply({ content: `🎯 **Rosyjska Ruletka:** <@${interaction.user.id}> pociągnął za spust ze stawką **${stake} PJN-Coins**...\n✨ **Klik!** Pusto w komorze ${choice}! Przeżyłeś i wygrywasz **${winAmount} PJN-Coins**! (Stan portfela: **${user.balance}**)` });
         }
     }
 
@@ -2786,8 +2786,9 @@ client.on('interactionCreate', async interaction => {
 
             const randomQuiz = QUIZ_POOL[Math.floor(Math.random() * QUIZ_POOL.length)];
             
+            // Poprawka: ustawiono styl Secondary (szary) dla przycisków quizu, aby nie były zielone przed/po kliknięciu
             const buttons = [
-                { label: randomQuiz.correct, id: 'quiz_correct', style: ButtonStyle.Success },
+                { label: randomQuiz.correct, id: 'quiz_correct', style: ButtonStyle.Secondary },
                 { label: randomQuiz.wrong1, id: 'quiz_wrong_1', style: ButtonStyle.Secondary },
                 { label: randomQuiz.wrong2, id: 'quiz_wrong_2', style: ButtonStyle.Secondary }
             ].sort(() => Math.random() - 0.5);
@@ -3627,6 +3628,9 @@ client.on('interactionCreate', async interaction => {
         }
 
         if (commandName === 'slot') {
+            if (interaction.channelId !== '1534066347452141639') {
+                return interaction.reply({ content: '❌ Komendy `/slot` można używać wyłącznie na dedykowanym kanale slotów (<#1534066347452141639>)!', ephemeral: true });
+            }
             await interaction.deferReply();
             const stawka = interaction.options.getInteger('stawka', true);
             if (stawka <= 0) return interaction.editReply({ content: '❌ Stawka musi być > 0!' });
@@ -3685,6 +3689,9 @@ client.on('interactionCreate', async interaction => {
         }
 
         if (commandName === 'poker') {
+            if (interaction.channelId !== '1534060082084577350') {
+                return interaction.reply({ content: '❌ Komendy `/poker` można używać wyłącznie na dedykowanym kanale pokera (<#1534060082084577350>)!', ephemeral: true });
+            }
             await interaction.deferReply();
             const tryb = interaction.options.getString('tryb', true);
             const stawka = interaction.options.getInteger('stawka', true);
@@ -4079,14 +4086,18 @@ client.on('messageCreate', async message => {
         }
     }
 
-    // === OBSŁUGA ROZGRYWKI W WISIELECA NA CZACIE ===
+    // === POPRAWKA: OBSŁUGA ROZGRYWKI W WISIELECA NA CZACIE ===
     if (message.channel.id === '1549791621942485120') {
         const activeHangman = await HangmanModel.findOne({ status: 'active' });
         
         if (activeHangman) {
             const guess = message.content.trim().toLowerCase();
             if (guess.length > 0) {
+                // Bezpieczne skasowanie wiadomości gracza
                 await message.delete().catch(() => {});
+
+                // Pobranie wiadomości gry z kanału, aby ją na bieżąco edytować
+                const gameMessage = await message.channel.messages.fetch(activeHangman.messageId).catch(() => null);
 
                 if (guess === activeHangman.word) {
                     activeHangman.status = 'won';
@@ -4097,7 +4108,10 @@ client.on('messageCreate', async message => {
                     user.balance += 150;
                     await user.save();
 
-                    return message.channel.send(`🎉 **Niesamowite! Gratulacje <@${message.author.id}>!** Odgadłeś całe słowo \`${activeHangman.word}\` za jednym razem i wygrywasz **150 PJN-Coins**!`);
+                    const winText = `🎉 **Słowo odgadnięte! Gratulacje <@${message.author.id}>!**\nOdgadłeś całe słowo: \`📍 ${activeHangman.word}\` i wygrywasz **150 PJN-Coins**! 💰`;
+                    if (gameMessage) await gameMessage.edit({ content: winText }).catch(() => {});
+                    else await message.channel.send({ content: winText });
+                    return;
                 }
 
                 if (guess.length === 1) {
@@ -4111,7 +4125,10 @@ client.on('messageCreate', async message => {
                         if (activeHangman.mistakes >= activeHangman.maxMistakes) {
                             activeHangman.status = 'failed';
                             await activeHangman.save();
-                            return message.channel.send(`💀 **Koniec gry!** Wykorzystano wszystkie błędy. Szukane słowo to: \`${activeHangman.word}\``);
+                            const failText = `💀 **Koniec gry! Przegrana.** Wykorzystano wszystkie błędy (6/6).\nSzukane słowo to: \`${activeHangman.word}\``;
+                            if (gameMessage) await gameMessage.edit({ content: failText }).catch(() => {});
+                            else await message.channel.send({ content: failText });
+                            return;
                         }
 
                         const wordLetters = activeHangman.word.split('');
@@ -4126,13 +4143,22 @@ client.on('messageCreate', async message => {
                             user.balance += 150;
                             await user.save();
 
-                            return message.channel.send(`🎉 **Gratulacje <@${message.author.id}>!** Odgadłeś słowo \`${activeHangman.word}\` i wygrywasz **150 PJN-Coins**!`);
+                            const winText2 = `🎉 **Gratulacje <@${message.author.id}>!** Odgadłeś całe słowo \`${activeHangman.word}\` i wygrywasz **150 PJN-Coins**! 💰`;
+                            if (gameMessage) await gameMessage.edit({ content: winText2 }).catch(() => {});
+                            else await message.channel.send({ content: winText2 });
+                            return;
                         }
 
                         await activeHangman.save();
 
                         let displayedWord = activeHangman.word.split('').map(l => activeHangman.guessed.includes(l) ? l : '_').join(' ');
-                        return message.channel.send(`🎮 Gra w Wisielca (Gracz: <@${message.author.id}>)\n📁 **Kategoria:** \`${activeHangman.category}\`\n💡 **Podpowiedź:** *${activeHangman.hint}*\n\nSłowo: \`${displayedWord}\`\nUżyte litery: ${activeHangman.guessed.join(', ')}\nBłędy: ${activeHangman.mistakes}/${activeHangman.maxMistakes}`);
+                        const progressText = `🎮 **Gra w Wisielca (Ostatni ruch: <@${message.author.id}> — litera: \`${guess}\`)**\n📁 **Kategoria:** \`${activeHangman.category}\`\n💡 **Podpowiedź:** *${activeHangman.hint}*\n\nSłowo: \`${displayedWord}\`\nUżyte litery: ${activeHangman.guessed.join(', ')}\nBłędy: ${activeHangman.mistakes}/${activeHangman.maxMistakes}`;
+                        
+                        if (gameMessage) {
+                            await gameMessage.edit({ content: progressText }).catch(() => {});
+                        } else {
+                            await message.channel.send({ content: progressText });
+                        }
                     }
                 }
             }
