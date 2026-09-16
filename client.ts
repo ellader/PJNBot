@@ -217,7 +217,6 @@ const ID_RANGI_NEGATYWNY_TRADER = "1540235296665239624";
 
 const ID_KANAL_SKLEPU = "1545690716309553212";
 const ID_ROLI_VIP = "1545691786289221632";
-const ADMIN_LOG_CHANNEL_ID = "1532399010785263799"; 
 
 const ID_KANAL_FORTNITE = '1546405381717233704';
 const ID_KANAL_RANKING_FORTNITE = '1546593557526216816';
@@ -1151,7 +1150,7 @@ async function updateTraderRoles(member: any, reputation: number) {
     }
 }
 
-// Konsolowe powiadomienie o rzadkim osiągnięciu (w stylu Xbox/PlayStation Trofeum)
+// Konsolowe powiadomienie (Xbox / PlayStation Style) wysyłane na podany kanał OGŁOSZENIA
 async function checkAndAwardBadges(user: any, memberOrUser: any, guild?: any) {
     const newBadges: string[] = [];
     const addBadge = (badgeName: string) => {
@@ -1224,21 +1223,22 @@ async function checkAndAwardBadges(user: any, memberOrUser: any, guild?: any) {
             }).catch(() => {});
         } catch (e) {}
 
-        // Konsolowe powiadomienie (Xbox / PlayStation Style) wysyłane na kanał ogłoszeń
+        // Zawsze wywołuj powiadomienie konsolowe na kanale OGŁOSZENIA dla każdej nowo zdobytej odznaki, 
+        // lub wymuś dla odznak zawierających "rzadka", "milioner", itp.
         if (targetGuild) {
             const rareKeywords = ['rzadka', 'epicka', 'elitarna', 'milioner', 'ryzykant', 'weteran', 'kolekcjoner', 'legenda'];
-            const hasRareBadge = newBadges.some(b => rareKeywords.some(kw => b.toLowerCase().includes(kw)));
+            const hasRareBadge = newBadges.some(b => rareKeywords.some(kw => b.toLowerCase().includes(kw))) || newBadges.length > 0;
 
             if (hasRareBadge) {
                 try {
                     const announceChannel = await targetGuild.channels.fetch(ANNOUNCE_CHANNEL_ID).catch(() => null) as TextChannel;
                     if (announceChannel) {
                         const consoleEmbed = new EmbedBuilder()
-                            .setColor(0x107C10) // Zielony Xbox / klasyczny styl trofeum
+                            .setColor(0x107C10) // Zielony konsolowy (Xbox/PlayStation)
                             .setTitle('🏆 OSIĄGNIĘCIE ODBLOKOWANE!')
                             .setThumbnail(targetUserObj.displayAvatarURL())
                             .setDescription(
-                                `🎮 **TROFEUM / OSIĄGNIĘCIE RZADKIE**\n\n` +
+                                `🎮 **TROFEUM / OSIĄGNIĘCIE ODBLOKOWANE**\n\n` +
                                 `Gracz <@${user.userId}> właśnie zdobył unikalne osiągnięcie na serwerze:\n\n` +
                                 newBadges.map(b => `> ✨ **${b}**`).join('\n') + `\n\n` +
                                 `*Zdobądź swój własny tytuł, budując aktywność i walcząc o odznaki w grach!*`
@@ -3316,7 +3316,7 @@ client.on('interactionCreate', async interaction => {
                     const memberObj = await interaction.guild?.members.fetch(targetUser.id).catch(() => null);
                     await checkAndAwardBadges(user, memberObj || targetUser, interaction.guild);
 
-                    await interaction.editReply({ content: `✅ Przyznano odznakę i wysłano konsolowe powiadomienie na ogłoszenia!` });
+                    await interaction.editReply({ content: `✅ Przyznano odznakę i wysłano powiadomienie na ogłoszenia!` });
                 } else {
                     await interaction.editReply({ content: `⚠️ Użytkownik ma już tę odznakę.` });
                 }
@@ -3564,7 +3564,7 @@ client.on('messageCreate', async message => {
                 return;
             }
             if (mentionedUser.id === message.author.id) {
-                await message.reply({ content: '❌ Не możesz przyznać reputacji samemu sobie!' }).catch(() => {});
+                await message.reply({ content: '❌ Nie możesz przyznać reputacji samemu sobie!' }).catch(() => {});
                 return;
             }
 
