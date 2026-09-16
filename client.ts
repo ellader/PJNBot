@@ -232,9 +232,9 @@ const parser = new Parser();
 
 const ANNOUNCE_CHANNEL_ID = '1532399010785263799';
 const ID_KANALU_CYTATY = '1549709251365183558'; 
-const ID_KANALU_MEMOW = '1534833819599769640'; // Zaktualizowane ID kanału memów z podwójnymi wątkami
+const ID_KANALU_MEMOW = '1534833819599769640'; 
 const ID_KANALU_SZUKAM_DO_GRY = '1532449084559069214'; 
-const ID_KANALU_POKAZ_SIEBIE = '1536365057997283469'; // ID kanału "Pokaż siebie"
+const ID_KANALU_POKAZ_SIEBIE = '1536365057997283469'; 
 const CHANNEL_POWITANIA = "witamy";
 const ID_KANALU_DUSZKI = "1532977723843285112"; 
 const ID_RANGI_DUSZKOWIEC = "1532978703842283551";
@@ -1218,8 +1218,8 @@ async function setupLfgChannelInstruction() {
                 'Masz dosyć grania w pojedynkę? Chcesz znaleźć zgrany skład do ulubionej gry? Skorzystaj z naszego automatycznego systemu LFG!\n\n' +
                 '🛠️ **Jak stworzyć ogłoszenie o grze?**\n' +
                 `1. Wpisz na tym kanale (<#${ID_KANALU_SZUKAM_DO_GRY}>) komendę: \`/szukam\`\n` +
-                '2. Wybierz grę z listy (Fortnite, CS2, Minecraft, GTA V, Valorant lub League of Legends).\n` +
-                '3. Podaj maksymalną liczbę osób w drużynie oraz dodaj opcjonalny opis (np. ranga, mikrofon, styl gry).\n` +
+                '2. Wybierz grę z listy (Fortnite, CS2, Minecraft, GTA V, Valorant lub League of Legends).\n' +
+                '3. Podaj maksymalną liczbę osób w drużynie oraz dodaj opcjonalny opis (np. ranga, mikrofon, styl gry).\n' +
                 '4. Bot wygeneruje interaktywne ogłoszenie wraz z pingiem odpowiedniej roli!\n\n' +
                 '👥 **Jak dołączyć do ekipy?**\n' +
                 '• Kliknij zielony przycisk **"Dołącz do ekipy"** pod wybranym ogłoszeniem.\n' +
@@ -3967,7 +3967,6 @@ client.on('messageCreate', async message => {
     // === AUTOMATYCZNE TWORZENIE WĄTKÓW DLA ZDJĘĆ / FILMÓW ===
     const targetMediaChannels = [ID_KANALU_POKAZ_SIEBIE, ID_KANALU_MEMOW];
     if (targetMediaChannels.includes(message.channel.id)) {
-        // Sprawdzamy czy wiadomość ma załączniki (zdjęcia, filmy) lub osadzone media (np. linki do grafik/filmów)
         const hasAttachments = message.attachments.size > 0;
         const hasEmbedsWithMedia = message.embeds.some(e => e.image || e.video || e.thumbnail);
 
@@ -3975,8 +3974,8 @@ client.on('messageCreate', async message => {
             try {
                 const threadName = `Dyskusja: ${message.author.username}`;
                 await message.startThread({
-                    name: threadName.substring(0, 100), // Nazwa wątku do 100 znaków limitu Discorda
-                    autoArchiveDuration: 1440, // Automatyczna archiwizacja po 24h bezczynności
+                    name: threadName.substring(0, 100),
+                    autoArchiveDuration: 1440,
                     reason: 'Automatyczny wątek dyskusyjny pod multimediami'
                 });
             } catch (e) {
@@ -4064,7 +4063,6 @@ client.on('messageCreate', async message => {
             if (guess.length > 0) {
                 await message.delete().catch(() => {});
 
-                // Jeśli gracz wpisał całe słowo od razu
                 if (guess === activeHangman.word) {
                     activeHangman.status = 'won';
                     await activeHangman.save();
@@ -4077,7 +4075,6 @@ client.on('messageCreate', async message => {
                     return message.channel.send(`🎉 **Niesamowite! Gratulacje <@${message.author.id}>!** Odgadłeś całe słowo \`${activeHangman.word}\` za jednym razem i wygrywasz **150 PJN-Coins**!`);
                 }
 
-                // Jeśli gracz wpisał pojedynczą literę
                 if (guess.length === 1) {
                     if (!activeHangman.guessed.includes(guess)) {
                         activeHangman.guessed.push(guess);
@@ -4086,14 +4083,12 @@ client.on('messageCreate', async message => {
                             activeHangman.mistakes += 1;
                         }
 
-                        // Sprawdzenie przegranej
                         if (activeHangman.mistakes >= activeHangman.maxMistakes) {
                             activeHangman.status = 'failed';
                             await activeHangman.save();
                             return message.channel.send(`💀 **Koniec gry!** Wykorzystano wszystkie błędy. Szukane słowo to: \`${activeHangman.word}\``);
                         }
 
-                        // Sprawdzenie wygranej literka po literce
                         const wordLetters = activeHangman.word.split('');
                         const won = wordLetters.every(letter => activeHangman.guessed.includes(letter));
 
@@ -4111,7 +4106,6 @@ client.on('messageCreate', async message => {
 
                         await activeHangman.save();
 
-                        // Wyświetlenie aktualnego stanu gry z podpowiedzią
                         let displayedWord = activeHangman.word.split('').map(l => activeHangman.guessed.includes(l) ? l : '_').join(' ');
                         return message.channel.send(`🎮 Gra w Wisielca (Gracz: <@${message.author.id}>)\n📁 **Kategoria:** \`${activeHangman.category}\`\n💡 **Podpowiedź:** *${activeHangman.hint}*\n\nSłowo: \`${displayedWord}\`\nUżyte litery: ${activeHangman.guessed.join(', ')}\nBłędy: ${activeHangman.mistakes}/${activeHangman.maxMistakes}`);
                     }
