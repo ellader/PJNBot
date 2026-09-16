@@ -232,8 +232,9 @@ const parser = new Parser();
 
 const ANNOUNCE_CHANNEL_ID = '1532399010785263799';
 const ID_KANALU_CYTATY = '1549709251365183558'; 
-const ID_KANALU_MEMOW = '1534833757335326810';
+const ID_KANALU_MEMOW = '1534833819599769640'; // Zaktualizowane ID kanału memów z podwójnymi wątkami
 const ID_KANALU_SZUKAM_DO_GRY = '1532449084559069214'; 
+const ID_KANALU_POKAZ_SIEBIE = '1536365057997283469'; // ID kanału "Pokaż siebie"
 const CHANNEL_POWITANIA = "witamy";
 const ID_KANALU_DUSZKI = "1532977723843285112"; 
 const ID_RANGI_DUSZKOWIEC = "1532978703842283551";
@@ -1217,8 +1218,8 @@ async function setupLfgChannelInstruction() {
                 'Masz dosyć grania w pojedynkę? Chcesz znaleźć zgrany skład do ulubionej gry? Skorzystaj z naszego automatycznego systemu LFG!\n\n' +
                 '🛠️ **Jak stworzyć ogłoszenie o grze?**\n' +
                 `1. Wpisz na tym kanale (<#${ID_KANALU_SZUKAM_DO_GRY}>) komendę: \`/szukam\`\n` +
-                '2. Wybierz grę z listy (Fortnite, CS2, Minecraft, GTA V, Valorant lub League of Legends).\n' +
-                '3. Podaj maksymalną liczbę osób w drużynie oraz dodaj opcjonalny opis (np. ranga, mikrofon, styl gry).\n' +
+                '2. Wybierz grę z listy (Fortnite, CS2, Minecraft, GTA V, Valorant lub League of Legends).\n` +
+                '3. Podaj maksymalną liczbę osób w drużynie oraz dodaj opcjonalny opis (np. ranga, mikrofon, styl gry).\n` +
                 '4. Bot wygeneruje interaktywne ogłoszenie wraz z pingiem odpowiedniej roli!\n\n' +
                 '👥 **Jak dołączyć do ekipy?**\n' +
                 '• Kliknij zielony przycisk **"Dołącz do ekipy"** pod wybranym ogłoszeniem.\n' +
@@ -1238,7 +1239,7 @@ async function setupLfgChannelInstruction() {
 
 async function setupShowcaseChannelInstruction() {
     try {
-        const channel = await client.channels.fetch('1536365057997283469').catch(() => null) as TextChannel;
+        const channel = await client.channels.fetch(ID_KANALU_POKAZ_SIEBIE).catch(() => null) as TextChannel;
         if (!channel) return;
 
         const messages = await channel.messages.fetch({ limit: 100 }).catch(() => null);
@@ -1258,7 +1259,9 @@ async function setupShowcaseChannelInstruction() {
                 '✨ **Co możesz tutaj wrzucić?**\n' +
                 '• Swoje zdjęcie (lub zdjęcie pasji/zwierzaka, jeśli wolisz zachować prywatność) 📷\n' +
                 '• Kilka słów o sobie: czym się interesujesz, jakiej słuchasz muzyki, w co grasz? 🎧🎮\n' +
-                '• Pozdrowienia dla całej ekipy PJN! 👋'
+                '• Pozdrowienia dla całej ekipy PJN! 👋\n\n' +
+                '💬 **Wątki dyskusyjne:**\n' +
+                'Pod każdym Twoim zdjęciem bot **automatycznie utworzy osobny wątek do dyskusji**, dzięki czemu rozmowy nie zaspamują głównej tablicy!'
             )
             .setImage(LIVE_IMAGE_URL)
             .setTimestamp()
@@ -3960,6 +3963,27 @@ async function updateLFGMessage(message: any, lfgDoc: any) {
 
 client.on('messageCreate', async message => {
     if (message.author.bot || !message.guild) return;
+
+    // === AUTOMATYCZNE TWORZENIE WĄTKÓW DLA ZDJĘĆ / FILMÓW ===
+    const targetMediaChannels = [ID_KANALU_POKAZ_SIEBIE, ID_KANALU_MEMOW];
+    if (targetMediaChannels.includes(message.channel.id)) {
+        // Sprawdzamy czy wiadomość ma załączniki (zdjęcia, filmy) lub osadzone media (np. linki do grafik/filmów)
+        const hasAttachments = message.attachments.size > 0;
+        const hasEmbedsWithMedia = message.embeds.some(e => e.image || e.video || e.thumbnail);
+
+        if (hasAttachments || hasEmbedsWithMedia) {
+            try {
+                const threadName = `Dyskusja: ${message.author.username}`;
+                await message.startThread({
+                    name: threadName.substring(0, 100), // Nazwa wątku do 100 znaków limitu Discorda
+                    autoArchiveDuration: 1440, // Automatyczna archiwizacja po 24h bezczynności
+                    reason: 'Automatyczny wątek dyskusyjny pod multimediami'
+                });
+            } catch (e) {
+                console.error('Błąd podczas automatycznego tworzenia wątku:', e);
+            }
+        }
+    }
 
     if (message.channel.id === '1532449084559069214') {
         if (!message.content.startsWith('/szukam')) {
