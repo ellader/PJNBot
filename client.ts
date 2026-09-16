@@ -798,14 +798,15 @@ function createOgłoszenieEmbed() {
         .setFooter({ text: 'PJN System Ogłoszeń' });
 }
 
-function createBadgesInfoEmbed() {
-    return new EmbedBuilder()
+// BEZPIECZNE ROZDZIELENIE NA DWA EMBEDY DLA UNIKNIĘCIA LIMITÓW DISCORDA
+function createBadgesInfoEmbeds() {
+    const embed1 = new EmbedBuilder()
         .setColor(0x9B59B6)
-        .setTitle('🛡️ Centrum Odznak i Osiągnięć PJN')
+        .setTitle('🛡️ Centrum Odznak i Osiągnięć PJN (Część 1)')
         .setDescription(
-            'Witaj w oficjalnym systemie osiągnięć serwera! Będąc aktywnym, rozmawiając, grając w kasynie czy spędzając z nami czas, automatycznie zdobywasz unikalne odznaki, które pojawiają się w Twoim profilu.\n\n' +
+            'Witaj w oficjalnym systemie osiągnięć serwera! Będąc aktywnym, rozmawiając, grając w kasynie czy spędzając z nami czas, automatycznie zdobywasz unikalne odznaki w swoim profilu (`/profil`).\n\n' +
             '🔍 **Jak sprawdzić swoje odznaki?**\n' +
-            'Wpisz w dowolnym kanale komendę: `/odznaki` (Możesz też sprawdzyć profil kogoś innego, wybierając opcję `@użytkownik`).'
+            'Wpisz w dowolnym kanale komendę: `/odznaki`.'
         )
         .addFields(
             {
@@ -814,51 +815,56 @@ function createBadgesInfoEmbed() {
                     '• 💬 **Początkujący Gadulec** — 200 wiadomości\n' +
                     '• 📜 **Kronikarz Chatu** — 1 000 wiadomości\n' +
                     '• 💬 **Król Wiadomości** — 5 000 wiadomości\n' +
-                    '• 🧠 **Wygadany Mędrzec** — 25 000 wiadomości *(Hardcore)*\n' +
-                    '• 😂 **Emotikonowy Ekspresja** — 30 customowych emotek\n' +
-                    '• 🌙 **Nocny Marek** — 50 wiadomości w nocy (00:00–04:00)\n' +
-                    '• 🎙️ **Stały Bywalec Mikrofonu** — 30h na kanale głosowym\n' +
-                    '• 🎧 **Audiofil** — 100h na kanale głosowym\n' +
-                    '• 🎙️ **Duch Kanałów Głosowych** — 500h na kanale głosowym *(Elitarna)*',
+                    '• 🧠 **Wygadany Mędrzec** — 25 000 wiadomości\n' +
+                    '• 😂 **Emotikonowy Ekspresja** — 30 emotek\n' +
+                    '• 🌙 **Nocny Marek** — 50 wiadomości w nocy\n' +
+                    '• 🎙️ **Stały Bywalec Mikrofonu** — 30h na głosie\n' +
+                    '• 🎧 **Audiofil** — 100h na głosie\n' +
+                    '• 🎙️ **Duch Kanałów Głosowych** — 500h na głosie (Elitarna)',
                 inline: false
             },
             {
                 name: '⭐ Poziomy i Doświadczenie',
                 value: 
-                    '• ⭐ **Awansowy Ekspert** — Wbicie 10 poziomu\n' +
-                    '• 🌟 **Mistrz Poziomów** — Wbicie 50 poziomu\n' +
-                    '• 👑 **Legenda Serwera** — Wbicie 100 poziomu',
-                inline: false
-            },
-            {
-                name: '💰 Gospodarka, Kasyno, Sklep i Społeczność',
-                value: 
-                    '• 💰 **Kapitalista** — 5 000 PJN-Coins\n' +
-                    '• 💎 **Magnat Finansowy** — 10 000 PJN-Coins\n' +
-                    '• 🏦 **Milioner** — 100 000 PJN-Coins\n' +
-                    '• 🏛️ **Miliarder PJN** — 1 000 000 PJN-Coins *(Elitarna)*\n' +
-                    '• 💸 **Hojny Darczyńca** — 5 000 przekazanych w przelewach\n' +
-                    '• 🤝 **Filantrop Społeczności** — 50 000 przekazanych coinsów *(Elitarna)*\n' +
-                    '• 🎲 **Nałogowy Graczyk** — 20 gier w kasynie\n' +
-                    '• 🎰 **Ryzykant** — 100 gier w kasynie\n' +
-                    '• 🎰 **Hazardowy Tycoon** — 500 gier w kasynie *(Hardcore)*\n' +
-                    '• 🍀 **Ulubieniec Fortuna** — 3 wygrane z rzędu w kasynie\n' +
-                    '• 🔥 **Niepowstrzymana Seria** — 20 wygranych z rzędu w kasynie *(Epicka)*\n' +
-                    '• 🎯 **Czarna Seria** — 5 przegranych z rzędu w kasynie\n' +
-                    '• 🏷️ **Klient sklepu PJN** — Zakup w oficjalnym sklepie serwera\n' +
-                    '• 🎖️ **Zaawansowany klient** — Zakup zaawansowanego przedmiotu w sklepie\n' +
-                    '• 💡 **Filozof** — Dodanie 5 cytatów\n' +
-                    '• 🤝 **Pomocna Dłoń** — 10 akcji pomocy\n' +
-                    '• ⏳ **Weteran Półrocza** — 6 miesięcy stażu na serwerze\n' +
-                    '• ⏳ **Weteran** — 1 rok stażu na serwerze\n' +
-                    '• ⌛ **Długowieczny Patriarcha** — 3 lata stażu na serwerze *(Elitarna)*\n' +
-                    '• 🛡️ **Filar Społeczności** — Posiadanie rangi Administracji/Streamera\n' +
-                    '• 🎟️ **Kolekcjoner** — Zdobycie wszystkich pozostałych odznak',
+                    '• ⭐ **Awansowy Ekspert** — 10 poziom\n' +
+                    '• 🌟 **Mistrz Poziomów** — 50 poziom (Rzadka)\n' +
+                    '• 👑 **Legenda Serwera** — 100 poziom (Elitarna)',
                 inline: false
             }
         )
+        .setTimestamp();
+
+    const embed2 = new EmbedBuilder()
+        .setColor(0x9B59B6)
+        .setTitle('🛡️ Centrum Odznak i Osiągnięć PJN (Część 2)')
+        .addFields(
+            {
+                name: '💰 Gospodarka, Kasyno i Społeczność',
+                value: 
+                    '• 💰 **Kapitalista** — 5 000 Coinsów\n' +
+                    '• 💎 **Magnat Finansowy** — 10 000 Coinsów\n' +
+                    '• 🏦 **Milioner** — 100 000 Coinsów (Rzadka)\n' +
+                    '• 🏛️ **Miliarder PJN** — 1 000 000 Coinsów (Elitarna)\n' +
+                    '• 💸 **Hojny Darczyńca** — 5 000 w przelewach\n' +
+                    '• 🤝 **Filantrop Społeczności** — 50 000 w przelewach\n' +
+                    '• 🎲 **Nałogowy Graczyk** — 20 gier w kasynie\n' +
+                    '• 🎰 **Ryzykant** — 100 gier (Rzadka)\n' +
+                    '• 🎰 **Hazardowy Tycoon** — 500 gier\n' +
+                    '• 🍀 **Ulubieniec Fortuna** — 3 wygrane z rzędu\n' +
+                    '• 🔥 **Niepowstrzymana Seria** — 20 wygranych\n' +
+                    '• 🎯 **Czarna Seria** — 5 przegranych\n' +
+                    '• 🏷️ **Klient sklepu PJN** / 🎖️ **Zaawansowany klient**\n' +
+                    '• 💡 **Filozof** (5 cytatów) • 🤝 **Pomocna Dłoń** (10 akcji)\n' +
+                    '• ⏳ **Weteran Półrocza** / ⏳ **Weteran** / ⌛ **Patriarcha**\n' +
+                    '• 🛡️ **Filar Społeczności** • 🎟️ **Kolekcjoner (Epicka)**',
+                inline: false
+            }
+        )
+        .setImage(LIVE_IMAGE_URL)
         .setTimestamp()
         .setFooter({ text: 'PJN System Odznak • Automatycznie aktualizowany' });
+
+    return [embed1, embed2];
 }
 
 function createTicketPanelEmbed() {
@@ -1178,7 +1184,6 @@ async function updateTraderRoles(member: any, reputation: number) {
     }
 }
 
-// === UNIWERSALNA FUNKCJA SPRAWDZAJĄCA I PRZYZNAWAJĄCA ODZNAKI ===
 async function checkAndAwardBadges(user: any, memberOrUser: any, guild?: any) {
     const newBadges: string[] = [];
     const addBadge = (badgeName: string) => {
@@ -1498,8 +1503,8 @@ async function startBadgesInfoUpdater() {
             const oldMessage = await channel.messages.fetch(config.messageId).catch(() => null);
             if (oldMessage) await oldMessage.delete().catch(() => {});
 
-            const embedData = createBadgesInfoEmbed();
-            const newMessage = await channel.send({ embeds: [embedData] });
+            const embedsList = createBadgesInfoEmbeds();
+            const newMessage = await channel.send({ embeds: embedsList });
 
             config.messageId = newMessage.id;
             await config.save();
@@ -2459,7 +2464,6 @@ client.on('interactionCreate', async interaction => {
             const rankDetails = await getUserLevelRankDetails(targetUser.id);
             const userBadges = user.badges || [];
 
-            // POPRAWKA: Formatowanie odznak w pionową listę z kropkami zamiast jednej linii
             const catChat = userBadges.filter(b => b.includes('Gadulec') || b.includes('Kronikarz') || b.includes('Król Wiadomości') || b.includes('Wygadany Mędrzec') || b.includes('Ekspresja') || b.includes('Nocny Marek') || b.includes('Mikrofonu') || b.includes('Audiofil') || b.includes('Duch Kanałów'));
             const catLevels = userBadges.filter(b => b.includes('Awansowy Ekspert') || b.includes('Mistrz Poziomów') || b.includes('Legenda Serwera'));
             const catEco = userBadges.filter(b => b.includes('Kapitalista') || b.includes('Magnat') || b.includes('Milioner') || b.includes('Miliarder') || b.includes('Hojny Darczyńca') || b.includes('Filantrop') || b.includes('Klient sklepu') || b.includes('Zaawansowany klient'));
@@ -2899,11 +2903,22 @@ client.on('interactionCreate', async interaction => {
         if (commandName === 'ustaw-odznaki') {
             if (!isAuthorized(interaction.user.id)) return interaction.reply({ content: '❌ Brak uprawnień!', ephemeral: true });
             await interaction.deferReply({ ephemeral: true });
-            const embedData = createBadgesInfoEmbed();
-            const sentMessage = await interaction.channel?.send({ embeds: [embedData] });
-            if (sentMessage) {
-                await ConfigModel.findOneAndUpdate({ key: 'odznaki_info_msg' }, { channelId: interaction.channelId, messageId: sentMessage.id }, { upsert: true, new: true });
-                await interaction.editReply({ content: `✅ Ustawiono ten kanał jako centrum odznak i wysłano listę.` });
+            try {
+                const embedsList = createBadgesInfoEmbeds();
+                const sentMessage = await interaction.channel?.send({ embeds: embedsList });
+                if (sentMessage) {
+                    await ConfigModel.findOneAndUpdate(
+                        { key: 'odznaki_info_msg' }, 
+                        { channelId: interaction.channelId, messageId: sentMessage.id }, 
+                        { upsert: true, new: true }
+                    );
+                    await interaction.editReply({ content: `✅ Ustawiono ten kanał jako centrum odznak i pomyślnie wysłano listę.` });
+                } else {
+                    await interaction.editReply({ content: `❌ Nie udało się wysłać wiadomości na ten kanał.` });
+                }
+            } catch (err) {
+                console.error('Błąd w /ustaw-odznaki:', err);
+                await interaction.editReply({ content: `❌ Wystąpił błąd podczas wysyłania listy odznak.` });
             }
             return;
         }
