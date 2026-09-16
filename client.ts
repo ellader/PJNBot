@@ -148,7 +148,8 @@ const client = new Client({
         GatewayIntentBits.MessageContent,
         GatewayIntentBits.GuildVoiceStates,
         GatewayIntentBits.GuildMembers,
-        GatewayIntentBits.GuildModeration
+        GatewayIntentBits.GuildModeration,
+        GatewayIntentBits.GuildPresences
     ]
 });
 
@@ -205,6 +206,13 @@ const ID_KANAL_AWANSOW = '1546407009262370866';
 const ID_KANAL_AKTUALIZACJI_FORTNITE = '1547923010823004180';
 const ID_RANGI_AKTUALIZACJE_FORTNITE = '1547922790152282112';
 
+// === ID KANAŁÓW DYNAMICZNYCH STATYSTYK ===
+const STATS_CHANNELS = {
+    ONLINE: '1532336242086117498',
+    FORTNITE: '1532336416074371102',
+    USERS: '1533839018289266718'
+};
+
 const ID_KANAL_RANG = "1532397673842217010";
 const ROLE_BUTTONS_MAP: { [key: string]: { roleId: string, label: string, emoji: string } } = {
     'role_bezrobotny': { roleId: '1532400774015881246', label: 'Bezrobotny', emoji: '😜' },
@@ -255,6 +263,48 @@ async function seedQuotesIfNeeded() {
     } catch (e) {
         console.error('Błąd inicjalizacji cytatów:', e);
     }
+}
+
+// === FUNKCJA AKTUALIZACJI DYNAMICZNYCH STATYSTYK SERWERA ===
+async function updateServerStats(guild: any) {
+    try {
+        await guild.members.fetch(); // Pobranie pełnej pamięci podręcznej członków
+
+        // 1. Liczba osób online (status innej niż offline)
+        const onlineCount = guild.members.cache.filter((m: any) => m.presence && m.presence.status !== 'offline').size;
+        const onlineChannel = guild.channels.cache.get(STATS_CHANNELS.ONLINE);
+        if (onlineChannel && onlineChannel.isVoiceBased()) {
+            await onlineChannel.setName(`🟢 Online: ${onlineCount}`).catch(() => {});
+        }
+
+        // 2. Liczba graczy Fortnite (osoby grające w grę zawierającą "fortnite" w aktywnościach)
+        const fnCount = guild.members.cache.filter((m: any) => {
+            if (!m.presence || !m.presence.activities) return false;
+            return m.presence.activities.some((act: any) => act.name && act.name.toLowerCase().includes('fortnite'));
+        }).size;
+        const fnChannel = guild.channels.cache.get(STATS_CHANNELS.FORTNITE);
+        if (fnChannel && fnChannel.isVoiceBased()) {
+            await fnChannel.setName(`🎮 Gracze Fortnite: ${fnCount}`).catch(() => {});
+        }
+
+        // 3. Łączna liczba użytkowników PJN Users
+        const totalUsers = guild.memberCount;
+        const usersChannel = guild.channels.cache.get(STATS_CHANNELS.USERS);
+        if (usersChannel && usersChannel.isVoiceBased()) {
+            await usersChannel.setName(`👥 PJN Users: ${totalUsers}`).catch(() => {});
+        }
+    } catch (err) {
+        console.error('Błąd podczas aktualizacji dynamicznych statystyk:', err);
+    }
+}
+
+function startServerStatsCron() {
+    // Aktualizuj statystyki co 5 minut
+    setInterval(async () => {
+        for (const [_, guild] of client.guilds.cache) {
+            await updateServerStats(guild);
+        }
+    }, 5 * 60 * 1000);
 }
 
 async function sendQuoteToChannel(channelId: string) {
@@ -399,7 +449,6 @@ async function checkFortniteServerStatus() {
 
         if (!data || !data.components) return;
 
-        // Szukamy komponentu odpowiedzialnego za Fortnite
         const fortniteComponent = data.components.find((comp: any) => 
             comp.name.toLowerCase().includes('fortnite') && (comp.group === true || comp.name.toLowerCase() === 'fortnite')
         );
@@ -413,7 +462,6 @@ async function checkFortniteServerStatus() {
 
         const rolePing = `<@&${ID_RANGI_AKTUALIZACJE_FORTNITE}>`;
 
-        // 1. Wykrywanie zaplanowanej aktualizacji / przerwy technicznej
         if (activeIncident && activeIncident.id !== lastFortniteIncidentId && activeIncident.status === 'scheduled') {
             lastFortniteIncidentId = activeIncident.id;
             const embed = new EmbedBuilder()
@@ -436,7 +484,6 @@ async function checkFortniteServerStatus() {
             });
         }
 
-        // 2. Wykrywanie zamknięcia serwerów (przejście w stan 'degraded', 'partial_outage' lub 'major_outage')
         if (currentStatusState !== 'operational' && currentStatusState !== 'none' && lastFortniteStatusState === 'operational') {
             const embed = new EmbedBuilder()
                 .setColor(0xE74C3C)
@@ -455,7 +502,6 @@ async function checkFortniteServerStatus() {
             });
         }
 
-        // 3. Wykrywanie ponownego otwarcia serwerów (powrót do 'operational')
         if (currentStatusState === 'operational' && lastFortniteStatusState && lastFortniteStatusState !== 'operational' && lastFortniteStatusState !== 'none') {
             const embed = new EmbedBuilder()
                 .setColor(0x2ECC71)
@@ -481,7 +527,6 @@ async function checkFortniteServerStatus() {
 }
 
 function startFortniteStatusCron() {
-    // Sprawdzaj status co 2 minuty
     cron.schedule('*/2 * * * *', async () => {
         await checkFortniteServerStatus();
     });
@@ -1606,13 +1651,14 @@ client.once('ready', async () => {
     await setupShowcaseChannelInstruction();
     await setupReputationChannelInstruction();
     await setupShopChannel();
-    await setupFortniteUpdateChannel(); // Inicjalizacja przypiętego panelu powiadomień Fortnite
+    await setupFortniteUpdateChannel(); 
     await cleanupOrphanedLfgVoices();
 
     const rest = new REST({ version: '10' }).setToken(token);
     try {
         for (const [_, guild] of client.guilds.cache) {
             await rest.put(Routes.applicationGuildCommands(client.user!.id, guild.id), { body: commands });
+            await updateServerStats(guild); // Odśwież statystyki od razu po starcie bota
         }
     } catch (error) {
         console.error('Błąd rejestracji:', error);
@@ -1628,7 +1674,8 @@ client.once('ready', async () => {
     startExpirationChecker();
     startDailyShopAutoPoster(); 
     startFortniteRankingCron();
-    startFortniteStatusCron(); // Uruchomienie monitora statusu serwerów Fortnite
+    startFortniteStatusCron(); 
+    startServerStatsCron(); // Uruchomienie automatycznych statystyk serwera
 });
 
 client.on('interactionCreate', async interaction => {
@@ -1707,7 +1754,7 @@ client.on('interactionCreate', async interaction => {
         if (interaction.customId.startsWith('fn_rank_')) {
             await interaction.deferUpdate();
             const parts = interaction.customId.split('_');
-            const type = parts[2]; // under lub over
+            const type = parts[2]; 
             const direction = parts[3];
             let currentPage = parseInt(parts[4]) || 0;
 
@@ -3162,7 +3209,6 @@ async function updateLFGMessage(message: any, lfgDoc: any) {
 client.on('messageCreate', async message => {
     if (message.author.bot || !message.guild) return;
 
-    // === MODYFIKACJA: Usuwanie wiadomości nienależących do komendy /szukam na kanale 1532449084559069214 ===
     if (message.channel.id === '1532449084559069214') {
         if (!message.content.startsWith('/szukam')) {
             await message.delete().catch(() => {});
