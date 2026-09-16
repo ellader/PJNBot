@@ -1,4 +1,4 @@
-{ 
+import { 
     Client, 
     GatewayIntentBits, 
     REST, 
@@ -12,7 +12,9 @@
     ButtonStyle,
     ChannelType,
     AuditLogEvent,
-    StringSelectMenuBuilder
+    StringSelectMenuBuilder,
+    ContextMenuCommandBuilder,
+    ApplicationCommandType
 } from 'discord.js';
 import mongoose from 'mongoose';
 import cron from 'node-cron';
@@ -77,6 +79,7 @@ const transactionHistorySchema = new mongoose.Schema({
 });
 const TransactionHistoryModel = mongoose.model('TransactionHistory', transactionHistorySchema);
 
+// Zaktualizowana lista odznak (w tym odznaki za poziomy)
 const AVAILABLE_BADGES = [
     '💬 **Początkujący Gadulec**',
     '📜 **Kronikarz Chatu**',
@@ -87,20 +90,23 @@ const AVAILABLE_BADGES = [
     '🎧 **Audiofil**',
     '💰 **Kapitalista**',
     '💎 **Magnat Finansowy**',
-    '🏦 **Milioner**',
+    '🏦 **Milioner (Rzadka)**',
     '💸 **Hojny Darczyńca**',
     '🎲 **Nałogowy Graczyk**',
-    '🎰 **Ryzykant**',
+    '🎰 **Ryzykant (Rzadka)**',
     '🍀 **Ulubieniec Fortuna**',
     '🎯 **Czarna Seria**',
     '🏷️ **Klient sklepu PJN**',
     '🎖️ **Zaawansowany klient sklepu PJN**',
     '💡 **Filozof**',
     '🤝 **Pomocna Dłoń**',
-    '⏳ **Weteran**',
+    '⏳ **Weteran (Rzadka)**',
     '⏳ **Weteran Półrocza**',
     '🛡️ **Filar Społeczności**',
-    '🎟️ **Kolekcjoner**'
+    '🎟️ **Kolekcjoner (Epicka)**',
+    '⭐ **Awansowy Ekspert (Lvl 10)**',
+    '🌟 **Mistrz Poziomów (Lvl 50, Rzadka)**',
+    '👑 **Legenda Serwera (Lvl 100, Elitarna)**'
 ];
 
 const configSchema = new mongoose.Schema({
@@ -137,6 +143,17 @@ const lfgSchema = new mongoose.Schema({
     createdAt: { type: Date, default: Date.now } 
 });
 const LFGModel = mongoose.model('LFG', lfgSchema);
+
+// Schemat bazy danych dla ankiet na żywo
+const pollSchema = new mongoose.Schema({
+    messageId: { type: String, required: true, unique: true },
+    channelId: { type: String, required: true },
+    question: { type: String, required: true },
+    options: { type: [String], required: true },
+    votes: { type: [[String]], required: true },
+    ended: { type: Boolean, default: false }
+});
+const PollModel = mongoose.model('Poll', pollSchema);
 
 const token = process.env.DISCORD_BOT_TOKEN;
 if (!token) throw new Error("Brak tokena Discord bota!");
@@ -179,7 +196,7 @@ const NOTIF_CONFIG = {
 const parser = new Parser();
 
 const ANNOUNCE_CHANNEL_ID = '1532399010785263799';
-const ID_KANALU_CYTATY = '1534780578912665653';
+const ID_KANALU_CYTATY = '1549709251365183558'; // Złote myśli PJN
 const ID_KANALU_MEMOW = '1534833757335326810';
 const ID_KANALU_SZUKAM_DO_GRY = '1532449084559069214'; 
 const CHANNEL_POWITANIA = "witamy";
@@ -188,7 +205,6 @@ const ID_RANGI_DUSZKOWIEC = "1532978703842283551";
 const ID_RANGI_MODERATOR = "1532321767857721344";
 const ID_RANGI_ADMIN = "1532324059470237857";
 
-// === NOWE KONFIGURACJE (WERYFIKACJA I TEMP-VOICE) ===
 const ID_KANAL_WERYFIKACJI = '1549658822136696832';
 const ID_RANGI_ZWERYFIKOWANY = '1549659335179763772';
 const ID_ROLI_MEZCZYZNA = '1532327338430431383';
@@ -270,7 +286,6 @@ async function seedQuotesIfNeeded() {
     }
 }
 
-// === FUNKCJA INICJALIZACJI WERYFIKACJI ===
 async function setupVerificationChannel() {
     try {
         const channel = await client.channels.fetch(ID_KANAL_WERYFIKACJI).catch(() => null) as TextChannel;
@@ -360,6 +375,7 @@ function startServerStatsCron() {
     }, 5 * 60 * 1000);
 }
 
+// Funkcja wysyłająca złote myśli na kanał ID: 1549709251365183558
 async function sendQuoteToChannel(channelId: string) {
     const channel = await client.channels.fetch(channelId).catch(() => null) as TextChannel;
     if (!channel) return false;
@@ -373,10 +389,10 @@ async function sendQuoteToChannel(channelId: string) {
 
     const embed = new EmbedBuilder()
         .setColor(0xE67E22)
-        .setTitle('💡 Życiowa myśl na dzisiejszy poranek')
+        .setTitle('✨ Złota myśl z serwera PJN')
         .setDescription(`> *„${quote.text}”*\n\n**— ${quote.author}**`)
         .setTimestamp()
-        .setFooter({ text: 'PJN Codzienna Inspiracja' });
+        .setFooter({ text: 'PJN Złote Myśli' });
 
     await channel.send({ 
         content: '@everyone', 
@@ -766,6 +782,36 @@ function createOgłoszenieEmbed() {
         .setFooter({ text: 'PJN System Ogłoszeń' });
 }
 
+// Komunikat na kanale ogłoszeń (ID: 1532399010785263799) dotyczący rzadkich odznak
+async function setupAnnouncementsAchievements() {
+    try {
+        const channel = await client.channels.fetch(ANNOUNCE_CHANNEL_ID).catch(() => null) as TextChannel;
+        if (!channel) return;
+
+        const embed = new EmbedBuilder()
+            .setColor(0x9B59B6)
+            .setTitle('🏆 Centrum Osiągnięć i Rzadkich Odznak PJN')
+            .setDescription(
+                'Zdobywaj unikalne odznaki za aktywność na czacie, głosie, kasynie i poziomach!\n\n' +
+                '⭐ **Rzadkie i prestiżowe odznaki:**\n' +
+                '• 🏦 **Milioner** — Osiągnięcie 100 000 PJN-Coins w portfelu\n' +
+                '• 🎰 **Ryzykant** — Rozegranie ponad 100 gier w kasynie\n' +
+                '• ⏳ **Weteran** — Ponad rok stażu na serwerze\n' +
+                '• 🎟️ **Kolekcjoner** — Posiadanie wszystkich pozostałych odznak\n' +
+                '• 🌟 **Mistrz Poziomów** — Wbicie 50 poziomu doświadczenia\n' +
+                '• 👑 **Legenda Serwera** — Osiągnięcie elitarnego 100 poziomu\n\n' +
+                '🔍 Wpisz w dowolnym kanale `/odznaki`, aby sprawdzić swój profil i postępy!'
+            )
+            .setImage(LIVE_IMAGE_URL)
+            .setTimestamp()
+            .setFooter({ text: 'PJN System Osiągnięć' });
+
+        await channel.send({ embeds: [embed] });
+    } catch (e) {
+        console.error('Błąd wysyłania ogłoszenia o osiągnięciach:', e);
+    }
+}
+
 function createBadgesInfoEmbed() {
     return new EmbedBuilder()
         .setColor(0x9B59B6)
@@ -786,6 +832,14 @@ function createBadgesInfoEmbed() {
                     '• 🌙 **Nocny Marek** — 50 wiadomości w nocy (00:00–04:00)\n' +
                     '• 🎙️ **Stały Bywalec Mikrofonu** — 30h na kanale głosowym\n' +
                     '• 🎧 **Audiofil** — 100h na kanale głosowym',
+                inline: false
+            },
+            {
+                name: '⭐ Poziomy i Doświadczenie',
+                value: 
+                    '• ⭐ **Awansowy Ekspert** — Wbicie 10 poziomu\n' +
+                    '• 🌟 **Mistrz Poziomów** — Wbicie 50 poziomu\n' +
+                    '• 👑 **Legenda Serwera** — Wbicie 100 poziomu',
                 inline: false
             },
             {
@@ -1150,21 +1204,27 @@ async function checkAndAwardBadges(user: any, memberOrUser: any) {
 
     if (user.balance >= 5000) addBadge('💰 **Kapitalista**');
     if (user.balance >= 10000) addBadge('💎 **Magnat Finansowy**');
-    if (user.balance >= 100000) addBadge('🏦 **Milioner**');
+    if (user.balance >= 100000) addBadge('🏦 **Milioner (Rzadka)**');
     if (user.totalDonated >= 5000) addBadge('💸 **Hojny Darczyńca**');
 
     if (user.casinoPlays >= 20) addBadge('🎲 **Nałogowy Graczyk**');
-    if (user.casinoPlays >= 100) addBadge('🎰 **Ryzykant**');
+    if (user.casinoPlays >= 100) addBadge('🎰 **Ryzykant (Rzadka)**');
     if (user.consecutiveWins >= 3) addBadge('🍀 **Ulubieniec Fortuna**');
     if (user.consecutiveLosses >= 5) addBadge('🎯 **Czarna Seria**');
 
     if (user.quotesAdded >= 5) addBadge('💡 **Filozof**');
     if (user.helpCount >= 10) addBadge('🤝 **Pomocna Dłoń**');
 
+    // Automatyczne odznaki za poziom
+    const lvl = user.level || 1;
+    if (lvl >= 10) addBadge('⭐ **Awansowy Ekspert (Lvl 10)**');
+    if (lvl >= 50) addBadge('🌟 **Mistrz Poziomów (Lvl 50, Rzadka)**');
+    if (lvl >= 100) addBadge('👑 **Legenda Serwera (Lvl 100, Elitarna)**');
+
     if (memberOrUser && memberOrUser.joinedAt) {
         const diffMonths = (Date.now() - new Date(memberOrUser.joinedAt).getTime()) / (1000 * 60 * 60 * 24 * 30);
         const diffYears = diffMonths / 12;
-        if (diffYears >= 1) addBadge('⏳ **Weteran**');
+        if (diffYears >= 1) addBadge('⏳ **Weteran (Rzadka)**');
         if (diffMonths >= 6) addBadge('⏳ **Weteran Półrocza**');
     }
 
@@ -1175,10 +1235,10 @@ async function checkAndAwardBadges(user: any, memberOrUser: any) {
         if (hasAdminRole) addBadge('🛡️ **Filar Społeczności**');
     }
 
-    const masterPoolCount = 18; 
+    const masterPoolCount = 21; 
     const currentCountWithoutCollector = user.badges.filter((b: string) => !b.includes('Kolekcjoner')).length;
     if (currentCountWithoutCollector >= masterPoolCount) {
-        addBadge('🎟️ **Kolekcjoner**');
+        addBadge('🎟️ **Kolekcjoner (Epicka)**');
     }
 
     if (newBadges.length > 0) {
@@ -1211,6 +1271,7 @@ async function getUserLevelRankDetails(userId: string): Promise<{ rank: number, 
     return { rank: higherCount + 1, total: Math.max(1, total) };
 }
 
+// System nagród za co 10 level (+1500 PJN Coins)
 async function addExp(userId: string, amount: number, guild: any) {
     let user = await UserModel.findOne({ userId });
     if (!user) user = await UserModel.create({ userId });
@@ -1227,6 +1288,11 @@ async function addExp(userId: string, amount: number, guild: any) {
         requiredExpForNextLevel = user.level * 150;
     }
 
+    // Nagroda 1500 PJN-Coins za co 10 poziom (10, 20, 30 itd.)
+    if (leveledUp && user.level % 10 === 0) {
+        user.balance += 1500;
+    }
+
     await user.save();
 
     if (leveledUp) {
@@ -1238,6 +1304,11 @@ async function addExp(userId: string, amount: number, guild: any) {
             const avatarUrl = member ? member.user.displayAvatarURL() : client.user?.displayAvatarURL();
             const rankDetails = await getUserLevelRankDetails(userId);
 
+            let rewardText = '';
+            if (user.level % 10 === 0) {
+                rewardText = `\n\n🎁 **Nagroda za awans na ${user.level} lvl:** Otrzymałeś **1500 PJN-Coins** do portfela! 💰`;
+            }
+
             const embed = new EmbedBuilder()
                 .setColor(0x9B59B6)
                 .setTitle('🚀 AWANS NA WYŻSZY POZIOM!')
@@ -1246,8 +1317,8 @@ async function addExp(userId: string, amount: number, guild: any) {
                     `Gratulacje <@${userId}>! Właśnie wskoczyłeś na wyższy poziom na serwerze! 🌟\n\n` +
                     `⭐ **Nowy Poziom:** \`${user.level}\`\n` +
                     `🏆 **Miejsce w rankingu XP:** \`#${rankDetails.rank} z ${rankDetails.total}\`\n` +
-                    `🎯 **Twój Postęp:** \`${user.exp} / ${user.level * 150} XP\`\n\n` +
-                    `*Tak trzymaj! Bądź aktywny na czacie oraz kanałach głosowych, aby pobić kolejny rekord!*`
+                    `🎯 **Twój Postęp:** \`${user.exp} / ${user.level * 150} XP\`` +
+                    rewardText
                 )
                 .setTimestamp()
                 .setFooter({ text: 'PJN System Doświadczenia • Awans' });
@@ -1578,6 +1649,18 @@ const commands = [
         .setName('reputacja')
         .setDescription('Wyświetla profil handlowy i punkty reputacji tradera')
         .addUserOption(o => o.setName('uzytkownik').setDescription('Sprawdź profil innego użytkownika').setRequired(false)),
+    // Zbudowany, rozbudowany profil gracza (/profil)
+    new SlashCommandBuilder()
+        .setName('profil')
+        .setDescription('Kompleksowa karta profilu gracza z poziomem, odznakami i statystykami')
+        .addUserOption(o => o.setName('uzytkownik').setDescription('Użytkownik').setRequired(false)),
+    // System ankiet na żywo
+    new SlashCommandBuilder()
+        .setName('ankieta')
+        .setDescription('Stwórz interaktywną ankietę na żywo ze statusem głosowania')
+        .addStringOption(o => o.setName('pytanie').setDescription('Treść pytania ankiety').setRequired(true))
+        .addStringOption(o => o.setName('opcje').setDescription('Opcje oddzielone przecinkami (np. Opcja 1, Opcja 2, Opcja 3)').setRequired(true))
+        .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages),
     new SlashCommandBuilder()
         .setName('fn-sklep')
         .setDescription('Wyświetla dzisiejszy sklep w grze Fortnite'),
@@ -1689,13 +1772,18 @@ const commands = [
         .addStringOption(option =>
             option.setName('opis')
                 .setDescription('Dodatkowy opis (np. ranga, mikrofon, styl gry)')
-                .setRequired(false))
+                .setRequired(false)),
+    // Komenda kontekstowa do Złotych Myśli PJN
+    new ContextMenuCommandBuilder()
+        .setName('Zapisz jako złoty tekst')
+        .setType(ApplicationCommandType.Message)
 ].map(c => c.toJSON());
 
 client.once('ready', async () => {
     console.log(`Zalogowano jako ${client.user?.tag}!`);
     await seedQuotesIfNeeded();
-    await setupVerificationChannel(); // Inicjalizacja panelu weryfikacji
+    await setupVerificationChannel(); 
+    await setupAnnouncementsAchievements(); // Wysyłanie rzadkich odznak na ogłoszenia
     await setupMemeChannelInstruction();
     await setupLfgChannelInstruction(); 
     await setupTicketChannel(); 
@@ -1731,6 +1819,73 @@ client.once('ready', async () => {
 });
 
 client.on('interactionCreate', async interaction => {
+    // Obsługa komendy kontekstowej "Złote myśli PJN"
+    if (interaction.isMessageContextMenuCommand()) {
+        if (interaction.commandName === 'Zapisz jako złoty tekst') {
+            await interaction.deferReply({ ephemeral: true });
+            const targetMessage = interaction.targetMessage;
+            if (!targetMessage || !targetMessage.content) {
+                return interaction.editReply({ content: '❌ Wybrana wiadomość nie zawiera tekstu.' });
+            }
+
+            const quoteText = targetMessage.content;
+            const authorTag = targetMessage.author.tag;
+
+            await QuoteModel.create({ text: quoteText, author: authorTag, addedBy: interaction.user.id });
+
+            const channel = await client.channels.fetch(ID_KANALU_CYTATY).catch(() => null) as TextChannel;
+            if (channel) {
+                const embed = new EmbedBuilder()
+                    .setColor(0xE67E22)
+                    .setTitle('✨ Złota myśl z serwera PJN')
+                    .setDescription(`> *„${quoteText}”*\n\n**— ${authorTag}**`)
+                    .setTimestamp();
+                await channel.send({ embeds: [embed] });
+            }
+
+            await interaction.editReply({ content: `✅ Pomyślnie dodano wiadomość do **Złotych myśli PJN** (<#${ID_KANALU_CYTATY}>)!` });
+            return;
+        }
+    }
+
+    // Obsługa głosowania w ankiecie na żywo
+    if (interaction.isButton() && interaction.customId.startsWith('poll_vote_')) {
+        await interaction.deferUpdate();
+        const optionIndex = parseInt(interaction.customId.replace('poll_vote_', ''));
+        const poll = await PollModel.findOne({ messageId: interaction.message.id });
+        if (!poll || poll.ended) return;
+
+        const userId = interaction.user.id;
+        for (let i = 0; i < poll.votes.length; i++) {
+            poll.votes[i] = poll.votes[i].filter(id => id !== userId);
+        }
+        poll.votes[optionIndex].push(userId);
+        poll.markModified('votes');
+        await poll.save();
+
+        const totalVotes = poll.votes.reduce((acc, curr) => acc + curr.length, 0);
+        let desc = `📊 **Ankieta aktywna na żywo**\n\n`;
+        const components: ActionRowBuilder<ButtonBuilder>[] = [];
+        let currentRow = new ActionRowBuilder<ButtonBuilder>();
+
+        for (let i = 0; i < poll.options.length; i++) {
+            const count = poll.votes[i].length;
+            const percent = totalVotes > 0 ? Math.round((count / totalVotes) * 100) : 0;
+            const bar = '█'.repeat(Math.floor(percent / 10)) + '░'.repeat(10 - Math.floor(percent / 10));
+            desc += `**${i + 1}. ${poll.options[i]}**\n\`[${bar}]\` **${percent}%** (${count} głosów)\n\n`;
+
+            currentRow.addComponents(new ButtonBuilder().setCustomId(`poll_vote_${i}`).setLabel(`${i + 1} (${count})`).setStyle(ButtonStyle.Secondary));
+            if (currentRow.components.length === 5 || i === poll.options.length - 1) {
+                components.push(currentRow);
+                currentRow = new ActionRowBuilder<ButtonBuilder>();
+            }
+        }
+
+        const embed = new EmbedBuilder().setColor(0x3498DB).setTitle(`🗳️ ${poll.question}`).setDescription(desc).setTimestamp();
+        await interaction.message.edit({ embeds: [embed], components });
+        return;
+    }
+
     // === OBSŁUGA SELECT MENU (WERYFIKACJA ORAZ SKLEP) ===
     if (interaction.isStringSelectMenu()) {
         if (interaction.customId === 'verification_gender_select') {
@@ -1751,7 +1906,6 @@ client.on('interactionCreate', async interaction => {
             }
 
             try {
-                // Nadanie rangi zweryfikowanego
                 await member.roles.add(roleVerified);
 
                 if (selectedValue === 'verify_male') {
@@ -2245,6 +2399,72 @@ client.on('interactionCreate', async interaction => {
     const { commandName } = interaction;
 
     try {
+        // Obsługa komendy /ankieta
+        if (commandName === 'ankieta') {
+            await interaction.deferReply();
+            const pytanie = interaction.options.getString('pytanie', true);
+            const opcjeTekst = interaction.options.getString('opcje', true);
+            const opcje = opcjeTekst.split(',').map(o => o.trim()).filter(o => o.length > 0);
+
+            if (opcje.length < 2 || opcje.length > 10) {
+                return interaction.editReply({ content: '❌ Podaj od 2 do 10 opcji oddzielonych przecinkami.' });
+            }
+
+            let desc = `📊 **Ankieta aktywna na żywo**\n\n`;
+            for (let i = 0; i < opcje.length; i++) {
+                desc += `**${i + 1}. ${opcje[i]}**\n\`[░░░░░░░░░░]\` **0%** (0 głosów)\n\n`;
+            }
+
+            const components: ActionRowBuilder<ButtonBuilder>[] = [];
+            let currentRow = new ActionRowBuilder<ButtonBuilder>();
+            for (let i = 0; i < opcje.length; i++) {
+                currentRow.addComponents(new ButtonBuilder().setCustomId(`poll_vote_${i}`).setLabel(`${i + 1} (0)`).setStyle(ButtonStyle.Secondary));
+                if (currentRow.components.length === 5 || i === opcje.length - 1) {
+                    components.push(currentRow);
+                    currentRow = new ActionRowBuilder<ButtonBuilder>();
+                }
+            }
+
+            const embed = new EmbedBuilder().setColor(0x3498DB).setTitle(`🗳️ ${pytanie}`).setDescription(desc).setTimestamp();
+            const sentMsg = await interaction.editReply({ embeds: [embed], components });
+
+            await PollModel.create({
+                messageId: sentMsg.id,
+                channelId: interaction.channelId,
+                question: pytanie,
+                options: opcje,
+                votes: opcje.map(() => [])
+            });
+            return;
+        }
+
+        // Obsługa rozbudowanego profilu gracza (/profil)
+        if (commandName === 'profil') {
+            await interaction.deferReply();
+            const targetUser = interaction.options.getUser('uzytkownik') || interaction.user;
+            let user = await UserModel.findOne({ userId: targetUser.id });
+            if (!user) user = await UserModel.create({ userId: targetUser.id });
+
+            const rankDetails = await getUserLevelRankDetails(targetUser.id);
+            const badgeText = user.badges && user.badges.length > 0 ? user.badges.join(', ') : 'Brak odznak';
+
+            const embed = new EmbedBuilder()
+                .setColor(0x9B59B6)
+                .setTitle(`👤 Profil Gracza • ${targetUser.tag}`)
+                .setThumbnail(targetUser.displayAvatarURL())
+                .addFields(
+                    { name: '💰 Portfel', value: `**${user.balance || 0} PJN-Coins**`, inline: true },
+                    { name: '⭐ Poziom & XP', value: `Poziom **${user.level || 1}** (${user.exp || 0} XP)\nRanking: **#${rankDetails.rank}**`, inline: true },
+                    { name: '⭐ Reputacja', value: `**${user.reputation || 0} pkt**`, inline: true },
+                    { name: '🎮 Fortnite Stats', value: `Nick: **${user.epicNick || 'Brak'}**\nZabójstwa: **${user.fortniteKills || 0}**`, inline: false },
+                    { name: '🏅 Odznaki', value: badgeText, inline: false }
+                )
+                .setTimestamp();
+
+            await interaction.editReply({ embeds: [embed] });
+            return;
+        }
+
         if (commandName === 'fn-rejestracja') {
             await interaction.deferReply({ ephemeral: true });
             const nick = interaction.options.getString('nick', true);
@@ -3419,7 +3639,6 @@ client.on('messageCreate', async message => {
 
 const voiceTimestamps = new Map<string, number>();
 
-// === OBSŁUGA KANAŁÓW GŁOSOWYCH (TEMP-VOICE ORAZ STATYSTYKI) ===
 client.on('voiceStateUpdate', async (oldState, newState) => {
     const userId = newState.id || oldState.id;
     const guild = newState.guild || oldState.guild;
@@ -3428,13 +3647,11 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
     if (member?.user.bot) return;
     const now = Date.now();
 
-    // 1. Sprawdzanie kanału tworzenia prywatnego pokoju (Temp-Voice)
     if (newState.channelId === ID_KANAL_TWORZENIA_POKOJU) {
         try {
             const category = newState.channel?.parent;
             const channelName = `🔊 Pokój - ${member.user.username}`;
             
-            // Tworzenie prywatnego kanału
             const privateVoice = await guild.channels.create({
                 name: channelName,
                 type: ChannelType.GuildVoice,
@@ -3456,10 +3673,8 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
                 ]
             });
 
-            // Przeniesienie użytkownika do nowego pokoju
             await member.voice.setChannel(privateVoice);
 
-            // Wysłanie wiadomości z instrukcją i przyciskami zarządzania na czat tego kanału głosowego
             const controlEmbed = new EmbedBuilder()
                 .setColor(0x5865F2)
                 .setTitle('🎛️ Panel Zarządzania Twoim Prywatnym Pokojem')
@@ -3497,7 +3712,6 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
         }
     }
 
-    // 2. Automatyczne usuwanie pustego pokoju prywatnego
     if (oldState.channel && oldState.channelId !== ID_KANAL_TWORZENIA_POKOJU) {
         const leftChannel = oldState.channel;
         if (leftChannel.name.startsWith('🔊 Pokój -') && leftChannel.members.size === 0) {
@@ -3505,7 +3719,6 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
         }
     }
 
-    // 3. Naliczanie czasu na kanałach głosowych
     if (!oldState.channelId && newState.channelId) {
         voiceTimestamps.set(userId, now);
     } else if (oldState.channelId && !newState.channelId) {
