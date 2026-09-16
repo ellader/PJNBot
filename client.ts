@@ -1812,6 +1812,31 @@ client.on('interactionCreate', async interaction => {
     }
 
     if (interaction.isButton()) {
+        if (interaction.customId === 'temp_voice_lock' || interaction.customId === 'temp_voice_unlock') {
+            await interaction.deferReply({ ephemeral: true });
+            const channel = interaction.channel;
+            if (!channel || channel.type !== ChannelType.GuildVoice) {
+                return interaction.editReply({ content: '❌ Ta opcja działa wyłącznie na czacie pokoju głosowego.' });
+            }
+
+            const isLocked = interaction.customId === 'temp_voice_lock';
+
+            try {
+                await channel.permissionOverwrites.edit(interaction.guildId!, {
+                    Connect: isLocked ? false : null 
+                });
+
+                await interaction.editReply({ 
+                    content: isLocked 
+                        ? '🔒 Pomyślnie **zablokowałeś** swój pokój (nikt nowy nie może dołączyć).' 
+                        : '🔓 Pomyślnie **odblokowałeś** swój pokój (każdy może teraz wejść).' 
+                });
+            } catch (e) {
+                await interaction.editReply({ content: '❌ Wystąpił błąd podczas zmiany uprawnień pokoju.' });
+            }
+            return;
+        }
+
         if (interaction.customId === 'role_fn_updates_toggle') {
             await interaction.deferReply({ ephemeral: true });
             const guild = interaction.guild;
@@ -3433,6 +3458,40 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
 
             // Przeniesienie użytkownika do nowego pokoju
             await member.voice.setChannel(privateVoice);
+
+            // Wysłanie wiadomości z instrukcją i przyciskami zarządzania na czat tego kanału głosowego
+            const controlEmbed = new EmbedBuilder()
+                .setColor(0x5865F2)
+                .setTitle('🎛️ Panel Zarządzania Twoim Prywatnym Pokojem')
+                .setDescription(
+                    `Witaj <@${member.id}>! To jest Twój prywatny kanał głosowy.\n\n` +
+                    `🛠️ **Jak możesz nim zarządzać?**\n` +
+                    `• **Nazwa i limit:** Jako właściciel masz pełne uprawnienia (możesz edytować kanał, zmieniać nazwę oraz limit osób w ustawieniach kanału).\n` +
+                    `• **Wyrzucanie / Wyciszanie:** Możesz kliknąć prawym przyciskiem myszy na użytkownika w pokoju, aby go rozłączyć lub wyciszyć.\n` +
+                    `• **Prywatność:** W każdej chwili możesz zablokować lub odblokować dostęp dla innych za pomocą przycisków poniżej!`
+                )
+                .setTimestamp()
+                .setFooter({ text: 'PJN System Dynamicznych Pokoi' });
+
+            const controlRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+                new ButtonBuilder()
+                    .setCustomId('temp_voice_lock')
+                    .setLabel('Zablokuj pokój')
+                    .setStyle(ButtonStyle.Danger)
+                    .setEmoji('🔒'),
+                new ButtonBuilder()
+                    .setCustomId('temp_voice_unlock')
+                    .setLabel('Odblokuj pokój')
+                    .setStyle(ButtonStyle.Success)
+                    .setEmoji('🔓')
+            );
+
+            await privateVoice.send({
+                content: `<@${member.id}>`,
+                embeds: [controlEmbed],
+                components: [controlRow]
+            }).catch(() => {});
+
         } catch (err) {
             console.error('Błąd tworzenia dynamicznego pokoju głosowego:', err);
         }
@@ -3441,13 +3500,12 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
     // 2. Automatyczne usuwanie pustego pokoju prywatnego
     if (oldState.channel && oldState.channelId !== ID_KANAL_TWORZENIA_POKOJU) {
         const leftChannel = oldState.channel;
-        // Sprawdzamy czy to kanał stworzony przez bota (np. zaczyna się od "🔊 Pokój -") i czy jest pusty
         if (leftChannel.name.startsWith('🔊 Pokój -') && leftChannel.members.size === 0) {
             await leftChannel.delete('Pusty kanał prywatny').catch(() => {});
         }
     }
 
-    // 3. Naliczanie czasu na kanałach głosowych (istniejąca logika)
+    // 3. Naliczanie czasu na kanałach głosowych
     if (!oldState.channelId && newState.channelId) {
         voiceTimestamps.set(userId, now);
     } else if (oldState.channelId && !newState.channelId) {
