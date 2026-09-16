@@ -79,7 +79,6 @@ const transactionHistorySchema = new mongoose.Schema({
 });
 const TransactionHistoryModel = mongoose.model('TransactionHistory', transactionHistorySchema);
 
-// Zaktualizowana lista odznak (w tym odznaki za poziomy)
 const AVAILABLE_BADGES = [
     '💬 **Początkujący Gadulec**',
     '📜 **Kronikarz Chatu**',
@@ -144,7 +143,6 @@ const lfgSchema = new mongoose.Schema({
 });
 const LFGModel = mongoose.model('LFG', lfgSchema);
 
-// Schemat bazy danych dla ankiet na żywo
 const pollSchema = new mongoose.Schema({
     messageId: { type: String, required: true, unique: true },
     channelId: { type: String, required: true },
@@ -196,7 +194,7 @@ const NOTIF_CONFIG = {
 const parser = new Parser();
 
 const ANNOUNCE_CHANNEL_ID = '1532399010785263799';
-const ID_KANALU_CYTATY = '1549709251365183558'; // Złote myśli PJN
+const ID_KANALU_CYTATY = '1549709251365183558'; 
 const ID_KANALU_MEMOW = '1534833757335326810';
 const ID_KANALU_SZUKAM_DO_GRY = '1532449084559069214'; 
 const CHANNEL_POWITANIA = "witamy";
@@ -375,7 +373,6 @@ function startServerStatsCron() {
     }, 5 * 60 * 1000);
 }
 
-// Funkcja wysyłająca złote myśli na kanał ID: 1549709251365183558
 async function sendQuoteToChannel(channelId: string) {
     const channel = await client.channels.fetch(channelId).catch(() => null) as TextChannel;
     if (!channel) return false;
@@ -782,36 +779,6 @@ function createOgłoszenieEmbed() {
         .setFooter({ text: 'PJN System Ogłoszeń' });
 }
 
-// Komunikat na kanale ogłoszeń (ID: 1532399010785263799) dotyczący rzadkich odznak
-async function setupAnnouncementsAchievements() {
-    try {
-        const channel = await client.channels.fetch(ANNOUNCE_CHANNEL_ID).catch(() => null) as TextChannel;
-        if (!channel) return;
-
-        const embed = new EmbedBuilder()
-            .setColor(0x9B59B6)
-            .setTitle('🏆 Centrum Osiągnięć i Rzadkich Odznak PJN')
-            .setDescription(
-                'Zdobywaj unikalne odznaki za aktywność na czacie, głosie, kasynie i poziomach!\n\n' +
-                '⭐ **Rzadkie i prestiżowe odznaki:**\n' +
-                '• 🏦 **Milioner** — Osiągnięcie 100 000 PJN-Coins w portfelu\n' +
-                '• 🎰 **Ryzykant** — Rozegranie ponad 100 gier w kasynie\n' +
-                '• ⏳ **Weteran** — Ponad rok stażu na serwerze\n' +
-                '• 🎟️ **Kolekcjoner** — Posiadanie wszystkich pozostałych odznak\n' +
-                '• 🌟 **Mistrz Poziomów** — Wbicie 50 poziomu doświadczenia\n' +
-                '• 👑 **Legenda Serwera** — Osiągnięcie elitarnego 100 poziomu\n\n' +
-                '🔍 Wpisz w dowolnym kanale `/odznaki`, aby sprawdzić swój profil i postępy!'
-            )
-            .setImage(LIVE_IMAGE_URL)
-            .setTimestamp()
-            .setFooter({ text: 'PJN System Osiągnięć' });
-
-        await channel.send({ embeds: [embed] });
-    } catch (e) {
-        console.error('Błąd wysyłania ogłoszenia o osiągnięciach:', e);
-    }
-}
-
 function createBadgesInfoEmbed() {
     return new EmbedBuilder()
         .setColor(0x9B59B6)
@@ -1184,7 +1151,8 @@ async function updateTraderRoles(member: any, reputation: number) {
     }
 }
 
-async function checkAndAwardBadges(user: any, memberOrUser: any) {
+// Konsolowe powiadomienie o rzadkim osiągnięciu (w stylu Xbox/PlayStation Trofeum)
+async function checkAndAwardBadges(user: any, memberOrUser: any, guild?: any) {
     const newBadges: string[] = [];
     const addBadge = (badgeName: string) => {
         if (!user.badges.includes(badgeName)) {
@@ -1215,7 +1183,6 @@ async function checkAndAwardBadges(user: any, memberOrUser: any) {
     if (user.quotesAdded >= 5) addBadge('💡 **Filozof**');
     if (user.helpCount >= 10) addBadge('🤝 **Pomocna Dłoń**');
 
-    // Automatyczne odznaki za poziom
     const lvl = user.level || 1;
     if (lvl >= 10) addBadge('⭐ **Awansowy Ekspert (Lvl 10)**');
     if (lvl >= 50) addBadge('🌟 **Mistrz Poziomów (Lvl 50, Rzadka)**');
@@ -1243,9 +1210,12 @@ async function checkAndAwardBadges(user: any, memberOrUser: any) {
 
     if (newBadges.length > 0) {
         await user.save();
+        const targetMember = memberOrUser.user ? memberOrUser : null;
+        const targetUserObj = targetMember ? targetMember.user : memberOrUser;
+        const targetGuild = guild || (targetMember ? targetMember.guild : null);
+
         try {
-            const target = memberOrUser.user || memberOrUser;
-            await target.send({
+            await targetUserObj.send({
                 embeds: [{
                     color: 0xFFD700,
                     title: '🎉 Nowa odznaka odblokowana!',
@@ -1253,6 +1223,41 @@ async function checkAndAwardBadges(user: any, memberOrUser: any) {
                 }]
             }).catch(() => {});
         } catch (e) {}
+
+        // Konsolowe powiadomienie (Xbox / PlayStation Style) wysyłane na kanał ogłoszeń
+        if (targetGuild) {
+            const rareKeywords = ['rzadka', 'epicka', 'elitarna', 'milioner', 'ryzykant', 'weteran', 'kolekcjoner', 'legenda'];
+            const hasRareBadge = newBadges.some(b => rareKeywords.some(kw => b.toLowerCase().includes(kw)));
+
+            if (hasRareBadge) {
+                try {
+                    const announceChannel = await targetGuild.channels.fetch(ANNOUNCE_CHANNEL_ID).catch(() => null) as TextChannel;
+                    if (announceChannel) {
+                        const consoleEmbed = new EmbedBuilder()
+                            .setColor(0x107C10) // Zielony Xbox / klasyczny styl trofeum
+                            .setTitle('🏆 OSIĄGNIĘCIE ODBLOKOWANE!')
+                            .setThumbnail(targetUserObj.displayAvatarURL())
+                            .setDescription(
+                                `🎮 **TROFEUM / OSIĄGNIĘCIE RZADKIE**\n\n` +
+                                `Gracz <@${user.userId}> właśnie zdobył unikalne osiągnięcie na serwerze:\n\n` +
+                                newBadges.map(b => `> ✨ **${b}**`).join('\n') + `\n\n` +
+                                `*Zdobądź swój własny tytuł, budując aktywność i walcząc o odznaki w grach!*`
+                            )
+                            .setImage(LIVE_IMAGE_URL)
+                            .setTimestamp()
+                            .setFooter({ text: 'PJN Achievement System • Xbox / PlayStation Style' });
+
+                        await announceChannel.send({
+                            content: `<@${user.userId}>`,
+                            embeds: [consoleEmbed],
+                            allowedMentions: { users: [user.userId] }
+                        });
+                    }
+                } catch (err) {
+                    console.error('Błąd wysyłania konsolowego ogłoszenia:', err);
+                }
+            }
+        }
     }
 }
 
@@ -1271,7 +1276,6 @@ async function getUserLevelRankDetails(userId: string): Promise<{ rank: number, 
     return { rank: higherCount + 1, total: Math.max(1, total) };
 }
 
-// System nagród za co 10 level (+1500 PJN Coins)
 async function addExp(userId: string, amount: number, guild: any) {
     let user = await UserModel.findOne({ userId });
     if (!user) user = await UserModel.create({ userId });
@@ -1288,7 +1292,6 @@ async function addExp(userId: string, amount: number, guild: any) {
         requiredExpForNextLevel = user.level * 150;
     }
 
-    // Nagroda 1500 PJN-Coins za co 10 poziom (10, 20, 30 itd.)
     if (leveledUp && user.level % 10 === 0) {
         user.balance += 1500;
     }
@@ -1649,12 +1652,10 @@ const commands = [
         .setName('reputacja')
         .setDescription('Wyświetla profil handlowy i punkty reputacji tradera')
         .addUserOption(o => o.setName('uzytkownik').setDescription('Sprawdź profil innego użytkownika').setRequired(false)),
-    // Zbudowany, rozbudowany profil gracza (/profil)
     new SlashCommandBuilder()
         .setName('profil')
         .setDescription('Kompleksowa karta profilu gracza z poziomem, odznakami i statystykami')
         .addUserOption(o => o.setName('uzytkownik').setDescription('Użytkownik').setRequired(false)),
-    // System ankiet na żywo
     new SlashCommandBuilder()
         .setName('ankieta')
         .setDescription('Stwórz interaktywną ankietę na żywo ze statusem głosowania')
@@ -1773,7 +1774,6 @@ const commands = [
             option.setName('opis')
                 .setDescription('Dodatkowy opis (np. ranga, mikrofon, styl gry)')
                 .setRequired(false)),
-    // Komenda kontekstowa do Złotych Myśli PJN
     new ContextMenuCommandBuilder()
         .setName('Zapisz jako złoty tekst')
         .setType(ApplicationCommandType.Message)
@@ -1783,7 +1783,6 @@ client.once('ready', async () => {
     console.log(`Zalogowano jako ${client.user?.tag}!`);
     await seedQuotesIfNeeded();
     await setupVerificationChannel(); 
-    await setupAnnouncementsAchievements(); // Wysyłanie rzadkich odznak na ogłoszenia
     await setupMemeChannelInstruction();
     await setupLfgChannelInstruction(); 
     await setupTicketChannel(); 
@@ -1819,7 +1818,6 @@ client.once('ready', async () => {
 });
 
 client.on('interactionCreate', async interaction => {
-    // Obsługa komendy kontekstowej "Złote myśli PJN"
     if (interaction.isMessageContextMenuCommand()) {
         if (interaction.commandName === 'Zapisz jako złoty tekst') {
             await interaction.deferReply({ ephemeral: true });
@@ -1848,7 +1846,6 @@ client.on('interactionCreate', async interaction => {
         }
     }
 
-    // Obsługa głosowania w ankiecie na żywo
     if (interaction.isButton() && interaction.customId.startsWith('poll_vote_')) {
         await interaction.deferUpdate();
         const optionIndex = parseInt(interaction.customId.replace('poll_vote_', ''));
@@ -1886,7 +1883,6 @@ client.on('interactionCreate', async interaction => {
         return;
     }
 
-    // === OBSŁUGA SELECT MENU (WERYFIKACJA ORAZ SKLEP) ===
     if (interaction.isStringSelectMenu()) {
         if (interaction.customId === 'verification_gender_select') {
             await interaction.deferReply({ ephemeral: true });
@@ -2098,15 +2094,8 @@ client.on('interactionCreate', async interaction => {
                 price: item.price
             });
 
-            if (!user.badges.includes('🏷️ **Klient sklepu PJN**')) {
-                user.badges.push('🏷️ **Klient sklepu PJN**');
-            }
-            if ((item.price >= 5000 || item.type === 'vip' || item.type === 'custom_role') && !user.badges.includes('🎖️ **Zaawansowany klient sklepu PJN**')) {
-                user.badges.push('🎖️ **Zaawansowany klient sklepu PJN**');
-            }
-            await user.save();
-
             const member = await interaction.guild?.members.fetch(interaction.user.id).catch(() => null);
+            await checkAndAwardBadges(user, member, interaction.guild);
 
             if (item.type === 'vip') {
                 user.vipExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); 
@@ -2399,7 +2388,6 @@ client.on('interactionCreate', async interaction => {
     const { commandName } = interaction;
 
     try {
-        // Obsługa komendy /ankieta
         if (commandName === 'ankieta') {
             await interaction.deferReply();
             const pytanie = interaction.options.getString('pytanie', true);
@@ -2438,7 +2426,6 @@ client.on('interactionCreate', async interaction => {
             return;
         }
 
-        // Obsługa rozbudowanego profilu gracza (/profil)
         if (commandName === 'profil') {
             await interaction.deferReply();
             const targetUser = interaction.options.getUser('uzytkownik') || interaction.user;
@@ -3063,7 +3050,7 @@ client.on('interactionCreate', async interaction => {
             });
 
             const memberObj = await interaction.guild?.members.fetch(interaction.user.id).catch(() => null);
-            await checkAndAwardBadges(sender, memberObj);
+            await checkAndAwardBadges(sender, memberObj, interaction.guild);
 
             try {
                 await targetUser.send({
@@ -3129,7 +3116,7 @@ client.on('interactionCreate', async interaction => {
                 details: won ? 'Wygrana' : 'Przegrana'
             });
 
-            await checkAndAwardBadges(user, memberObj);
+            await checkAndAwardBadges(user, memberObj, interaction.guild);
 
             if (won) {
                 return interaction.editReply({ content: `🎲 Wygrana w kościach! Wygrywasz **${stawka} PJN-Coins** (Stan: **${user.balance}**).` });
@@ -3175,7 +3162,7 @@ client.on('interactionCreate', async interaction => {
                 details: `Wybór: ${wybor}, Wynik: ${wynik}`
             });
 
-            await checkAndAwardBadges(user, memberObj);
+            await checkAndAwardBadges(user, memberObj, interaction.guild);
 
             if (guessed) {
                 return interaction.editReply({ content: `🪙 Wypadł **${wynik}**. Trafiłeś! Zyskujesz **${stawka} PJN-Coins**.` });
@@ -3238,7 +3225,7 @@ client.on('interactionCreate', async interaction => {
                 details: `${s1}|${s2}|${s3}`
             });
 
-            await checkAndAwardBadges(user, memberObj);
+            await checkAndAwardBadges(user, memberObj, interaction.guild);
             return interaction.editReply({ content: resultMessage });
         }
 
@@ -3274,7 +3261,7 @@ client.on('interactionCreate', async interaction => {
                 details: `Tryb: ${tryb}`
             });
 
-            await checkAndAwardBadges(user, memberObj);
+            await checkAndAwardBadges(user, memberObj, interaction.guild);
 
             if (wygrana > 0) {
                 return interaction.editReply({ content: `🃏 [Poker - ${tryb}] Wygrywasz **${wygrana} PJN-Coins**!` });
@@ -3325,7 +3312,11 @@ client.on('interactionCreate', async interaction => {
                 if (!user.badges.includes(odznaka)) {
                     user.badges.push(odznaka);
                     await user.save();
-                    await interaction.editReply({ content: `✅ Przyznano odznakę!` });
+                    
+                    const memberObj = await interaction.guild?.members.fetch(targetUser.id).catch(() => null);
+                    await checkAndAwardBadges(user, memberObj || targetUser, interaction.guild);
+
+                    await interaction.editReply({ content: `✅ Przyznano odznakę i wysłano konsolowe powiadomienie na ogłoszenia!` });
                 } else {
                     await interaction.editReply({ content: `⚠️ Użytkownik ma już tę odznakę.` });
                 }
@@ -3381,7 +3372,7 @@ client.on('interactionCreate', async interaction => {
             user.balance += dailyAmount;
             user.lastDaily = now;
             await user.save();
-            await checkAndAwardBadges(user, memberObj);
+            await checkAndAwardBadges(user, memberObj, interaction.guild);
 
             await interaction.editReply({ content: `🎁 Otrzymałeś codzienne **${dailyAmount} PJN-Coins**!` });
             return;
@@ -3406,6 +3397,9 @@ client.on('interactionCreate', async interaction => {
                     amount: ilosc,
                     details: powod
                 });
+
+                const memberObj = await interaction.guild?.members.fetch(targetUser.id).catch(() => null);
+                await checkAndAwardBadges(user, memberObj || targetUser, interaction.guild);
 
                 try {
                     let desc = `Administracja przyznała Ci **${ilosc} PJN-Coins** na serwerze!\n\n`;
@@ -3460,7 +3454,7 @@ client.on('interactionCreate', async interaction => {
             user.quotesAdded = (user.quotesAdded || 0) + 1;
             await user.save();
             const memberObj = await interaction.guild?.members.fetch(interaction.user.id).catch(() => null);
-            await checkAndAwardBadges(user, memberObj);
+            await checkAndAwardBadges(user, memberObj, interaction.guild);
             await interaction.editReply({ content: `✅ Dodano cytat!` });
             return;
         }
@@ -3570,7 +3564,7 @@ client.on('messageCreate', async message => {
                 return;
             }
             if (mentionedUser.id === message.author.id) {
-                await message.reply({ content: '❌ Nie możesz przyznać reputacji samemu sobie!' }).catch(() => {});
+                await message.reply({ content: '❌ Не możesz przyznać reputacji samemu sobie!' }).catch(() => {});
                 return;
             }
 
@@ -3630,7 +3624,7 @@ client.on('messageCreate', async message => {
         if (customEmojis) user.emojiCount = (user.emojiCount || 0) + customEmojis.length;
 
         await user.save();
-        await checkAndAwardBadges(user, message.member);
+        await checkAndAwardBadges(user, message.member, message.guild);
 
         await addExp(message.author.id, 75, message.guild);
 
@@ -3737,7 +3731,7 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
                     user.voiceMinutes = (user.voiceMinutes || 0) + minutesSpent;
                     user.balance += earnedCoins;
                     await user.save();
-                    if (member) await checkAndAwardBadges(user, member);
+                    if (member) await checkAndAwardBadges(user, member, guild);
 
                     await addExp(userId, minutesSpent * 5, guild);
 
@@ -3754,7 +3748,7 @@ client.on('guildMemberAdd', async member => {
         if (!user) user = await UserModel.create({ userId: member.id });
         user.balance += 200;
         await user.save();
-        await checkAndAwardBadges(user, member);
+        await checkAndAwardBadges(user, member, member.guild);
 
         const channel = member.guild.channels.cache.find(ch => ch.isTextBased() && 'name' in ch && ch.name === CHANNEL_POWITANIA) as TextChannel;
         if (channel) {
