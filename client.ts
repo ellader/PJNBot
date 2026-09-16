@@ -14,7 +14,10 @@ import {
     AuditLogEvent,
     StringSelectMenuBuilder,
     ContextMenuCommandBuilder,
-    ApplicationCommandType
+    ApplicationCommandType,
+    ModalBuilder,
+    TextInputBuilder,
+    TextInputStyle
 } from 'discord.js';
 import mongoose from 'mongoose';
 import cron from 'node-cron';
@@ -78,6 +81,17 @@ const transactionHistorySchema = new mongoose.Schema({
     timestamp: { type: Date, default: Date.now }
 });
 const TransactionHistoryModel = mongoose.model('TransactionHistory', transactionHistorySchema);
+
+const hangmanSchema = new mongoose.Schema({
+    messageId: { type: String, required: true, unique: true },
+    userId: { type: String, required: true },
+    word: { type: String, required: true },
+    guessed: { type: [String], required: true },
+    mistakes: { type: Number, default: 0 },
+    maxMistakes: { type: Number, default: 6 },
+    status: { type: String, default: 'active' }
+});
+const HangmanModel = mongoose.model('Hangman', hangmanSchema);
 
 const AVAILABLE_BADGES = [
     '💬 **Początkujący Gadulec**',
@@ -302,6 +316,85 @@ async function seedQuotesIfNeeded() {
     } catch (e) {
         console.error('Błąd inicjalizacji cytatów:', e);
     }
+}
+
+async function setupRussianRouletteChannel() {
+    try {
+        const channel = await client.channels.fetch('1549791536336732240').catch(() => null) as TextChannel;
+        if (!channel) return;
+        const messages = await channel.messages.fetch({ limit: 50 }).catch(() => null);
+        if (messages) for (const [_, msg] of messages) { if (msg.author.id === client.user?.id) await msg.delete().catch(() => {}); }
+
+        const embed = new EmbedBuilder()
+            .setColor(0xE74C3C)
+            .setTitle('🎯 Rosyjska Ruletka • Strefa Ryzyka PJN')
+            .setDescription(
+                'Masz odwagę zaryzykować swoje PJN-Coins?\n\n' +
+                '🔫 **Zasady:**\n' +
+                '• W bębnie rewolweru jest 1 kula na 6 komór.\n' +
+                '• Kliknij przycisk poniżej, podaj stawkę i pociągnij za spust!\n' +
+                '• Jeśli przeżyjesz, podwajasz swoją stawkę (**x2**). Jeśli trafiłeś na kulę – tracisz postawione monety!'
+            )
+            .setImage(LIVE_IMAGE_URL)
+            .setTimestamp();
+
+        const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+            new ButtonBuilder().setCustomId('rr_start_modal').setLabel('Zagraj w Rosyjską Ruletkę').setStyle(ButtonStyle.Danger).setEmoji('🎯')
+        );
+
+        await channel.send({ embeds: [embed], components: [row] });
+    } catch (e) {}
+}
+
+async function setupHangmanChannel() {
+    try {
+        const channel = await client.channels.fetch('1549791621942485120').catch(() => null) as TextChannel;
+        if (!channel) return;
+        const messages = await channel.messages.fetch({ limit: 50 }).catch(() => null);
+        if (messages) for (const [_, msg] of messages) { if (msg.author.id === client.user?.id) await msg.delete().catch(() => {}); }
+
+        const embed = new EmbedBuilder()
+            .setColor(0x3498DB)
+            .setTitle('📝 Wisielec (Hangman) • Strefa Zagadek PJN')
+            .setDescription(
+                'Odgadnij ukryte słowo związane z grami i społecznością PJN zanim skończą się próby!\n\n' +
+                '💡 **Zasady:**\n' +
+                '• Kliknij przycisk startu, aby wylosować słowo.\n' +
+                '• Wybieraj literki lub zgaduj słowo.\n' +
+                '• Za wygraną otrzymujesz nagrodę w PJN-Coins!'
+            )
+            .setImage(LIVE_IMAGE_URL)
+            .setTimestamp();
+
+        const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+            new ButtonBuilder().setCustomId('hm_start').setLabel('Rozpocznij Nową Grę').setStyle(ButtonStyle.Success).setEmoji('🎮')
+        );
+
+        await channel.send({ embeds: [embed], components: [row] });
+    } catch (e) {}
+}
+
+async function setupArcadeHubChannel() {
+    try {
+        const channel = await client.channels.fetch('1534060126980411423').catch(() => null) as TextChannel;
+        if (!channel) return;
+        const messages = await channel.messages.fetch({ limit: 50 }).catch(() => null);
+        if (messages) for (const [_, msg] of messages) { if (msg.author.id === client.user?.id) await msg.delete().catch(() => {}); }
+
+        const embed = new EmbedBuilder()
+            .setColor(0x9B59B6)
+            .setTitle('🕹️ Salon Gier i Quizów PJN')
+            .setDescription(
+                'W tym miejscu możesz testować swoją wiedzę oraz grać w szybkie gry za PJN-Coins!\n\n' +
+                '🎮 **Dostępne komendy na tym kanale:**\n' +
+                '• `/quiz-gra` — Odpowiadaj na pytania wielokrotnego wyboru i zgarniaj nagrody.\n' +
+                '• `/kpn [wybór] [stawka]` — Zagraj w Kamień, Papier, Nożyce przeciwko botowi.'
+            )
+            .setImage(LIVE_IMAGE_URL)
+            .setTimestamp();
+
+        await channel.send({ embeds: [embed] });
+    } catch (e) {}
 }
 
 async function setupVerificationChannel() {
@@ -782,7 +875,6 @@ function startExpirationChecker() {
     });
 }
 
-// Sprawdzanie i automatyczne zamykanie ankiet
 function startPollChecker() {
     setInterval(async () => {
         try {
@@ -1717,6 +1809,16 @@ const commands = [
     new SlashCommandBuilder().setName('slot').setDescription('Sloty').addIntegerOption(o => o.setName('stawka').setDescription('Stawka').setRequired(true)),
     new SlashCommandBuilder().setName('poker').setDescription('Poker').addStringOption(o => o.setName('tryb').setDescription('Tryb').setRequired(true).addChoices({name: 'Z ludźmi', value: 'ludzie'}, {name: 'Z botem', value: 'bot'})).addIntegerOption(o => o.setName('stawka').setDescription('Stawka').setRequired(true)),
     new SlashCommandBuilder().setName('quiz').setDescription('Odpowiedz na pytanie quizowe'),
+    new SlashCommandBuilder().setName('quiz-gra').setDescription('Rozpocznij interaktywny quiz z przyciskami i nagrodami coins'),
+    new SlashCommandBuilder()
+        .setName('kpn')
+        .setDescription('Zagraj w Kamień, Papier, Nożyce za PJN-Coins')
+        .addStringOption(o => o.setName('wybor').setDescription('Twój wybór').setRequired(true).addChoices(
+            { name: 'Kamień 🪨', value: 'kamien' },
+            { name: 'Papier 📄', value: 'papier' },
+            { name: 'Nożyce ✂️', value: 'nozyce' }
+        ))
+        .addIntegerOption(o => o.setName('stawka').setDescription('Stawka PJN-Coins').setRequired(true)),
     new SlashCommandBuilder().setName('odznaki').setDescription('Wyświetla profil z odznakami').addUserOption(o => o.setName('uzytkownik').setDescription('Użytkownik').setRequired(false)),
     new SlashCommandBuilder()
         .setName('exp')
@@ -1876,6 +1978,9 @@ client.once('ready', async () => {
     await setupReputationChannelInstruction();
     await setupShopChannel();
     await setupFortniteUpdateChannel(); 
+    await setupRussianRouletteChannel();
+    await setupHangmanChannel();
+    await setupArcadeHubChannel();
     await cleanupOrphanedLfgVoices();
 
     const rest = new REST({ version: '10' }).setToken(token);
@@ -1900,8 +2005,10 @@ client.once('ready', async () => {
     startFortniteRankingCron();
     startFortniteStatusCron(); 
     startServerStatsCron();
-    startPollChecker(); // Uruchomienie sprawdzania wygasających ankiet
+    startPollChecker();
 });
+
+const WORDS_POOL = ['discord', 'fortnite', 'pjncoins', 'streaming', 'moderator', 'ranking', 'odznaka', 'sklep', 'kasyno'];
 
 client.on('interactionCreate', async interaction => {
     if (interaction.isMessageContextMenuCommand()) {
@@ -1932,11 +2039,100 @@ client.on('interactionCreate', async interaction => {
         }
     }
 
+    // Obsługa Rosyjskiej Ruletki (Modal trigger)
+    if (interaction.isButton() && interaction.customId === 'rr_start_modal') {
+        const modal = new ModalBuilder()
+            .setCustomId('rr_modal_submit')
+            .setTitle('Rosyjska Ruletka - Stawka');
+        
+        const input = new TextInputBuilder()
+            .setCustomId('rr_stake_input')
+            .setLabel('Wpisz stawkę PJN-Coins:')
+            .setStyle(TextInputStyle.Short)
+            .setRequired(true);
+
+        modal.addComponents(new ActionRowBuilder<TextInputBuilder>().addComponents(input));
+        return interaction.showModal(modal);
+    }
+
+    if (interaction.isModalSubmit() && interaction.customId === 'rr_modal_submit') {
+        await interaction.deferReply({ ephemeral: true });
+        const stakeStr = interaction.fields.getTextInputValue('rr_stake_input');
+        const stake = parseInt(stakeStr);
+
+        if (isNaN(stake) || stake <= 0) {
+            return interaction.editReply({ content: '❌ Podaj prawidłową stawkę większą od zera.' });
+        }
+
+        let user = await UserModel.findOne({ userId: interaction.user.id });
+        if (!user) user = await UserModel.create({ userId: interaction.user.id });
+
+        if (user.balance < stake) {
+            return interaction.editReply({ content: `❌ Nie masz tylu środków! Posiadasz **${user.balance} PJN-Coins**.` });
+        }
+
+        user.balance -= stake;
+        user.casinoPlays = (user.casinoPlays || 0) + 1;
+
+        const bullet = Math.floor(Math.random() * 6) + 1;
+        const choice = Math.floor(Math.random() * 6) + 1;
+
+        if (bullet === choice) {
+            user.consecutiveLosses = (user.consecutiveLosses || 0) + 1;
+            user.consecutiveWins = 0;
+            await user.save();
+            await TransactionHistoryModel.create({ userId: interaction.user.id, type: 'casino_roulette', amount: -stake, details: 'Przegrana (Strzał)' });
+            return interaction.editReply({ content: `💥 **BAM!** Trafiłeś na kulę w komorze ${bullet}. Straciłeś **${stake} PJN-Coins**. (Stan portfela: **${user.balance}**)` });
+        } else {
+            const winAmount = stake * 2;
+            user.balance += winAmount;
+            user.consecutiveWins = (user.consecutiveWins || 0) + 1;
+            user.consecutiveLosses = 0;
+            await user.save();
+            await TransactionHistoryModel.create({ userId: interaction.user.id, type: 'casino_roulette', amount: stake, details: 'Wygrana (Przeżył)' });
+            return interaction.editReply({ content: `✨ **Klik!** Pusto w komorze ${choice}! Przeżyłeś i wygrywasz **${winAmount} PJN-Coins**! (Stan portfela: **${user.balance}**)` });
+        }
+    }
+
+    // Obsługa Wisielca
+    if (interaction.isButton() && interaction.customId === 'hm_start') {
+        await interaction.deferReply({ ephemeral: true });
+        const word = WORDS_POOL[Math.floor(Math.random() * WORDS_POOL.length)];
+        
+        const sentMsg = await interaction.channel?.send({
+            content: `🎮 **Gra w Wisielca rozpoczęta przez <@${interaction.user.id}>!**\nSłowo: \`_ _ _ _ _ _\`\nBłędy: 0/6`
+        });
+
+        if (sentMsg) {
+            await HangmanModel.create({
+                messageId: sentMsg.id,
+                userId: interaction.user.id,
+                word: word,
+                guessed: [],
+                mistakes: 0,
+                status: 'active'
+            });
+        }
+        return interaction.editReply({ content: '✅ Rozpoczęto nową grę w wisielca na kanale!' });
+    }
+
+    if (interaction.isButton() && interaction.customId.startsWith('quiz_')) {
+        await interaction.deferReply({ ephemeral: true });
+        if (interaction.customId === 'quiz_correct') {
+            let user = await UserModel.findOne({ userId: interaction.user.id });
+            if (!user) user = await UserModel.create({ userId: interaction.user.id });
+            user.balance += 250;
+            await user.save();
+            return interaction.editReply({ content: '✅ **Prawidłowa odpowiedź!** Otrzymujesz nagrodę **250 PJN-Coins** do portfela!' });
+        } else {
+            return interaction.editReply({ content: '❌ **Błędna odpowiedź!** Spróbuj ponownie następnym razem.' });
+        }
+    }
+
     if (interaction.isButton() && (interaction.customId.startsWith('poll_vote_') || interaction.customId === 'poll_show_voters')) {
         const poll = await PollModel.findOne({ messageId: interaction.message.id });
         if (!poll) return interaction.reply({ content: '❌ Ta ankieta nie istnieje w bazie.', ephemeral: true });
 
-        // Obsługa przycisku podglądu głosujących (tylko administrator)
         if (interaction.customId === 'poll_show_voters') {
             if (!isAuthorized(interaction.user.id) && !interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) {
                 return interaction.reply({ content: '❌ Tylko administratorzy mogą podejrzeć, kto głosował!', ephemeral: true });
@@ -2504,6 +2700,64 @@ client.on('interactionCreate', async interaction => {
     const { commandName } = interaction;
 
     try {
+        if (commandName === 'kpn') {
+            if (interaction.channelId !== '1534060126980411423') {
+                return interaction.reply({ content: '❌ Tę komendę można wykonać tylko na kanale salonu gier (<#1534060126980411423>)!', ephemeral: true });
+            }
+            await interaction.deferReply();
+            const wyborGracza = interaction.options.getString('wybor', true);
+            const stawka = interaction.options.getInteger('stawka', true);
+
+            if (stawka <= 0) return interaction.editReply({ content: '❌ Stawka musi być większa od zera.' });
+
+            let user = await UserModel.findOne({ userId: interaction.user.id });
+            if (!user) user = await UserModel.create({ userId: interaction.user.id });
+            if (user.balance < stawka) return interaction.editReply({ content: `❌ Brak środków (${user.balance} coins).` });
+
+            const opcje = ['kamien', 'papier', 'nozyce'];
+            const wyborBota = opcje[Math.floor(Math.random() * opcje.length)];
+
+            let wynikText = '';
+            let change = 0;
+
+            if (wyborGracza === wyborBota) {
+                wynikText = `🤝 Remis! Wybory były identyczne (\`${wyborBota}\`). Stawka zostaje zwrócona.`;
+            } else if (
+                (wyborGracza === 'kamien' && wyborBota === 'nozyce') ||
+                (wyborGracza === 'papier' && wyborBota === 'kamien') ||
+                (wyborGracza === 'nozyce' && wyborBota === 'papier')
+            ) {
+                change = stawka;
+                user.balance += change;
+                wynikText = `🎉 **Wygrana!** Bot wybrał \`${wyborBota}\`. Zyskujesz **${stawka} PJN-Coins**!`;
+            } else {
+                change = -stawka;
+                user.balance += change;
+                wynikText = `❌ **Przegrana!** Bot wybrał \`${wyborBota}\`. Tracisz **${stawka} PJN-Coins**!`;
+            }
+
+            await user.save();
+            await TransactionHistoryModel.create({ userId: interaction.user.id, type: 'casino_kpn', amount: change, details: `Gracz: ${wyborGracza}, Bot: ${wyborBota}` });
+            return interaction.editReply({ content: wynikText });
+        }
+
+        if (commandName === 'quiz-gra') {
+            if (interaction.channelId !== '1534060126980411423') {
+                return interaction.reply({ content: '❌ Tę komendę można wykonać tylko na kanale salonu gier (<#1534060126980411423>)!', ephemeral: true });
+            }
+            await interaction.reply({
+                content: '❓ **Quiz PJN:** Jakie miasto jest stolicą Polski?\n*Wybierz odpowiedź poniżej:*',
+                components: [
+                    new ActionRowBuilder<ButtonBuilder>().addComponents(
+                        new ButtonBuilder().setCustomId('quiz_wrong_1').setLabel('Kraków').setStyle(ButtonStyle.Secondary),
+                        new ButtonBuilder().setCustomId('quiz_correct').setLabel('Warszawa').setStyle(ButtonStyle.Success),
+                        new ButtonBuilder().setCustomId('quiz_wrong_2').setLabel('Gdańsk').setStyle(ButtonStyle.Secondary)
+                    )
+                ]
+            });
+            return;
+        }
+
         if (commandName === 'ankieta') {
             await interaction.deferReply();
             const pytanie = interaction.options.getString('pytanie', true);
