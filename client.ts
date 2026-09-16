@@ -80,6 +80,7 @@ const transactionHistorySchema = new mongoose.Schema({
 const TransactionHistoryModel = mongoose.model('TransactionHistory', transactionHistorySchema);
 
 const AVAILABLE_BADGES = [
+    // Standardowe / łatwiejsze
     '💬 **Początkujący Gadulec**',
     '📜 **Kronikarz Chatu**',
     '💬 **Król Wiadomości**',
@@ -99,13 +100,37 @@ const AVAILABLE_BADGES = [
     '🎖️ **Zaawansowany klient sklepu PJN**',
     '💡 **Filozof**',
     '🤝 **Pomocna Dłoń**',
-    '⏳ **Weteran (Rzadka)**',
     '⏳ **Weteran Półrocza**',
+    '⏳ **Weteran (Rzadka)**',
     '🛡️ **Filar Społeczności**',
-    '🎟️ **Kolekcjoner (Epicka)**',
     '⭐ **Awansowy Ekspert (Lvl 10)**',
     '🌟 **Mistrz Poziomów (Lvl 50, Rzadka)**',
-    '👑 **Legenda Serwera (Lvl 100, Elitarna)**'
+    '👑 **Legenda Serwera (Lvl 100, Elitarna)**',
+
+    // --- NOWE DŁUGOTERMINOWE / HARDCORE ---
+    '🧠 **Wygadany Mędrzec (25k Wiadomości)**',
+    '🎙️ **Duch Kanałów Głosowych (500h na Głosie, Elitarna)**',
+    '🏛️ **Miliarder PJN (1 000 000 Coinsów, Elitarna)**',
+    '🎰 **Hazardowy Tycoon (500 Gier w Kasynie)**',
+    '🔥 **Niepowstrzymana Seria (20 Wygranych z Rzędu, Epicka)**',
+    '⌛ **Długowieczny Patriarcha (3 Lata Stażu, Elitarna)**',
+    '🤝 **Filantrop Społeczności (50 000 Przekazanych Coinsów)**',
+    '🎟️ **Kolekcjoner (Epicka)**'
+];
+
+// Odznaki, które oprócz PW wyślą także publiczne ogłoszenie na kanale ANNOUNCE_CHANNEL_ID
+const RARE_ANNOUNCE_BADGES = [
+    '🏦 **Milioner (Rzadka)**',
+    '🎰 **Ryzykant (Rzadka)**',
+    '⏳ **Weteran (Rzadka)**',
+    '🌟 **Mistrz Poziomów (Lvl 50, Rzadka)**',
+    '👑 **Legenda Serwera (Lvl 100, Elitarna)**',
+    '🎟️ **Kolekcjoner (Epicka)**',
+    // Nowe elitarne ogłoszenia
+    '🎙️ **Duch Kanałów Głosowych (500h na Głosie, Elitarna)**',
+    '🏛️ **Miliarder PJN (1 000 000 Coinsów, Elitarna)**',
+    '🔥 **Niepowstrzymana Seria (20 Wygranych z Rzędu, Epicka)**',
+    '⌛ **Długowieczny Patriarcha (3 Lata Stażu, Elitarna)**'
 ];
 
 const configSchema = new mongoose.Schema({
@@ -792,12 +817,14 @@ function createBadgesInfoEmbed() {
                 name: '💬 Aktywność na Chacie i Głosie',
                 value: 
                     '• 💬 **Początkujący Gadulec** — 200 wiadomości\n' +
-                    '• 📜 **Kronikarz Chatu** — 1000 wiadomości\n' +
-                    '• 💬 **Król Wiadomości** — 5000 wiadomości\n' +
+                    '• 📜 **Kronikarz Chatu** — 1 000 wiadomości\n' +
+                    '• 💬 **Król Wiadomości** — 5 000 wiadomości\n' +
+                    '• 🧠 **Wygadany Mędrzec** — 25 000 wiadomości *(Hardcore)*\n' +
                     '• 😂 **Emotikonowy Ekspresja** — 30 customowych emotek\n' +
                     '• 🌙 **Nocny Marek** — 50 wiadomości w nocy (00:00–04:00)\n' +
                     '• 🎙️ **Stały Bywalec Mikrofonu** — 30h na kanale głosowym\n' +
-                    '• 🎧 **Audiofil** — 100h na kanale głosowym',
+                    '• 🎧 **Audiofil** — 100h na kanale głosowym\n' +
+                    '• 🎙️ **Duch Kanałów Głosowych** — 500h na kanale głosowym *(Elitarna)*',
                 inline: false
             },
             {
@@ -814,16 +841,22 @@ function createBadgesInfoEmbed() {
                     '• 💰 **Kapitalista** — 5 000 PJN-Coins\n' +
                     '• 💎 **Magnat Finansowy** — 10 000 PJN-Coins\n' +
                     '• 🏦 **Milioner** — 100 000 PJN-Coins\n' +
+                    '• 🏛️ **Miliarder PJN** — 1 000 000 PJN-Coins *(Elitarna)*\n' +
                     '• 💸 **Hojny Darczyńca** — 5 000 przekazanych w przelewach\n' +
+                    '• 🤝 **Filantrop Społeczności** — 50 000 przekazanych coinsów *(Elitarna)*\n' +
                     '• 🎲 **Nałogowy Graczyk** — 20 gier w kasynie\n' +
                     '• 🎰 **Ryzykant** — 100 gier w kasynie\n' +
+                    '• 🎰 **Hazardowy Tycoon** — 500 gier w kasynie *(Hardcore)*\n' +
                     '• 🍀 **Ulubieniec Fortuna** — 3 wygrane z rzędu w kasynie\n' +
+                    '• 🔥 **Niepowstrzymana Seria** — 20 wygranych z rzędu w kasynie *(Epicka)*\n' +
                     '• 🎯 **Czarna Seria** — 5 przegranych z rzędu w kasynie\n' +
                     '• 🏷️ **Klient sklepu PJN** — Zakup w oficjalnym sklepie serwera\n' +
                     '• 🎖️ **Zaawansowany klient** — Zakup zaawansowanego przedmiotu w sklepie\n' +
                     '• 💡 **Filozof** — Dodanie 5 cytatów\n' +
                     '• 🤝 **Pomocna Dłoń** — 10 akcji pomocy\n' +
-                    '• ⏳ **Weteran Półrocza / Weteran** — Staż na serwerze (6 miesięcy / rok)\n' +
+                    '• ⏳ **Weteran Półrocza** — 6 miesięcy stażu na serwerze\n' +
+                    '• ⏳ **Weteran** — 1 rok stażu na serwerze\n' +
+                    '• ⌛ **Długowieczny Patriarcha** — 3 lata stażu na serwerze *(Elitarna)*\n' +
                     '• 🛡️ **Filar Społeczności** — Posiadanie rangi Administracji/Streamera\n' +
                     '• 🎟️ **Kolekcjoner** — Zdobycie wszystkich pozostałych odznak',
                 inline: false
@@ -1150,7 +1183,7 @@ async function updateTraderRoles(member: any, reputation: number) {
     }
 }
 
-// === W PELNI OLOGOWANA I NAPRAWIONA FUNKCJA CHECK AND AWARD BADGES ===
+// === UNIWERSALNA FUNKCJA SPRAWDZAJĄCA I PRZYZNAWAJĄCA ODZNAKI ===
 async function checkAndAwardBadges(user: any, memberOrUser: any, guild?: any) {
     const newBadges: string[] = [];
     const addBadge = (badgeName: string) => {
@@ -1160,14 +1193,15 @@ async function checkAndAwardBadges(user: any, memberOrUser: any, guild?: any) {
         }
     };
 
+    // Standardowe odznaki
     if (user.messageCount >= 200) addBadge('💬 **Początkujący Gadulec**');
     if (user.messageCount >= 1000) addBadge('📜 **Kronikarz Chatu**');
     if (user.messageCount >= 5000) addBadge('💬 **Król Wiadomości**');
     if (user.emojiCount >= 30) addBadge('😂 **Emotikonowy Ekspresja**');
     if (user.nightMessageCount >= 50) addBadge('🌙 **Nocny Marek**');
 
-    if (user.voiceMinutes >= 1800) addBadge('🎙️ **Stały Bywalec Mikrofonu**');
-    if (user.voiceMinutes >= 6000) addBadge('🎧 **Audiofil**'); 
+    if (user.voiceMinutes >= 1800) addBadge('🎙️ **Stały Bywalec Mikrofonu**'); // 30h
+    if (user.voiceMinutes >= 6000) addBadge('🎧 **Audiofil**'); // 100h
 
     if (user.balance >= 5000) addBadge('💰 **Kapitalista**');
     if (user.balance >= 10000) addBadge('💎 **Magnat Finansowy**');
@@ -1190,8 +1224,8 @@ async function checkAndAwardBadges(user: any, memberOrUser: any, guild?: any) {
     if (memberOrUser && memberOrUser.joinedAt) {
         const diffMonths = (Date.now() - new Date(memberOrUser.joinedAt).getTime()) / (1000 * 60 * 60 * 24 * 30);
         const diffYears = diffMonths / 12;
-        if (diffYears >= 1) addBadge('⏳ **Weteran (Rzadka)**');
         if (diffMonths >= 6) addBadge('⏳ **Weteran Półrocza**');
+        if (diffYears >= 1) addBadge('⏳ **Weteran (Rzadka)**');
     }
 
     if (memberOrUser && memberOrUser.roles && typeof memberOrUser.roles.cache?.some === 'function') {
@@ -1201,7 +1235,20 @@ async function checkAndAwardBadges(user: any, memberOrUser: any, guild?: any) {
         if (hasAdminRole) addBadge('🛡️ **Filar Społeczności**');
     }
 
-    const masterPoolCount = 21; 
+    // --- NOWE DŁUGOTERMINOWE / HARDCORE ODZNAKI ---
+    if (user.messageCount >= 25000) addBadge('🧠 **Wygadany Mędrzec (25k Wiadomości)**');
+    if (user.voiceMinutes >= 30000) addBadge('🎙️ **Duch Kanałów Głosowych (500h na Głosie, Elitarna)**'); // 500h = 30000 min
+    if (user.balance >= 1000000) addBadge('🏛️ **Miliarder PJN (1 000 000 Coinsów, Elitarna)**');
+    if (user.totalDonated >= 50000) addBadge('🤝 **Filantrop Społeczności (50 000 Przekazanych Coinsów)**');
+    if (user.casinoPlays >= 500) addBadge('🎰 **Hazardowy Tycoon (500 Gier w Kasynie)**');
+    if (user.consecutiveWins >= 20) addBadge('🔥 **Niepowstrzymana Seria (20 Wygranych z Rzędu, Epicka)**');
+
+    if (memberOrUser && memberOrUser.joinedAt) {
+        const diffYears = (Date.now() - new Date(memberOrUser.joinedAt).getTime()) / (1000 * 60 * 60 * 24 * 365);
+        if (diffYears >= 3) addBadge('⌛ **Długowieczny Patriarcha (3 Lata Stażu, Elitarna)**');
+    }
+
+    const masterPoolCount = 28; // Całkowita liczba unikalnych odznak bazowych (bez kolekcjonera)
     const currentCountWithoutCollector = user.badges.filter((b: string) => !b.includes('Kolekcjoner')).length;
     if (currentCountWithoutCollector >= masterPoolCount) {
         addBadge('🎟️ **Kolekcjoner (Epicka)**');
@@ -1215,19 +1262,26 @@ async function checkAndAwardBadges(user: any, memberOrUser: any, guild?: any) {
         const targetUserObj = targetMember ? targetMember.user : memberOrUser;
         const targetGuild = guild || (targetMember ? targetMember.guild : null) || (client.guilds.cache.first());
 
-        console.log(`[DEBUG BADGES] Wykryto nowe odznaki! Próbuję wysłać ogłoszenie na kanał: ${ANNOUNCE_CHANNEL_ID}`);
-
+        // 1. ZAWSZE WYSYŁAJ INFORMACJĘ NA PW DO UŻYTKOWNIKA
         try {
             await targetUserObj.send({
-                embeds: [{
-                    color: 0xFFD700,
-                    title: '🎉 Nowa odznaka odblokowana!',
-                    description: `Gratulacje! Automatycznie zdobyłeś nowe odznaki:\n` + newBadges.map(b => `• ${b}`).join('\n')
-                }]
-            }).catch(() => {});
-        } catch (e) {}
+                embeds: [
+                    new EmbedBuilder()
+                        .setColor(0xFFD700)
+                        .setTitle('🎉 Nowa odznaka odblokowana!')
+                        .setDescription(`Gratulacje! Otrzymałeś nowe odznaki:\n\n` + newBadges.map(b => `• ✨ ${b}`).join('\n'))
+                        .setTimestamp()
+                ]
+            });
+            console.log('[DEBUG BADGES] Wysłano powiadomienie na PW użytkownika.');
+        } catch (e) {
+            console.log('[DEBUG BADGES] Nie udało się wysłać PW do użytkownika (ma zablokowane wiadomości).');
+        }
 
-        if (targetGuild) {
+        // 2. WYSYŁAJ NA KANAŁ PUBLICZNY TYLKO TE ODZNAKI, KTÓRE SĄ NA LIŚCIE RZADKICH (RARE_ANNOUNCE_BADGES)
+        const rareBadgesToAnnounce = newBadges.filter(b => RARE_ANNOUNCE_BADGES.includes(b));
+
+        if (rareBadgesToAnnounce.length > 0 && targetGuild) {
             try {
                 const announceChannel = await targetGuild.channels.fetch(ANNOUNCE_CHANNEL_ID).catch((err: any) => {
                     console.error('[DEBUG BADGES] Nie udało się pobrać kanału ogłoszeń:', err);
@@ -1237,12 +1291,12 @@ async function checkAndAwardBadges(user: any, memberOrUser: any, guild?: any) {
                 if (announceChannel) {
                     const consoleEmbed = new EmbedBuilder()
                         .setColor(0x107C10)
-                        .setTitle('🏆 OSIĄGNIĘCIE ODBLOKOWANE!')
+                        .setTitle('🏆 RZADKA ODZNAKA ODBLOKOWANA!')
                         .setThumbnail(targetUserObj.displayAvatarURL ? targetUserObj.displayAvatarURL() : client.user?.displayAvatarURL())
                         .setDescription(
-                            `🎮 **TROFEUM / OSIĄGNIĘCIE ODBLOKOWANE**\n\n` +
-                            `Gracz <@${user.userId}> właśnie zdobył unikalne osiągnięcie na serwerze:\n\n` +
-                            newBadges.map(b => `> ✨ **${b}**`).join('\n') + `\n\n` +
+                            `🎮 **SPECJALNE OSIĄGNIĘCIE**\n\n` +
+                            `Gracz <@${user.userId}> właśnie zdobył unikalne, rzadkie wyróżnienie na serwerze:\n\n` +
+                            rareBadgesToAnnounce.map(b => `> ✨ **${b}**`).join('\n') + `\n\n` +
                             `*Zdobądź swój własny tytuł, budując aktywność i walcząc o odznaki w grach!*`
                         )
                         .setImage(LIVE_IMAGE_URL)
@@ -1254,15 +1308,11 @@ async function checkAndAwardBadges(user: any, memberOrUser: any, guild?: any) {
                         embeds: [consoleEmbed],
                         allowedMentions: { users: [user.userId] }
                     });
-                    console.log('[DEBUG BADGES] Sukces! Pomyślnie wysłano konsolowe ogłoszenie na kanał.');
-                } else {
-                    console.log('[DEBUG BADGES] Kanał ogłoszeń o ID', ANNOUNCE_CHANNEL_ID, 'nie został odnaleziony w gildii!');
+                    console.log('[DEBUG BADGES] Sukces! Wysłano rzadkie ogłoszenie na kanał publiczny.');
                 }
             } catch (err) {
-                console.error('[DEBUG BADGES] Błąd podczas wysyłania konsolowego ogłoszenia:', err);
+                console.error('[DEBUG BADGES] Błąd podczas wysyłania ogłoszenia na kanał:', err);
             }
-        } else {
-            console.log('[DEBUG BADGES] Brak obiektu targetGuild / guild do wysłania wiadomości!');
         }
     }
 }
@@ -2133,6 +2183,8 @@ client.on('interactionCreate', async interaction => {
                 if (!user.badges.includes(item.badgeName)) {
                     user.badges.push(item.badgeName);
                     await user.save();
+                    const memberObj = await interaction.guild?.members.fetch(interaction.user.id).catch(() => null);
+                    await checkAndAwardBadges(user, memberObj || interaction.user, interaction.guild);
                 }
             } else if (item.type === 'custom_voice') {
                 user.customVoiceExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
@@ -2439,7 +2491,16 @@ client.on('interactionCreate', async interaction => {
             if (!user) user = await UserModel.create({ userId: targetUser.id });
 
             const rankDetails = await getUserLevelRankDetails(targetUser.id);
-            const badgeText = user.badges && user.badges.length > 0 ? user.badges.join(', ') : 'Brak odznak';
+            const userBadges = user.badges || [];
+
+            // Kategorie odznak
+            const catChat = userBadges.filter(b => b.includes('Gadulec') || b.includes('Kronikarz') || b.includes('Król Wiadomości') || b.includes('Wygadany Mędrzec') || b.includes('Ekspresja') || b.includes('Nocny Marek') || b.includes('Mikrofonu') || b.includes('Audiofil') || b.includes('Duch Kanałów'));
+            const catLevels = userBadges.filter(b => b.includes('Awansowy Ekspert') || b.includes('Mistrz Poziomów') || b.includes('Legenda Serwera'));
+            const catEco = userBadges.filter(b => b.includes('Kapitalista') || b.includes('Magnat') || b.includes('Milioner') || b.includes('Miliarder') || b.includes('Hojny Darczyńca') || b.includes('Filantrop') || b.includes('Klient sklepu') || b.includes('Zaawansowany klient'));
+            const catCasino = userBadges.filter(b => b.includes('Graczyk') || b.includes('Ryzykant') || b.includes('Hazardowy Tycoon') || b.includes('Fortuna') || b.includes('Czarna Seria') || b.includes('Niepowstrzymana Seria'));
+            const catOther = userBadges.filter(b => b.includes('Filozof') || b.includes('Pomocna Dłoń') || b.includes('Weteran') || b.includes('Patriarcha') || b.includes('Filar') || b.includes('Kolekcjoner'));
+
+            const formatCat = (arr: string[]) => arr.length > 0 ? arr.join(' • ') : 'Brak';
 
             const embed = new EmbedBuilder()
                 .setColor(0x9B59B6)
@@ -2450,7 +2511,11 @@ client.on('interactionCreate', async interaction => {
                     { name: '⭐ Poziom & XP', value: `Poziom **${user.level || 1}** (${user.exp || 0} XP)\nRanking: **#${rankDetails.rank}**`, inline: true },
                     { name: '⭐ Reputacja', value: `**${user.reputation || 0} pkt**`, inline: true },
                     { name: '🎮 Fortnite Stats', value: `Nick: **${user.epicNick || 'Brak'}**\nZabójstwa: **${user.fortniteKills || 0}**`, inline: false },
-                    { name: '🏅 Odznaki', value: badgeText, inline: false }
+                    { name: '💬 Aktywność i Głos', value: formatCat(catChat), inline: false },
+                    { name: '⭐ Poziomy Serwera', value: formatCat(catLevels), inline: false },
+                    { name: '💰 Ekonomia i Sklep', value: formatCat(catEco), inline: false },
+                    { name: '🎲 Kasyno i Gry', value: formatCat(catCasino), inline: false },
+                    { name: '🏆 Staż i Inne', value: formatCat(catOther), inline: false }
                 )
                 .setTimestamp();
 
@@ -3322,7 +3387,7 @@ client.on('interactionCreate', async interaction => {
                     const memberObj = await interaction.guild?.members.fetch(targetUser.id).catch(() => null);
                     await checkAndAwardBadges(user, memberObj || targetUser, interaction.guild);
 
-                    await interaction.editReply({ content: `✅ Przyznano odznakę i wysłano powiadomienie na ogłoszenia!` });
+                    await interaction.editReply({ content: `✅ Pomyślnie przyznano odznakę i wysłano powiadomienie na PW (oraz ogłoszenie, jeśli spełnia warunki rzadkości)!` });
                 } else {
                     await interaction.editReply({ content: `⚠️ Użytkownik ma już tę odznakę.` });
                 }
