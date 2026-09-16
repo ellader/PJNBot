@@ -188,6 +188,13 @@ const ID_RANGI_DUSZKOWIEC = "1532978703842283551";
 const ID_RANGI_MODERATOR = "1532321767857721344";
 const ID_RANGI_ADMIN = "1532324059470237857";
 
+// === NOWE KONFIGURACJE (WERYFIKACJA I TEMP-VOICE) ===
+const ID_KANAL_WERYFIKACJI = '1549658822136696832';
+const ID_RANGI_ZWERYFIKOWANY = '1549659335179763772';
+const ID_ROLI_MEZCZYZNA = '1532327338430431383';
+const ID_ROLI_KOBIETA = '1532328153786224751';
+const ID_KANAL_TWORZENIA_POKOJU = '1532302511459926069';
+
 const ID_KANAL_REPUTACJI = "1540233764477730908";
 const ID_ALEJA_SLAW_REPUTACJI = "1540238376278687754";
 const ID_RANGI_WZOROWY_TRADER = "1540235169653592084";   
@@ -202,11 +209,9 @@ const ID_KANAL_FORTNITE = '1546405381717233704';
 const ID_KANAL_RANKING_FORTNITE = '1546593557526216816';
 const ID_KANAL_AWANSOW = '1546407009262370866';
 
-// Konfiguracja panelu informacyjnego aktualizacji Fortnite
 const ID_KANAL_AKTUALIZACJI_FORTNITE = '1547923010823004180';
 const ID_RANGI_AKTUALIZACJE_FORTNITE = '1547922790152282112';
 
-// === ID KANAŁÓW DYNAMICZNYCH STATYSTYK ===
 const STATS_CHANNELS = {
     ONLINE: '1532336242086117498',
     FORTNITE: '1532336416074371102',
@@ -265,19 +270,69 @@ async function seedQuotesIfNeeded() {
     }
 }
 
-// === FUNKCJA AKTUALIZACJI DYNAMICZNYCH STATYSTYK SERWERA ===
+// === FUNKCJA INICJALIZACJI WERYFIKACJI ===
+async function setupVerificationChannel() {
+    try {
+        const channel = await client.channels.fetch(ID_KANAL_WERYFIKACJI).catch(() => null) as TextChannel;
+        if (!channel) return;
+
+        const messages = await channel.messages.fetch({ limit: 50 }).catch(() => null);
+        if (messages) {
+            for (const [_, msg] of messages) {
+                if (msg.author.id === client.user?.id) {
+                    await msg.delete().catch(() => {});
+                }
+            }
+        }
+
+        const embed = new EmbedBuilder()
+            .setColor(0x2ECC71)
+            .setTitle('🛡️ Weryfikacja i Wybór Płci • PJN Community')
+            .setDescription(
+                'Witaj na serwerze! Aby uzyskać dostęp do całej społeczności, musisz przejść prostą i obowiązkową weryfikację.\n\n' +
+                '👇 **Wybierz swoją płeć w menu rozwijanym poniżej:**\n' +
+                '• Wybór odpowiedniej opcji automatycznie nada Ci rangę członkowską oraz odblokuje kanały na serwerze.'
+            )
+            .setImage(LIVE_IMAGE_URL)
+            .setTimestamp()
+            .setFooter({ text: 'PJN System Weryfikacji' });
+
+        const selectMenu = new StringSelectMenuBuilder()
+            .setCustomId('verification_gender_select')
+            .setPlaceholder('Wybierz swoją płeć, aby się zweryfikować...')
+            .addOptions([
+                {
+                    label: 'Mężczyzna',
+                    description: 'Wybierz, aby otrzymać rangę męską i zweryfikować konto',
+                    value: 'verify_male',
+                    emoji: '👦'
+                },
+                {
+                    label: 'Kobieta',
+                    description: 'Wybierz, aby otrzymać rangę damską i zweryfikować konto',
+                    value: 'verify_female',
+                    emoji: '👧'
+                }
+            ]);
+
+        const row = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(selectMenu);
+        const sentMsg = await channel.send({ embeds: [embed], components: [row] });
+        await sentMsg.pin().catch(() => {});
+    } catch (e) {
+        console.error('Błąd inicjalizacji kanału weryfikacji:', e);
+    }
+}
+
 async function updateServerStats(guild: any) {
     try {
-        await guild.members.fetch(); // Pobranie pełnej pamięci podręcznej członków
+        await guild.members.fetch();
 
-        // 1. Liczba osób online (status innej niż offline)
         const onlineCount = guild.members.cache.filter((m: any) => m.presence && m.presence.status !== 'offline').size;
         const onlineChannel = guild.channels.cache.get(STATS_CHANNELS.ONLINE);
         if (onlineChannel && onlineChannel.isVoiceBased()) {
             await onlineChannel.setName(`🟢 Online: ${onlineCount}`).catch(() => {});
         }
 
-        // 2. Liczba graczy Fortnite (osoby grające w grę zawierającą "fortnite" w aktywnościach)
         const fnCount = guild.members.cache.filter((m: any) => {
             if (!m.presence || !m.presence.activities) return false;
             return m.presence.activities.some((act: any) => act.name && act.name.toLowerCase().includes('fortnite'));
@@ -287,7 +342,6 @@ async function updateServerStats(guild: any) {
             await fnChannel.setName(`🎮 Gracze Fortnite: ${fnCount}`).catch(() => {});
         }
 
-        // 3. Łączna liczba użytkowników PJN Users
         const totalUsers = guild.memberCount;
         const usersChannel = guild.channels.cache.get(STATS_CHANNELS.USERS);
         if (usersChannel && usersChannel.isVoiceBased()) {
@@ -299,7 +353,6 @@ async function updateServerStats(guild: any) {
 }
 
 function startServerStatsCron() {
-    // Aktualizuj statystyki co 5 minut
     setInterval(async () => {
         for (const [_, guild] of client.guilds.cache) {
             await updateServerStats(guild);
@@ -393,7 +446,6 @@ function startDailyShopAutoPoster() {
     });
 }
 
-// === SYSTEM MONITOROWANIA AKTUALIZACJI I SERWERÓW FORTNITE ===
 let lastFortniteIncidentId: string | null = null;
 let lastFortniteStatusState: string | null = null;
 
@@ -531,7 +583,6 @@ function startFortniteStatusCron() {
         await checkFortniteServerStatus();
     });
 }
-// ==================================================================
 
 async function updateAllFortniteStats() {
     const users = await UserModel.find({ epicNick: { $ne: null } });
@@ -1644,6 +1695,7 @@ const commands = [
 client.once('ready', async () => {
     console.log(`Zalogowano jako ${client.user?.tag}!`);
     await seedQuotesIfNeeded();
+    await setupVerificationChannel(); // Inicjalizacja panelu weryfikacji
     await setupMemeChannelInstruction();
     await setupLfgChannelInstruction(); 
     await setupTicketChannel(); 
@@ -1658,7 +1710,7 @@ client.once('ready', async () => {
     try {
         for (const [_, guild] of client.guilds.cache) {
             await rest.put(Routes.applicationGuildCommands(client.user!.id, guild.id), { body: commands });
-            await updateServerStats(guild); // Odśwież statystyki od razu po starcie bota
+            await updateServerStats(guild);
         }
     } catch (error) {
         console.error('Błąd rejestracji:', error);
@@ -1675,11 +1727,49 @@ client.once('ready', async () => {
     startDailyShopAutoPoster(); 
     startFortniteRankingCron();
     startFortniteStatusCron(); 
-    startServerStatsCron(); // Uruchomienie automatycznych statystyk serwera
+    startServerStatsCron();
 });
 
 client.on('interactionCreate', async interaction => {
+    // === OBSŁUGA SELECT MENU (WERYFIKACJA ORAZ SKLEP) ===
     if (interaction.isStringSelectMenu()) {
+        if (interaction.customId === 'verification_gender_select') {
+            await interaction.deferReply({ ephemeral: true });
+            const guild = interaction.guild;
+            if (!guild) return;
+
+            const member = await guild.members.fetch(interaction.user.id).catch(() => null);
+            if (!member) {
+                return interaction.editReply({ content: '❌ Nie udało się pobrać Twoich danych na serwerze.' });
+            }
+
+            const selectedValue = interaction.values[0];
+            const roleVerified = guild.roles.cache.get(ID_RANGI_ZWERYFIKOWANY);
+            
+            if (!roleVerified) {
+                return interaction.editReply({ content: '❌ Ranga zweryfikowanego nie istnieje na serwerze.' });
+            }
+
+            try {
+                // Nadanie rangi zweryfikowanego
+                await member.roles.add(roleVerified);
+
+                if (selectedValue === 'verify_male') {
+                    const roleMale = guild.roles.cache.get(ID_ROLI_MEZCZYZNA);
+                    if (roleMale) await member.roles.add(roleMale);
+                    await interaction.editReply({ content: `✅ **Pomyślnie zweryfikowano!** Otrzymałeś dostęp do serwera oraz rangę męską. Miłej zabawy!` });
+                } else if (selectedValue === 'verify_female') {
+                    const roleFemale = guild.roles.cache.get(ID_ROLI_KOBIETA);
+                    if (roleFemale) await member.roles.add(roleFemale);
+                    await interaction.editReply({ content: `✅ **Pomyślnie zweryfikowano!** Otrzymałeś dostęp do serwera oraz rangę damską. Miłej zabawy!` });
+                }
+            } catch (err) {
+                console.error('Błąd weryfikacji:', err);
+                await interaction.editReply({ content: '❌ Wystąpił błąd podczas nadawania ról weryfikacyjnych. Skontaktuj się z administracją.' });
+            }
+            return;
+        }
+
         if (interaction.customId === 'shop_select') {
             await interaction.deferReply({ ephemeral: true });
             const itemId = interaction.values[0];
@@ -2551,7 +2641,6 @@ client.on('interactionCreate', async interaction => {
             return;
         }
 
-        // === KOMENDA: /exp ===
         if (commandName === 'exp') {
             await interaction.deferReply();
             const targetUser = interaction.options.getUser('uzytkownik') || interaction.user;
@@ -2587,7 +2676,6 @@ client.on('interactionCreate', async interaction => {
             return;
         }
 
-        // === KOMENDA: /reputacja ===
         if (commandName === 'reputacja') {
             await interaction.deferReply();
             const targetUser = interaction.options.getUser('uzytkownik') || interaction.user;
@@ -3306,11 +3394,60 @@ client.on('messageCreate', async message => {
 
 const voiceTimestamps = new Map<string, number>();
 
+// === OBSŁUGA KANAŁÓW GŁOSOWYCH (TEMP-VOICE ORAZ STATYSTYKI) ===
 client.on('voiceStateUpdate', async (oldState, newState) => {
-    if (newState.member?.user.bot) return;
-    const userId = newState.id;
+    const userId = newState.id || oldState.id;
+    const guild = newState.guild || oldState.guild;
+    const member = newState.member || oldState.member;
+
+    if (member?.user.bot) return;
     const now = Date.now();
 
+    // 1. Sprawdzanie kanału tworzenia prywatnego pokoju (Temp-Voice)
+    if (newState.channelId === ID_KANAL_TWORZENIA_POKOJU) {
+        try {
+            const category = newState.channel?.parent;
+            const channelName = `🔊 Pokój - ${member.user.username}`;
+            
+            // Tworzenie prywatnego kanału
+            const privateVoice = await guild.channels.create({
+                name: channelName,
+                type: ChannelType.GuildVoice,
+                parent: category ? category.id : null,
+                permissionOverwrites: [
+                    {
+                        id: guild.id,
+                        deny: [PermissionFlagsBits.Connect]
+                    },
+                    {
+                        id: member.id,
+                        allow: [
+                            PermissionFlagsBits.Connect,
+                            PermissionFlagsBits.Speak,
+                            PermissionFlagsBits.ManageChannels,
+                            PermissionFlagsBits.MoveMembers
+                        ]
+                    }
+                ]
+            });
+
+            // Przeniesienie użytkownika do nowego pokoju
+            await member.voice.setChannel(privateVoice);
+        } catch (err) {
+            console.error('Błąd tworzenia dynamicznego pokoju głosowego:', err);
+        }
+    }
+
+    // 2. Automatyczne usuwanie pustego pokoju prywatnego
+    if (oldState.channel && oldState.channelId !== ID_KANAL_TWORZENIA_POKOJU) {
+        const leftChannel = oldState.channel;
+        // Sprawdzamy czy to kanał stworzony przez bota (np. zaczyna się od "🔊 Pokój -") i czy jest pusty
+        if (leftChannel.name.startsWith('🔊 Pokój -') && leftChannel.members.size === 0) {
+            await leftChannel.delete('Pusty kanał prywatny').catch(() => {});
+        }
+    }
+
+    // 3. Naliczanie czasu na kanałach głosowych (istniejąca logika)
     if (!oldState.channelId && newState.channelId) {
         voiceTimestamps.set(userId, now);
     } else if (oldState.channelId && !newState.channelId) {
@@ -3323,15 +3460,15 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
                     if (!user) user = await UserModel.create({ userId });
                     
                     const nowDate = new Date();
-                    const hasVipRole = newState.member?.roles?.cache?.has(ID_ROLI_VIP) || (user.vipExpiresAt && new Date(user.vipExpiresAt) > nowDate);
+                    const hasVipRole = member?.roles?.cache?.has(ID_ROLI_VIP) || (user.vipExpiresAt && new Date(user.vipExpiresAt) > nowDate);
                     const earnedCoins = hasVipRole ? minutesSpent * 2 : minutesSpent;
 
                     user.voiceMinutes = (user.voiceMinutes || 0) + minutesSpent;
                     user.balance += earnedCoins;
                     await user.save();
-                    if (newState.member) await checkAndAwardBadges(user, newState.member);
+                    if (member) await checkAndAwardBadges(user, member);
 
-                    await addExp(userId, minutesSpent * 5, newState.guild);
+                    await addExp(userId, minutesSpent * 5, guild);
 
                 } catch (e) {}
             }
@@ -3354,7 +3491,7 @@ client.on('guildMemberAdd', async member => {
                 .setColor(0x2ECC71)
                 .setTitle('🎮 Centrum Dowodzenia • Od tego możesz zacząć ⬇️')
                 .setDescription(
-                    `• Wybierz płeć: <#1532374188634144898>\n` +
+                    `• Zweryfikuj się i wybierz płeć: <#${ID_KANAL_WERYFIKACJI}>\n` +
                     `• Dostosuj role: <#1532397673842217010>\n` +
                     `• Wybierz swój sprzęt: <#1532398069524594708>\n` +
                     `• Szukaj do gry: <#1532449084559069214>`
