@@ -304,7 +304,19 @@ function isAuthorized(userId: string): boolean {
     return adminIds.includes(userId);
 }
 
-// === PULA SŁÓW DLA WISIELECA (Z KATEGORIAMI I PODPOWIEDZIAMI) ===
+// === PULA PYTAŃ DLA QUIZU ===
+const QUIZ_POOL = [
+    { q: 'Jakie miasto jest stolicą Polski?', correct: 'Warszawa', wrong1: 'Kraków', wrong2: 'Gdańsk' },
+    { q: 'Która gra posiada tryb Battle Royale z budowaniem?', correct: 'Fortnite', wrong1: 'CS2', wrong2: 'Minecraft' },
+    { q: 'Jaka waluta obowiązuje na tym serwerze Discord?', correct: 'PJN-Coins', wrong1: 'V-Bucks', wrong2: 'Dolar' },
+    { q: 'Ile komór ma bębnek w klasycznym rewolwerze w Rosyjskiej Ruletce?', correct: '6 komór', wrong1: '4 komory', wrong2: '8 komor' },
+    { q: 'Kto jest głównym twórcą i streamerem projektu PJN?', correct: 'LangusPJN', wrong1: 'ellader', wrong2: 'Moderator' },
+    { q: 'Na jakiej platformie najczęściej odbywają się główne transmisje?', correct: 'Kick / TikTok', wrong1: 'Netflix', wrong2: 'Spotify' },
+    { q: 'Jaki przedmiot w sklepie serwerowym daje bonus 2x za wiadomości?', correct: 'Rola VIP', wrong1: 'Odznaka', wrong2: 'Bilet duszka' },
+    { q: 'Do jakiej kategorii gier należy Counter-Strike 2?', correct: 'Strzelanka (FPS)', wrong1: 'Strategia', wrong2: 'MMORPG' }
+];
+
+// === PULA SŁÓW DLA WISIELECA ===
 const WORDS_POOL = [
     { word: 'discord', category: 'Technologia i Społeczność', hint: 'Platforma do komunikacji głosowej i tekstowej dla graczy' },
     { word: 'fortnite', category: 'Gry', hint: 'Popularna gra Battle Royale z budowaniem i skórkami' },
@@ -390,7 +402,7 @@ async function setupHangmanChannel() {
     } catch (e) {}
 }
 
-async function setupArcadeHubChannel() {
+async function setupCasinoHubChannel() {
     try {
         const channel = await client.channels.fetch('1534060126980411423').catch(() => null) as TextChannel;
         if (!channel) return;
@@ -399,15 +411,21 @@ async function setupArcadeHubChannel() {
 
         const embed = new EmbedBuilder()
             .setColor(0x9B59B6)
-            .setTitle('🕹️ Salon Gier i Quizów PJN')
+            .setTitle('🕹️ Salon Gier i Kasyno PJN — Dostępne Gry')
             .setDescription(
-                'W tym miejscu możesz testować swoją wiedzę oraz grać w szybkie gry za PJN-Coins!\n\n' +
-                '🎮 **Dostępne komendy na tym kanale:**\n' +
-                '• `/quiz-gra` — Odpowiadaj na pytania wielokrotnego wyboru i zgarniaj nagrody.\n' +
-                '• `/kpn [wybór] [stawka]` — Zagraj w Kamień, Papier, Nożyce przeciwko botowi.'
+                'Witaj w oficjalnym salonie gier! Poniżej znajdziesz pełną listę wszystkich dostępnych gier i komend, w których możesz pomnożyć swoje PJN-Coins:\n\n' +
+                '🎰 **1. Quiz z nagrodami**\n> Komenda: `/quiz-gra` — Odpowiadaj na losowe pytania i zdobywaj monety!\n\n' +
+                '✂️ **2. Kamień, Papier, Nożyce**\n> Komenda: `/kpn [wybór] [stawka]` — Klasyczny pojedynek z botem 1v1.\n\n' +
+                '🎲 **3. Rzut Kością**\n> Komenda: `/kostka [stawka]` — Sprawdź swój los w rzucie kostką.\n\n' +
+                '🪙 **4. Orzeł czy Reszka**\n> Komenda: `/moneta [wybór] [stawka]` — Obstaw stronę monety.\n\n' +
+                '🎰 **5. Maszyna Slotowa (Jednoręki Bandyta)**\n> Komenda: `/slot [stawka]` — Wylosuj układ symboli i traf Jackpot x5!\n\n' +
+                '🃏 **6. Poker**\n> Komenda: `/poker [tryb] [stawka]` — Zagraj w pokera z botem lub ludźmi.\n\n' +
+                '🎯 **7. Rosyjska Ruletka**\n> Kanał specjalny: <#1549791536336732240> — Ryzykuj stawkę w rewolwerze (wyniki widoczne tylko dla Ciebie)!\n\n' +
+                '📝 **8. Wisielec**\n> Kanał specjalny: <#1549791621942485120> — Odgaduj słowa na czacie i zdobywaj nagrody!'
             )
             .setImage(LIVE_IMAGE_URL)
-            .setTimestamp();
+            .setTimestamp()
+            .setFooter({ text: 'PJN Kasyno & Arcade • Powodzenia w grach!' });
 
         await channel.send({ embeds: [embed] });
     } catch (e) {}
@@ -1998,7 +2016,7 @@ client.once('ready', async () => {
     await setupFortniteUpdateChannel(); 
     await setupRussianRouletteChannel();
     await setupHangmanChannel();
-    await setupArcadeHubChannel();
+    await setupCasinoHubChannel();
     await cleanupOrphanedLfgVoices();
 
     const rest = new REST({ version: '10' }).setToken(token);
@@ -2765,13 +2783,20 @@ client.on('interactionCreate', async interaction => {
             if (interaction.channelId !== '1534060126980411423') {
                 return interaction.reply({ content: '❌ Tę komendę można wykonać tylko na kanale salonu gier (<#1534060126980411423>)!', ephemeral: true });
             }
+
+            const randomQuiz = QUIZ_POOL[Math.floor(Math.random() * QUIZ_POOL.length)];
+            
+            const buttons = [
+                { label: randomQuiz.correct, id: 'quiz_correct', style: ButtonStyle.Success },
+                { label: randomQuiz.wrong1, id: 'quiz_wrong_1', style: ButtonStyle.Secondary },
+                { label: randomQuiz.wrong2, id: 'quiz_wrong_2', style: ButtonStyle.Secondary }
+            ].sort(() => Math.random() - 0.5);
+
             await interaction.reply({
-                content: '❓ **Quiz PJN:** Jakie miasto jest stolicą Polski?\n*Wybierz odpowiedź poniżej:*',
+                content: `❓ **Quiz PJN:** ${randomQuiz.q}\n*Wybierz odpowiedź poniżej:*`,
                 components: [
                     new ActionRowBuilder<ButtonBuilder>().addComponents(
-                        new ButtonBuilder().setCustomId('quiz_wrong_1').setLabel('Kraków').setStyle(ButtonStyle.Secondary),
-                        new ButtonBuilder().setCustomId('quiz_correct').setLabel('Warszawa').setStyle(ButtonStyle.Success),
-                        new ButtonBuilder().setCustomId('quiz_wrong_2').setLabel('Gdańsk').setStyle(ButtonStyle.Secondary)
+                        buttons.map(b => new ButtonBuilder().setCustomId(b.id).setLabel(b.label).setStyle(b.style))
                     )
                 ]
             });
@@ -4056,7 +4081,7 @@ client.on('messageCreate', async message => {
 
     // === OBSŁUGA ROZGRYWKI W WISIELECA NA CZACIE ===
     if (message.channel.id === '1549791621942485120') {
-        const activeHangman = await HangmanModel.findOne({ channelId: message.channel.id, status: 'active' }) || await HangmanModel.findOne({ status: 'active' });
+        const activeHangman = await HangmanModel.findOne({ status: 'active' });
         
         if (activeHangman) {
             const guess = message.content.trim().toLowerCase();
