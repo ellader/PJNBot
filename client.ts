@@ -1150,7 +1150,7 @@ async function updateTraderRoles(member: any, reputation: number) {
     }
 }
 
-// Konsolowe powiadomienie (Xbox / PlayStation Style) wysyłane na podany kanał OGŁOSZENIA
+// === W PELNI OLOGOWANA I NAPRAWIONA FUNKCJA CHECK AND AWARD BADGES ===
 async function checkAndAwardBadges(user: any, memberOrUser: any, guild?: any) {
     const newBadges: string[] = [];
     const addBadge = (badgeName: string) => {
@@ -1207,11 +1207,15 @@ async function checkAndAwardBadges(user: any, memberOrUser: any, guild?: any) {
         addBadge('🎟️ **Kolekcjoner (Epicka)**');
     }
 
+    console.log(`[DEBUG BADGES] Użytkownik ${user.userId} sprawdzony. Nowe odznaki do dodania:`, newBadges);
+
     if (newBadges.length > 0) {
         await user.save();
         const targetMember = memberOrUser.user ? memberOrUser : null;
         const targetUserObj = targetMember ? targetMember.user : memberOrUser;
-        const targetGuild = guild || (targetMember ? targetMember.guild : null);
+        const targetGuild = guild || (targetMember ? targetMember.guild : null) || (client.guilds.cache.first());
+
+        console.log(`[DEBUG BADGES] Wykryto nowe odznaki! Próbuję wysłać ogłoszenie na kanał: ${ANNOUNCE_CHANNEL_ID}`);
 
         try {
             await targetUserObj.send({
@@ -1223,40 +1227,42 @@ async function checkAndAwardBadges(user: any, memberOrUser: any, guild?: any) {
             }).catch(() => {});
         } catch (e) {}
 
-        // Zawsze wywołuj powiadomienie konsolowe na kanale OGŁOSZENIA dla każdej nowo zdobytej odznaki, 
-        // lub wymuś dla odznak zawierających "rzadka", "milioner", itp.
         if (targetGuild) {
-            const rareKeywords = ['rzadka', 'epicka', 'elitarna', 'milioner', 'ryzykant', 'weteran', 'kolekcjoner', 'legenda'];
-            const hasRareBadge = newBadges.some(b => rareKeywords.some(kw => b.toLowerCase().includes(kw))) || newBadges.length > 0;
+            try {
+                const announceChannel = await targetGuild.channels.fetch(ANNOUNCE_CHANNEL_ID).catch((err: any) => {
+                    console.error('[DEBUG BADGES] Nie udało się pobrać kanału ogłoszeń:', err);
+                    return null;
+                }) as TextChannel;
 
-            if (hasRareBadge) {
-                try {
-                    const announceChannel = await targetGuild.channels.fetch(ANNOUNCE_CHANNEL_ID).catch(() => null) as TextChannel;
-                    if (announceChannel) {
-                        const consoleEmbed = new EmbedBuilder()
-                            .setColor(0x107C10) // Zielony konsolowy (Xbox/PlayStation)
-                            .setTitle('🏆 OSIĄGNIĘCIE ODBLOKOWANE!')
-                            .setThumbnail(targetUserObj.displayAvatarURL())
-                            .setDescription(
-                                `🎮 **TROFEUM / OSIĄGNIĘCIE ODBLOKOWANE**\n\n` +
-                                `Gracz <@${user.userId}> właśnie zdobył unikalne osiągnięcie na serwerze:\n\n` +
-                                newBadges.map(b => `> ✨ **${b}**`).join('\n') + `\n\n` +
-                                `*Zdobądź swój własny tytuł, budując aktywność i walcząc o odznaki w grach!*`
-                            )
-                            .setImage(LIVE_IMAGE_URL)
-                            .setTimestamp()
-                            .setFooter({ text: 'PJN Achievement System • Xbox / PlayStation Style' });
+                if (announceChannel) {
+                    const consoleEmbed = new EmbedBuilder()
+                        .setColor(0x107C10)
+                        .setTitle('🏆 OSIĄGNIĘCIE ODBLOKOWANE!')
+                        .setThumbnail(targetUserObj.displayAvatarURL ? targetUserObj.displayAvatarURL() : client.user?.displayAvatarURL())
+                        .setDescription(
+                            `🎮 **TROFEUM / OSIĄGNIĘCIE ODBLOKOWANE**\n\n` +
+                            `Gracz <@${user.userId}> właśnie zdobył unikalne osiągnięcie na serwerze:\n\n` +
+                            newBadges.map(b => `> ✨ **${b}**`).join('\n') + `\n\n` +
+                            `*Zdobądź swój własny tytuł, budując aktywność i walcząc o odznaki w grach!*`
+                        )
+                        .setImage(LIVE_IMAGE_URL)
+                        .setTimestamp()
+                        .setFooter({ text: 'PJN Achievement System • Xbox / PlayStation Style' });
 
-                        await announceChannel.send({
-                            content: `<@${user.userId}>`,
-                            embeds: [consoleEmbed],
-                            allowedMentions: { users: [user.userId] }
-                        });
-                    }
-                } catch (err) {
-                    console.error('Błąd wysyłania konsolowego ogłoszenia:', err);
+                    await announceChannel.send({
+                        content: `<@${user.userId}>`,
+                        embeds: [consoleEmbed],
+                        allowedMentions: { users: [user.userId] }
+                    });
+                    console.log('[DEBUG BADGES] Sukces! Pomyślnie wysłano konsolowe ogłoszenie na kanał.');
+                } else {
+                    console.log('[DEBUG BADGES] Kanał ogłoszeń o ID', ANNOUNCE_CHANNEL_ID, 'nie został odnaleziony w gildii!');
                 }
+            } catch (err) {
+                console.error('[DEBUG BADGES] Błąd podczas wysyłania konsolowego ogłoszenia:', err);
             }
+        } else {
+            console.log('[DEBUG BADGES] Brak obiektu targetGuild / guild do wysłania wiadomości!');
         }
     }
 }
