@@ -80,7 +80,6 @@ const transactionHistorySchema = new mongoose.Schema({
 const TransactionHistoryModel = mongoose.model('TransactionHistory', transactionHistorySchema);
 
 const AVAILABLE_BADGES = [
-    // Standardowe / łatwiejsze
     '💬 **Początkujący Gadulec**',
     '📜 **Kronikarz Chatu**',
     '💬 **Król Wiadomości**',
@@ -106,8 +105,6 @@ const AVAILABLE_BADGES = [
     '⭐ **Awansowy Ekspert (Lvl 10)**',
     '🌟 **Mistrz Poziomów (Lvl 50, Rzadka)**',
     '👑 **Legenda Serwera (Lvl 100, Elitarna)**',
-
-    // --- NOWE DŁUGOTERMINOWE / HARDCORE ---
     '🧠 **Wygadany Mędrzec (25k Wiadomości)**',
     '🎙️ **Duch Kanałów Głosowych (500h na Głosie, Elitarna)**',
     '🏛️ **Miliarder PJN (1 000 000 Coinsów, Elitarna)**',
@@ -118,7 +115,6 @@ const AVAILABLE_BADGES = [
     '🎟️ **Kolekcjoner (Epicka)**'
 ];
 
-// Odznaki, które oprócz PW wyślą także publiczne ogłoszenie na kanale ANNOUNCE_CHANNEL_ID
 const RARE_ANNOUNCE_BADGES = [
     '🏦 **Milioner (Rzadka)**',
     '🎰 **Ryzykant (Rzadka)**',
@@ -126,7 +122,6 @@ const RARE_ANNOUNCE_BADGES = [
     '🌟 **Mistrz Poziomów (Lvl 50, Rzadka)**',
     '👑 **Legenda Serwera (Lvl 100, Elitarna)**',
     '🎟️ **Kolekcjoner (Epicka)**',
-    // Nowe elitarne ogłoszenia
     '🎙️ **Duch Kanałów Głosowych (500h na Głosie, Elitarna)**',
     '🏛️ **Miliarder PJN (1 000 000 Coinsów, Elitarna)**',
     '🔥 **Niepowstrzymana Seria (20 Wygranych z Rzędu, Epicka)**',
@@ -1193,15 +1188,14 @@ async function checkAndAwardBadges(user: any, memberOrUser: any, guild?: any) {
         }
     };
 
-    // Standardowe odznaki
     if (user.messageCount >= 200) addBadge('💬 **Początkujący Gadulec**');
     if (user.messageCount >= 1000) addBadge('📜 **Kronikarz Chatu**');
     if (user.messageCount >= 5000) addBadge('💬 **Król Wiadomości**');
     if (user.emojiCount >= 30) addBadge('😂 **Emotikonowy Ekspresja**');
     if (user.nightMessageCount >= 50) addBadge('🌙 **Nocny Marek**');
 
-    if (user.voiceMinutes >= 1800) addBadge('🎙️ **Stały Bywalec Mikrofonu**'); // 30h
-    if (user.voiceMinutes >= 6000) addBadge('🎧 **Audiofil**'); // 100h
+    if (user.voiceMinutes >= 1800) addBadge('🎙️ **Stały Bywalec Mikrofonu**'); 
+    if (user.voiceMinutes >= 6000) addBadge('🎧 **Audiofil**'); 
 
     if (user.balance >= 5000) addBadge('💰 **Kapitalista**');
     if (user.balance >= 10000) addBadge('💎 **Magnat Finansowy**');
@@ -1235,9 +1229,8 @@ async function checkAndAwardBadges(user: any, memberOrUser: any, guild?: any) {
         if (hasAdminRole) addBadge('🛡️ **Filar Społeczności**');
     }
 
-    // --- NOWE DŁUGOTERMINOWE / HARDCORE ODZNAKI ---
     if (user.messageCount >= 25000) addBadge('🧠 **Wygadany Mędrzec (25k Wiadomości)**');
-    if (user.voiceMinutes >= 30000) addBadge('🎙️ **Duch Kanałów Głosowych (500h na Głosie, Elitarna)**'); // 500h = 30000 min
+    if (user.voiceMinutes >= 30000) addBadge('🎙️ **Duch Kanałów Głosowych (500h na Głosie, Elitarna)**'); 
     if (user.balance >= 1000000) addBadge('🏛️ **Miliarder PJN (1 000 000 Coinsów, Elitarna)**');
     if (user.totalDonated >= 50000) addBadge('🤝 **Filantrop Społeczności (50 000 Przekazanych Coinsów)**');
     if (user.casinoPlays >= 500) addBadge('🎰 **Hazardowy Tycoon (500 Gier w Kasynie)**');
@@ -1248,13 +1241,11 @@ async function checkAndAwardBadges(user: any, memberOrUser: any, guild?: any) {
         if (diffYears >= 3) addBadge('⌛ **Długowieczny Patriarcha (3 Lata Stażu, Elitarna)**');
     }
 
-    const masterPoolCount = 28; // Całkowita liczba unikalnych odznak bazowych (bez kolekcjonera)
+    const masterPoolCount = 28; 
     const currentCountWithoutCollector = user.badges.filter((b: string) => !b.includes('Kolekcjoner')).length;
     if (currentCountWithoutCollector >= masterPoolCount) {
         addBadge('🎟️ **Kolekcjoner (Epicka)**');
     }
-
-    console.log(`[DEBUG BADGES] Użytkownik ${user.userId} sprawdzony. Nowe odznaki do dodania:`, newBadges);
 
     if (newBadges.length > 0) {
         await user.save();
@@ -1262,7 +1253,6 @@ async function checkAndAwardBadges(user: any, memberOrUser: any, guild?: any) {
         const targetUserObj = targetMember ? targetMember.user : memberOrUser;
         const targetGuild = guild || (targetMember ? targetMember.guild : null) || (client.guilds.cache.first());
 
-        // 1. ZAWSZE WYSYŁAJ INFORMACJĘ NA PW DO UŻYTKOWNIKA
         try {
             await targetUserObj.send({
                 embeds: [
@@ -1273,21 +1263,13 @@ async function checkAndAwardBadges(user: any, memberOrUser: any, guild?: any) {
                         .setTimestamp()
                 ]
             });
-            console.log('[DEBUG BADGES] Wysłano powiadomienie na PW użytkownika.');
-        } catch (e) {
-            console.log('[DEBUG BADGES] Nie udało się wysłać PW do użytkownika (ma zablokowane wiadomości).');
-        }
+        } catch (e) {}
 
-        // 2. WYSYŁAJ NA KANAŁ PUBLICZNY TYLKO TE ODZNAKI, KTÓRE SĄ NA LIŚCIE RZADKICH (RARE_ANNOUNCE_BADGES)
         const rareBadgesToAnnounce = newBadges.filter(b => RARE_ANNOUNCE_BADGES.includes(b));
 
         if (rareBadgesToAnnounce.length > 0 && targetGuild) {
             try {
-                const announceChannel = await targetGuild.channels.fetch(ANNOUNCE_CHANNEL_ID).catch((err: any) => {
-                    console.error('[DEBUG BADGES] Nie udało się pobrać kanału ogłoszeń:', err);
-                    return null;
-                }) as TextChannel;
-
+                const announceChannel = await targetGuild.channels.fetch(ANNOUNCE_CHANNEL_ID).catch(() => null) as TextChannel;
                 if (announceChannel) {
                     const consoleEmbed = new EmbedBuilder()
                         .setColor(0x107C10)
@@ -1308,11 +1290,8 @@ async function checkAndAwardBadges(user: any, memberOrUser: any, guild?: any) {
                         embeds: [consoleEmbed],
                         allowedMentions: { users: [user.userId] }
                     });
-                    console.log('[DEBUG BADGES] Sukces! Wysłano rzadkie ogłoszenie na kanał publiczny.');
                 }
-            } catch (err) {
-                console.error('[DEBUG BADGES] Błąd podczas wysyłania ogłoszenia na kanał:', err);
-            }
+            } catch (err) {}
         }
     }
 }
@@ -1387,9 +1366,7 @@ async function addExp(userId: string, amount: number, guild: any) {
                 embeds: [embed],
                 allowedMentions: { users: [userId] }
             });
-        } catch (e) {
-            console.error('Błąd wysyłania powiadomienia o awansie:', e);
-        }
+        } catch (e) {}
     }
 }
 
@@ -1505,9 +1482,7 @@ async function startReputationTopUpdater() {
 
             const embedData = await getReputationTopEmbedData(channel.guild);
             await channel.send({ embeds: [embedData] });
-        } catch (err) {
-            console.error('Błąd aktualizacji alei sław reputacji:', err);
-        }
+        } catch (err) {}
     }, 5 * 60 * 60 * 1000);
 }
 
@@ -1554,9 +1529,7 @@ function startLfgAutoCloser() {
                                 break;
                             }
                         }
-                    } catch (err) {
-                        console.error('Błąd usuwania kanału głosowego automatycznego LFG:', err);
-                    }
+                    } catch (err) {}
                 }
 
                 try {
@@ -1592,9 +1565,7 @@ async function cleanupOrphanedLfgVoices() {
                 }
             }
         }
-    } catch (e) {
-        console.error('Błąd podczas czyszczenia kanałów głosowych LFG:', e);
-    }
+    } catch (e) {}
 }
 
 function startHourlyAnnouncements() {
@@ -1669,9 +1640,7 @@ async function checkYouTubeRssFeeds() {
                     lastVideoIds[key] = videoUrl;
                 }
             }
-        } catch (e) {
-            console.error(`Błąd podczas pobierania RSS YouTube dla ${key}:`, e);
-        }
+        } catch (e) {}
     }
 }
 
@@ -1970,7 +1939,6 @@ client.on('interactionCreate', async interaction => {
                     await interaction.editReply({ content: `✅ **Pomyślnie zweryfikowano!** Otrzymałeś dostęp do serwera oraz rangę damską. Miłej zabawy!` });
                 }
             } catch (err) {
-                console.error('Błąd weryfikacji:', err);
                 await interaction.editReply({ content: '❌ Wystąpił błąd podczas nadawania ról weryfikacyjnych. Skontaktuj się z administracją.' });
             }
             return;
@@ -2169,9 +2137,7 @@ client.on('interactionCreate', async interaction => {
                                     .setTimestamp()
                             ]
                         }).catch(() => {});
-                    } catch (err) {
-                        console.error('[SKLEP] Błąd podczas nadawania roli VIP:', err);
-                    }
+                    } catch (err) {}
                 }
             } else if (item.type === 'double_chance') {
                 user.doubleChanceUntil = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
@@ -2493,14 +2459,14 @@ client.on('interactionCreate', async interaction => {
             const rankDetails = await getUserLevelRankDetails(targetUser.id);
             const userBadges = user.badges || [];
 
-            // Kategorie odznak
+            // POPRAWKA: Formatowanie odznak w pionową listę z kropkami zamiast jednej linii
             const catChat = userBadges.filter(b => b.includes('Gadulec') || b.includes('Kronikarz') || b.includes('Król Wiadomości') || b.includes('Wygadany Mędrzec') || b.includes('Ekspresja') || b.includes('Nocny Marek') || b.includes('Mikrofonu') || b.includes('Audiofil') || b.includes('Duch Kanałów'));
             const catLevels = userBadges.filter(b => b.includes('Awansowy Ekspert') || b.includes('Mistrz Poziomów') || b.includes('Legenda Serwera'));
             const catEco = userBadges.filter(b => b.includes('Kapitalista') || b.includes('Magnat') || b.includes('Milioner') || b.includes('Miliarder') || b.includes('Hojny Darczyńca') || b.includes('Filantrop') || b.includes('Klient sklepu') || b.includes('Zaawansowany klient'));
             const catCasino = userBadges.filter(b => b.includes('Graczyk') || b.includes('Ryzykant') || b.includes('Hazardowy Tycoon') || b.includes('Fortuna') || b.includes('Czarna Seria') || b.includes('Niepowstrzymana Seria'));
             const catOther = userBadges.filter(b => b.includes('Filozof') || b.includes('Pomocna Dłoń') || b.includes('Weteran') || b.includes('Patriarcha') || b.includes('Filar') || b.includes('Kolekcjoner'));
 
-            const formatCat = (arr: string[]) => arr.length > 0 ? arr.join(' • ') : 'Brak';
+            const formatCatVertical = (arr: string[]) => arr.length > 0 ? arr.map(b => `• ${b}`).join('\n') : 'Brak';
 
             const embed = new EmbedBuilder()
                 .setColor(0x9B59B6)
@@ -2511,11 +2477,11 @@ client.on('interactionCreate', async interaction => {
                     { name: '⭐ Poziom & XP', value: `Poziom **${user.level || 1}** (${user.exp || 0} XP)\nRanking: **#${rankDetails.rank}**`, inline: true },
                     { name: '⭐ Reputacja', value: `**${user.reputation || 0} pkt**`, inline: true },
                     { name: '🎮 Fortnite Stats', value: `Nick: **${user.epicNick || 'Brak'}**\nZabójstwa: **${user.fortniteKills || 0}**`, inline: false },
-                    { name: '💬 Aktywność i Głos', value: formatCat(catChat), inline: false },
-                    { name: '⭐ Poziomy Serwera', value: formatCat(catLevels), inline: false },
-                    { name: '💰 Ekonomia i Sklep', value: formatCat(catEco), inline: false },
-                    { name: '🎲 Kasyno i Gry', value: formatCat(catCasino), inline: false },
-                    { name: '🏆 Staż i Inne', value: formatCat(catOther), inline: false }
+                    { name: '💬 Aktywność i Głos', value: formatCatVertical(catChat), inline: false },
+                    { name: '⭐ Poziomy Serwera', value: formatCatVertical(catLevels), inline: false },
+                    { name: '💰 Ekonomia i Sklep', value: formatCatVertical(catEco), inline: false },
+                    { name: '🎲 Kasyno i Gry', value: formatCatVertical(catCasino), inline: false },
+                    { name: '🏆 Staż i Inne', value: formatCatVertical(catOther), inline: false }
                 )
                 .setTimestamp();
 
@@ -2615,7 +2581,6 @@ client.on('interactionCreate', async interaction => {
 
                     await interaction.editReply({ embeds: [embed] });
                 } catch (e) {
-                    console.error(e);
                     await interaction.editReply({ content: '❌ Wystąpił błąd podczas pobierania danych sklepu Fortnite.' });
                 }
                 return;
@@ -2668,7 +2633,6 @@ client.on('interactionCreate', async interaction => {
                         });
                     }
                 } catch (e) {
-                    console.error('Błąd pobierania statystyk:', e);
                     await interaction.editReply({ content: '❌ Wystąpił błąd podczas komunikacji z API statystyk.' });
                 }
                 return;
@@ -2939,7 +2903,7 @@ client.on('interactionCreate', async interaction => {
             const sentMessage = await interaction.channel?.send({ embeds: [embedData] });
             if (sentMessage) {
                 await ConfigModel.findOneAndUpdate({ key: 'odznaki_info_msg' }, { channelId: interaction.channelId, messageId: sentMessage.id }, { upsert: true, new: true });
-                await interaction.editReply({ content: `✅ Ustawiono ten kanał jako centrum odznak.` });
+                await interaction.editReply({ content: `✅ Ustawiono ten kanał jako centrum odznak i wysłano listę.` });
             }
             return;
         }
@@ -3558,9 +3522,7 @@ client.on('interactionCreate', async interaction => {
             return;
         }
 
-    } catch (error) {
-        console.error(error);
-    }
+    } catch (error) {}
 });
 
 async function updateLFGMessage(message: any, lfgDoc: any) {
@@ -3772,9 +3734,7 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
                 components: [controlRow]
             }).catch(() => {});
 
-        } catch (err) {
-            console.error('Błąd tworzenia dynamicznego pokoju głosowego:', err);
-        }
+        } catch (err) {}
     }
 
     if (oldState.channel && oldState.channelId !== ID_KANAL_TWORZENIA_POKOJU) {
@@ -3915,9 +3875,7 @@ client.on('guildMemberRemove', async member => {
         }
 
         await logChannel.send({ embeds: [embed] });
-    } catch (error) {
-        console.error('Błąd w systemie logów wyjść/wyrzuceń:', error);
-    }
+    } catch (error) {}
 });
 
 import http from 'http';
