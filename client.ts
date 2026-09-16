@@ -86,6 +86,8 @@ const hangmanSchema = new mongoose.Schema({
     messageId: { type: String, required: true, unique: true },
     userId: { type: String, required: true },
     word: { type: String, required: true },
+    hint: { type: String, required: true },
+    category: { type: String, required: true },
     guessed: { type: [String], required: true },
     mistakes: { type: Number, default: 0 },
     maxMistakes: { type: Number, default: 6 },
@@ -301,6 +303,19 @@ function isAuthorized(userId: string): boolean {
     return adminIds.includes(userId);
 }
 
+// === PULA SŁÓW DLA WISIELECA (Z KATEGORIAMI I PODPOWIEDZIAMI) ===
+const WORDS_POOL = [
+    { word: 'discord', category: 'Technologia i Społeczność', hint: 'Platforma do komunikacji głosowej i tekstowej dla graczy' },
+    { word: 'fortnite', category: 'Gry', hint: 'Popularna gra Battle Royale z budowaniem i skórkami' },
+    { word: 'pjncoins', category: 'Serwer PJN', hint: 'Główna waluta cyfrowa na tym serwerze Discord' },
+    { word: 'streaming', category: 'Internet', hint: 'Transmisja wideo na żywo prowadzona na Kick lub TikTok' },
+    { word: 'moderator', category: 'Społeczność', hint: 'Osoba pilnująca porządku, regulaminu i bezpieczeństwa na czacie' },
+    { word: 'ranking', category: 'Społeczność', hint: 'Zestawienie najlepszych graczy pod względem bogactwa lub zabójstw' },
+    { word: 'odznaka', category: 'Profil', hint: 'Unikalne wyróżnienie pojawiające się w Twojej karcie profilu' },
+    { word: 'sklep', category: 'Serwer PJN', hint: 'Miejsce, gdzie możesz wydać zarobione monety na rangi i usługi' },
+    { word: 'kasyno', category: 'Zabawa', hint: 'Strefa ryzyka, w której możesz pomnożyć lub stracić swoje monety' }
+];
+
 const initialQuotes = [
     { text: "Nie liczy się to, co robisz od czasu do czasu, ale to, co robisz codziennie.", author: "Bruce Lee" },
     { text: "Bądź jak woda przepływająca przez szczeliny. Nie bądź sztywny, a dostosujesz się do otoczenia.", author: "Bruce Lee" },
@@ -359,8 +374,8 @@ async function setupHangmanChannel() {
             .setDescription(
                 'Odgadnij ukryte słowo związane z grami i społecznością PJN zanim skończą się próby!\n\n' +
                 '💡 **Zasady:**\n' +
-                '• Kliknij przycisk startu, aby wylosować słowo.\n' +
-                '• Wybieraj literki lub zgaduj słowo.\n' +
+                '• Kliknij przycisk startu, aby wylosować słowo i podpowiedź.\n' +
+                '• Wpisuj na czacie pojedyncze litery lub całe słowa, aby zgadywać.\n' +
                 '• Za wygraną otrzymujesz nagrodę w PJN-Coins!'
             )
             .setImage(LIVE_IMAGE_URL)
@@ -2008,8 +2023,6 @@ client.once('ready', async () => {
     startPollChecker();
 });
 
-const WORDS_POOL = ['discord', 'fortnite', 'pjncoins', 'streaming', 'moderator', 'ranking', 'odznaka', 'sklep', 'kasyno'];
-
 client.on('interactionCreate', async interaction => {
     if (interaction.isMessageContextMenuCommand()) {
         if (interaction.commandName === 'Zapisz jako złoty tekst') {
@@ -2094,20 +2107,24 @@ client.on('interactionCreate', async interaction => {
         }
     }
 
-    // Obsługa Wisielca
+    // Obsługa Wisielca (Rozpoczęcie gry)
     if (interaction.isButton() && interaction.customId === 'hm_start') {
         await interaction.deferReply({ ephemeral: true });
-        const word = WORDS_POOL[Math.floor(Math.random() * WORDS_POOL.length)];
+        const selectedObj = WORDS_POOL[Math.floor(Math.random() * WORDS_POOL.length)];
         
+        const hiddenWord = selectedObj.word.split('').map(() => '_').join(' ');
+
         const sentMsg = await interaction.channel?.send({
-            content: `🎮 **Gra w Wisielca rozpoczęta przez <@${interaction.user.id}>!**\nSłowo: \`_ _ _ _ _ _\`\nBłędy: 0/6`
+            content: `🎮 **Gra w Wisielca rozpoczęta przez <@${interaction.user.id}>!**\n📁 **Kategoria:** \`${selectedObj.category}\`\n💡 **Podpowiedź:** *${selectedObj.hint}*\n\nSłowo: \`${hiddenWord}\`\nBłędy: 0/6\nUżyte litery: Brak`
         });
 
         if (sentMsg) {
             await HangmanModel.create({
                 messageId: sentMsg.id,
                 userId: interaction.user.id,
-                word: word,
+                word: selectedObj.word,
+                hint: selectedObj.hint,
+                category: selectedObj.category,
                 guessed: [],
                 mistakes: 0,
                 status: 'active'
@@ -4011,6 +4028,71 @@ client.on('messageCreate', async message => {
                 .setDescription(`Użytkownik <@${giverId}> ocenił tradera <@${receiverId}>!\n\n📈 **Nowy bilans:** ${sign} pkt`);
             await message.channel.send({ embeds: [embed] });
             return;
+        }
+    }
+
+    // === OBSŁUGA ROZGRYWKI W WISIELECA NA CZACIE ===
+    if (message.channel.id === '1549791621942485120') {
+        const activeHangman = await HangmanModel.findOne({ channelId: message.channel.id, status: 'active' }) || await HangmanModel.findOne({ status: 'active' });
+        
+        if (activeHangman) {
+            const guess = message.content.trim().toLowerCase();
+            if (guess.length > 0) {
+                await message.delete().catch(() => {});
+
+                // Jeśli gracz wpisał całe słowo od razu
+                if (guess === activeHangman.word) {
+                    activeHangman.status = 'won';
+                    await activeHangman.save();
+
+                    let user = await UserModel.findOne({ userId: message.author.id });
+                    if (!user) user = await UserModel.create({ userId: message.author.id });
+                    user.balance += 150;
+                    await user.save();
+
+                    return message.channel.send(`🎉 **Niesamowite! Gratulacje <@${message.author.id}>!** Odgadłeś całe słowo \`${activeHangman.word}\` za jednym razem i wygrywasz **150 PJN-Coins**!`);
+                }
+
+                // Jeśli gracz wpisał pojedynczą literę
+                if (guess.length === 1) {
+                    if (!activeHangman.guessed.includes(guess)) {
+                        activeHangman.guessed.push(guess);
+                        
+                        if (!activeHangman.word.includes(guess)) {
+                            activeHangman.mistakes += 1;
+                        }
+
+                        // Sprawdzenie przegranej
+                        if (activeHangman.mistakes >= activeHangman.maxMistakes) {
+                            activeHangman.status = 'failed';
+                            await activeHangman.save();
+                            return message.channel.send(`💀 **Koniec gry!** Wykorzystano wszystkie błędy. Szukane słowo to: \`${activeHangman.word}\``);
+                        }
+
+                        // Sprawdzenie wygranej literka po literce
+                        const wordLetters = activeHangman.word.split('');
+                        const won = wordLetters.every(letter => activeHangman.guessed.includes(letter));
+
+                        if (won) {
+                            activeHangman.status = 'won';
+                            await activeHangman.save();
+
+                            let user = await UserModel.findOne({ userId: message.author.id });
+                            if (!user) user = await UserModel.create({ userId: message.author.id });
+                            user.balance += 150;
+                            await user.save();
+
+                            return message.channel.send(`🎉 **Gratulacje <@${message.author.id}>!** Odgadłeś słowo \`${activeHangman.word}\` i wygrywasz **150 PJN-Coins**!`);
+                        }
+
+                        await activeHangman.save();
+
+                        // Wyświetlenie aktualnego stanu gry z podpowiedzią
+                        let displayedWord = activeHangman.word.split('').map(l => activeHangman.guessed.includes(l) ? l : '_').join(' ');
+                        return message.channel.send(`🎮 Gra w Wisielca (Gracz: <@${message.author.id}>)\n📁 **Kategoria:** \`${activeHangman.category}\`\n💡 **Podpowiedź:** *${activeHangman.hint}*\n\nSłowo: \`${displayedWord}\`\nUżyte litery: ${activeHangman.guessed.join(', ')}\nBłędy: ${activeHangman.mistakes}/${activeHangman.maxMistakes}`);
+                    }
+                }
+            }
         }
     }
 
