@@ -231,7 +231,7 @@ const NOTIF_CONFIG = {
 const parser = new Parser();
 
 const ANNOUNCE_CHANNEL_ID = '1532399010785263799';
-const ID_KANALU_CYTATY = '1549709251365183558'; 
+const ID_KANALU_CYTATY = '1549709251365183558'; // <--- Przywrócono ID kanału "cytaty"
 const ID_KANALU_MEMOW = '1534833819599769640'; 
 const ID_KANALU_SZUKAM_DO_GRY = '1532449084559069214'; 
 const ID_KANALU_POKAZ_SIEBIE = '1536365057997283469'; 
@@ -534,7 +534,7 @@ async function sendQuoteToChannel(channelId: string) {
     const embed = new EmbedBuilder()
         .setColor(0xE67E22)
         .setTitle('✨ Złota myśl z serwera PJN')
-        .setDescription(`> *„${quote.text}”*\n\n**— ${quote.author}**`)
+        .setDescription(`> *„${quote.text}”*\n\n**—${quote.author}**`)
         .setTimestamp()
         .setFooter({ text: 'PJN Złote Myśli' });
 
@@ -929,7 +929,7 @@ function startPollChecker() {
                             for (let i = 0; i < poll.options.length; i++) {
                                 const count = poll.votes[i].length;
                                 const percent = totalVotes > 0 ? Math.round((count / totalVotes) * 100) : 0;
-                                desc += `**${i + 1}. ${poll.options[i]}** — **${percent}%** (${count} głosów)\n`;
+                                desc += `**${i + 1}.${poll.options[i]}** — **${percent}\%** (${count} głosów)\n`;
                             }
 
                             const embed = new EmbedBuilder()
@@ -1185,7 +1185,7 @@ async function setupShopChannel() {
 
         let desc = 'Witaj w oficjalnym sklepie serwera PJN! Wydawaj swoje PJN-Coins na unikalne przedmioty, role i usługi.\n\n*Wszystkie rangi czasowe (w tym VIP) są ważne przez 30 dni, po czym automatycznie wygasają.*\n\n**📋 Dostępny asortyment:**\n\n';
         SHOP_ITEMS.forEach((item, index) => {
-            desc += `**${index + 1}. ${item.name}** — 💰 **${item.price} PJN-Coins**\n> *${item.description}*\n\n`;
+            desc += `**${index + 1}.${item.name}** — 💰 **${item.price} PJN-Coins**\n> *${item.description}*\n\n`;
         });
 
         const embed = new EmbedBuilder()
@@ -1609,7 +1609,7 @@ async function getReputationTopEmbedData(guild: any) {
 
         const repValue = u.reputation || 0;
         const sign = repValue > 0 ? '+' : '';
-        desc += `${medal} — **${userName}** — **${sign}${repValue} pkt** (Exp: ${u.exp || 0})\n`;
+        desc += `${medal} — **${userName}** — **${sign}${repValue} pkt** (Exp:${u.exp || 0})\n`;
     }
 
     return {
@@ -2063,7 +2063,7 @@ client.on('interactionCreate', async interaction => {
                 const embed = new EmbedBuilder()
                     .setColor(0xE67E22)
                     .setTitle('✨ Złota myśl z serwera PJN')
-                    .setDescription(`> *„${quoteText}”*\n\n**— ${authorTag}**`)
+                    .setDescription(`> *„${quoteText}”*\n\n**—${authorTag}**`)
                     .setTimestamp();
                 await channel.send({ embeds: [embed] });
             }
@@ -2183,7 +2183,7 @@ client.on('interactionCreate', async interaction => {
                     ? optionVoters.map(id => `<@${id}>`).join(', ') 
                     : 'Brak głosów';
                 
-                votersDesc += `**${i + 1}. ${poll.options[i]}** (${optionVoters.length} głosów):\n${votersTagList}\n\n`;
+                votersDesc += `**${i + 1}.${poll.options[i]}** (${optionVoters.length} głosów):\n${votersTagList}\n\n`;
             }
 
             return interaction.reply({ content: votersDesc, ephemeral: true });
@@ -2215,7 +2215,7 @@ client.on('interactionCreate', async interaction => {
             const count = poll.votes[i].length;
             const percent = totalVotes > 0 ? Math.round((count / totalVotes) * 100) : 0;
             const bar = '█'.repeat(Math.floor(percent / 10)) + '░'.repeat(10 - Math.floor(percent / 10));
-            desc += `**${i + 1}. ${poll.options[i]}**\n\`[${bar}]\` **${percent}%** (${count} głosów)\n\n`;
+            desc += `**${i + 1}.${poll.options[i]}**\n\`[${bar}]\` **${percent}\%** (${count} głosów)\n\n`;
 
             currentRow.addComponents(new ButtonBuilder().setCustomId(`poll_vote_${i}`).setLabel(`${i + 1} (${count})`).setStyle(ButtonStyle.Secondary));
             if (currentRow.components.length === 5 || i === poll.options.length - 1) {
@@ -2527,7 +2527,7 @@ client.on('interactionCreate', async interaction => {
                 );
 
                 await ticketChannel.send({
-                    content: `<@${interaction.user.id}> | <@&${ID_RANGI_DUSZKOWIEC}> <@&${ID_RANGI_MODERATOR}> <@&${ID_RANGI_ADMIN}>`,
+                    content: `<@${interaction.user.id}> \vert{} <@&${ID_RANGI_DUSZKOWIEC}> <@&${ID_RANGI_MODERATOR}> <@&${ID_RANGI_ADMIN}>`,
                     embeds: [welcomeEmbed],
                     components: [closeRow]
                 });
@@ -2641,7 +2641,7 @@ client.on('interactionCreate', async interaction => {
                                 permissionOverwrites.push({ id: pId, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.Connect, PermissionFlagsBits.Speak] });
                             }
                             const voiceChan = await guild.channels.create({
-                                name: `🎮-${gameInfo?.name || 'Ekipa'}-${interaction.user.username}`,
+                                name: `🎮-${gameInfo?.name \vert{}\vert{} 'Ekipa'}-${interaction.user.username}`,
                                 type: ChannelType.GuildVoice,
                                 parent: LFG_CONFIG.CATEGORY_VOICE,
                                 permissionOverwrites: permissionOverwrites
@@ -2688,7 +2688,7 @@ client.on('interactionCreate', async interaction => {
                             permissionOverwrites.push({ id: pId, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.Connect, PermissionFlagsBits.Speak] });
                         }
                         const voiceChan = await guild.channels.create({
-                            name: `🎮-${gameInfo?.name || 'Ekipa'}-${interaction.user.username}`,
+                            name: `🎮-${gameInfo?.name \vert{}\vert{} 'Ekipa'}-${interaction.user.username}`,
                             type: ChannelType.GuildVoice,
                             parent: LFG_CONFIG.CATEGORY_VOICE,
                             permissionOverwrites: permissionOverwrites
@@ -2775,7 +2775,7 @@ client.on('interactionCreate', async interaction => {
             }
 
             await user.save();
-            await TransactionHistoryModel.create({ userId: interaction.user.id, type: 'casino_kpn', amount: change, details: `Gracz: ${wyborGracza}, Bot: ${wyborBota}` });
+            await TransactionHistoryModel.create({ userId: interaction.user.id, type: 'casino_kpn', amount: change, details: `Gracz: ${wyborGracza}, Bot:${wyborBota}` });
             return interaction.editReply({ content: wynikText });
         }
 
@@ -2828,7 +2828,7 @@ client.on('interactionCreate', async interaction => {
             let desc = `📊 **Ankieta aktywna na żywo**\n${timeInfo}\n\n`;
 
             for (let i = 0; i < opcje.length; i++) {
-                desc += `**${i + 1}. ${opcje[i]}**\n\`[░░░░░░░░░░]\` **0%** (0 głosów)\n\n`;
+                desc += `**${i + 1}.${opcje[i]}**\n\`[░░░░░░░░░░]\` **0%** (0 głosów)\n\n`;
             }
 
             const components: ActionRowBuilder<ButtonBuilder>[] = [];
@@ -2884,7 +2884,7 @@ client.on('interactionCreate', async interaction => {
                 .setThumbnail(targetUser.displayAvatarURL())
                 .addFields(
                     { name: '💰 Portfel', value: `**${user.balance || 0} PJN-Coins**`, inline: true },
-                    { name: '⭐ Poziom & XP', value: `Poziom **${user.level || 1}** (${user.exp || 0} XP)\nRanking: **#${rankDetails.rank}**`, inline: true },
+                    { name: '⭐ Poziom & XP', value: `Poziom **${user.level \vert{}\vert{} 1}** (${user.exp || 0} XP)\nRanking: **#${rankDetails.rank}**`, inline: true },
                     { name: '⭐ Reputacja', value: `**${user.reputation || 0} pkt**`, inline: true },
                     { name: '🎮 Fortnite Stats', value: `Nick: **${user.epicNick || 'Brak'}**\nZabójstwa: **${user.fortniteKills || 0}**`, inline: false },
                     { name: '💬 Aktywność i Głos', value: formatCatVertical(catChat), inline: false },
@@ -3236,7 +3236,7 @@ client.on('interactionCreate', async interaction => {
 
             const embed = new EmbedBuilder()
                 .setColor(0x5865F2)
-                .setTitle(`${gameInfo.emoji} Szukanie Ekipy: ${gameInfo.name}`)
+                .setTitle(`${gameInfo.emoji} Szukanie Ekipy:${gameInfo.name}`)
                 .setDescription(
                     `👤 **Organizator:** <@${authorId}>\n` +
                     `👥 **Skład:** 1 / ${maxPlayers} osób\n` +
@@ -3352,8 +3352,8 @@ client.on('interactionCreate', async interaction => {
                 .setThumbnail(targetUser.displayAvatarURL())
                 .addFields(
                     { name: '📊 Aktualny Poziom', value: `**Poziom ${currentLevel}**`, inline: true },
-                    { name: '🏆 Miejsce w rankingu', value: `**#${rankDetails.rank} z ${rankDetails.total}**`, inline: true },
-                    { name: '✨ Zebrane XP', value: `**${currentExp} / ${requiredExp} XP**`, inline: true },
+                    { name: '🏆 Miejsce w rankingu', value: `**#${rankDetails.rank} z${rankDetails.total}**`, inline: true },
+                    { name: '✨ Zebrane XP', value: `**${currentExp} /${requiredExp} XP**`, inline: true },
                     { name: '🎯 Brakuje do awansu', value: `**${missingExp} XP**`, inline: true },
                     { name: '📈 Postęp', value: `\`[${progressBar}]\` **${progressPercent}%**`, inline: false }
                 )
@@ -3426,7 +3426,7 @@ client.on('interactionCreate', async interaction => {
                 details: powod
             });
 
-            await interaction.editReply({ content: `✅ Przyznano masowy bonus ${ilosc} PJN-Coins dla ${successCount} użytkowników!` });
+            await interaction.editReply({ content: `✅ Przyznano masowy bonus ${ilosc} PJN-Coins dla${successCount} użytkowników!` });
             return;
         }
 
@@ -3615,7 +3615,7 @@ client.on('interactionCreate', async interaction => {
                 userId: interaction.user.id,
                 type: 'casino_moneta',
                 amount: changeAmount,
-                details: `Wybór: ${wybor}, Wynik: ${wynik}`
+                details: `Wybór: ${wybor}, Wynik:${wynik}`
             });
 
             await checkAndAwardBadges(user, memberObj, interaction.guild);
@@ -3661,19 +3661,19 @@ client.on('interactionCreate', async interaction => {
                 user.consecutiveWins = (user.consecutiveWins || 0) + 1;
                 user.consecutiveLosses = 0;
                 changeAmount = wygrana;
-                resultMessage = `🎰 [ ${s1} | ${s2} | ${s3} ]\nJACKPOT! Wygrywasz **${wygrana} PJN-Coins**!`;
+                resultMessage = `🎰 [ ${s1} | ${s2} \vert{}${s3} ]\nJACKPOT! Wygrywasz **${wygrana} PJN-Coins**!`;
             } else if (s1 === s2 || s2 === s3 || s1 === s3) {
                 user.balance += stawka;
                 user.consecutiveWins = (user.consecutiveWins || 0) + 1;
                 user.consecutiveLosses = 0;
                 changeAmount = stawka;
-                resultMessage = `🎰 [ ${s1} | ${s2} | ${s3} ]\nMała wygrana! Zwrot stawki **${stawka} PJN-Coins**.`;
+                resultMessage = `🎰 [ ${s1} | ${s2} \vert{}${s3} ]\nMała wygrana! Zwrot stawki **${stawka} PJN-Coins**.`;
             } else {
                 user.balance -= stawka;
                 user.consecutiveLosses = (user.consecutiveLosses || 0) + 1;
                 user.consecutiveWins = 0;
                 changeAmount = -stawka;
-                resultMessage = `🎰 [ ${s1} | ${s2} | ${s3} ]\nNic z tego! Strata **${stawka} PJN-Coins**.`;
+                resultMessage = `🎰 [ ${s1} | ${s2} \vert{}${s3} ]\nNic z tego! Strata **${stawka} PJN-Coins**.`;
             }
             await user.save();
 
@@ -3681,7 +3681,7 @@ client.on('interactionCreate', async interaction => {
                 userId: interaction.user.id,
                 type: 'casino_slot',
                 amount: changeAmount,
-                details: `${s1}|${s2}|${s3}`
+                details: `${s1}|${s2}\vert{}${s3}`
             });
 
             await checkAndAwardBadges(user, memberObj, interaction.guild);
@@ -3818,7 +3818,7 @@ client.on('interactionCreate', async interaction => {
                     const timeLeft = twentyFourHours - diffTime;
                     const hoursLeft = Math.floor(timeLeft / (1000 * 60 * 60));
                     const minsLeft = Math.floor((timeLeft % (1000 * 60 * 60)) / (1000 * 60));
-                    return interaction.editReply({ content: `⏳ Codzienną nagrodę możesz odebrać za **${hoursLeft}h ${minsLeft}m**!` });
+                    return interaction.editReply({ content: `⏳ Codzienną nagrodę możesz odebrać za **${hoursLeft}h${minsLeft}m**!` });
                 }
             }
 
@@ -3958,7 +3958,7 @@ async function updateLFGMessage(message: any, lfgDoc: any) {
         const playersListText = lfgDoc.currentPlayers.map((id: string) => `• <@${id}>`).join('\n');
 
         let embedColor = 0x5865F2;
-        let statusText = `👥 **Skład:** ${lfgDoc.currentPlayers.length} / ${lfgDoc.maxPlayers} osób`;
+        let statusText = `👥 **Skład:** ${lfgDoc.currentPlayers.length} /${lfgDoc.maxPlayers} osób`;
 
         if (lfgDoc.status === 'full') embedColor = 0xE67E22;
         else if (lfgDoc.status === 'closed') {
@@ -3968,7 +3968,7 @@ async function updateLFGMessage(message: any, lfgDoc: any) {
 
         const embed = new EmbedBuilder()
             .setColor(embedColor)
-            .setTitle(`${gameInfo.emoji} Szukanie Ekipy: ${gameInfo.name}`)
+            .setTitle(`${gameInfo.emoji} Szukanie Ekipy:${gameInfo.name}`)
             .setDescription(
                 `👤 **Organizator:** <@${lfgDoc.authorId}>\n` +
                 `${statusText}\n` +
