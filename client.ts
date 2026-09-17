@@ -2103,23 +2103,14 @@ client.on('interactionCreate', async interaction => {
         }
     }
 
-    // === OBSŁUGA KOŁA FORTUNY (ZAMIAST WISIELECA) ===
+    // === OBSŁUGA KOŁA FORTUNY (PUBLICZNA DLA WSZYSTKICH) ===
     if (interaction.isButton() && interaction.customId === 'wheel_spin') {
-        await interaction.deferReply({ ephemeral: true });
+        // Ustawienie ephemeral na false sprawia, że wynik jest widoczny dla wszystkich na kanale
+        await interaction.deferReply({ ephemeral: false });
         
         let user = await UserModel.findOne({ userId: interaction.user.id });
         if (!user) user = await UserModel.create({ userId: interaction.user.id });
 
-        // Cooldown na darmowe kręcenie (np. 2 godziny)
-        const now = Date.now();
-        const lastSpin = user.lastDaily ? new Date(user.lastDaily).getTime() : 0; 
-        // Używamy pola lastDaily lub możemy dodać osobne, ale dla uproszczenia użyjemy dedykowanej logiki cooldownu (np. 2h z pola lub prosty check)
-        // Tutaj dla Koła Fortuny zrobimy co 1 godzinę:
-        const wheelCooldown = 60 * 60 * 1000; 
-        
-        // Zapiszemy w user.lastDaily lub obsłużymy cooldown (dla pełnej niezależności zrobimy szybkie sprawdzenie):
-        // (Możesz też pozwolić kręcić bez limitu czasowego lub za małą opłatą, tutaj dajemy darmowe kręcenie co 1h)
-        
         const rewards = [
             { name: '50 PJN-Coins', type: 'coins', val: 50 },
             { name: '150 PJN-Coins', type: 'coins', val: 150 },
@@ -2139,18 +2130,18 @@ client.on('interactionCreate', async interaction => {
             user.consecutiveLosses = 0;
             await user.save();
             await TransactionHistoryModel.create({ userId: interaction.user.id, type: 'wheel_fortune', amount: outcome.val, details: outcome.name });
-            return interaction.editReply({ content: `🎡 **Koło Fortuny:** Wylosowałeś: **${outcome.name}**! Twoje konto zostało zasilone. (Stan portfela: **${user.balance} PJN-Coins**)` });
+            return interaction.editReply({ content: `🎡 **Koło Fortuny:** <@${interaction.user.id}> zakręcił kołem i wylosował: **${outcome.name}**! Jego konto zostało zasilone. (Stan portfela: **${user.balance} PJN-Coins**)` });
         } else if (outcome.type === 'bankrupt') {
             user.balance = Math.max(0, user.balance - 100);
             user.consecutiveLosses = (user.consecutiveLosses || 0) + 1;
             user.consecutiveWins = 0;
             await user.save();
             await TransactionHistoryModel.create({ userId: interaction.user.id, type: 'wheel_fortune', amount: -100, details: 'Bankrut' });
-            return interaction.editReply({ content: `🎡 **Koło Fortuny:** O nie! Wylosowałeś **BANKRUT**! Tracisz 100 PJN-Coins. (Stan portfela: **${user.balance} PJN-Coins**)` });
+            return interaction.editReply({ content: `🎡 **Koło Fortuny:** O nie! <@${interaction.user.id}> zakręcił kołem i wylosował **BANKRUT**! Traci 100 PJN-Coins. (Stan portfela: **${user.balance} PJN-Coins**)` });
         } else if (outcome.type === 'xp') {
             await addExp(interaction.user.id, outcome.val, interaction.guild);
             await user.save();
-            return interaction.editReply({ content: `🎡 **Koło Fortuny:** Trafiłeś na **${outcome.name}**! Otrzymujesz zastrzyk punktów doświadczenia.` });
+            return interaction.editReply({ content: `🎡 **Koło Fortuny:** <@${interaction.user.id}> zakręcił kołem i trafił na **${outcome.name}**! Otrzymuje zastrzyk punktów doświadczenia.` });
         }
     }
 
