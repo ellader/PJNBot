@@ -82,19 +82,6 @@ const transactionHistorySchema = new mongoose.Schema({
 });
 const TransactionHistoryModel = mongoose.model('TransactionHistory', transactionHistorySchema);
 
-const hangmanSchema = new mongoose.Schema({
-    messageId: { type: String, required: true, unique: true },
-    userId: { type: String, required: true },
-    word: { type: String, required: true },
-    hint: { type: String, required: true },
-    category: { type: String, required: true },
-    guessed: { type: [String], required: true },
-    mistakes: { type: Number, default: 0 },
-    maxMistakes: { type: Number, default: 6 },
-    status: { type: String, default: 'active' }
-});
-const HangmanModel = mongoose.model('Hangman', hangmanSchema);
-
 const AVAILABLE_BADGES = [
     '💬 **Początkujący Gadulec**',
     '📜 **Kronikarz Chatu**',
@@ -231,7 +218,7 @@ const NOTIF_CONFIG = {
 const parser = new Parser();
 
 const ANNOUNCE_CHANNEL_ID = '1532399010785263799';
-const ID_KANALU_CYTATY = '1549709251365183558'; // <--- Przywrócono ID kanału "cytaty"
+const ID_KANALU_CYTATY = '1549709251365183558'; 
 const ID_KANALU_MEMOW = '1534833819599769640'; 
 const ID_KANALU_SZUKAM_DO_GRY = '1532449084559069214'; 
 const ID_KANALU_POKAZ_SIEBIE = '1536365057997283469'; 
@@ -316,19 +303,6 @@ const QUIZ_POOL = [
     { q: 'Do jakiej kategorii gier należy Counter-Strike 2?', correct: 'Strzelanka (FPS)', wrong1: 'Strategia', wrong2: 'MMORPG' }
 ];
 
-// === PULA SŁÓW DLA WISIELECA ===
-const WORDS_POOL = [
-    { word: 'discord', category: 'Technologia i Społeczność', hint: 'Platforma do komunikacji głosowej i tekstowej dla graczy' },
-    { word: 'fortnite', category: 'Gry', hint: 'Popularna gra Battle Royale z budowaniem i skórkami' },
-    { word: 'pjncoins', category: 'Serwer PJN', hint: 'Główna waluta cyfrowa na tym serwerze Discord' },
-    { word: 'streaming', category: 'Internet', hint: 'Transmisja wideo na żywo prowadzona na Kick lub TikTok' },
-    { word: 'moderator', category: 'Społeczność', hint: 'Osoba pilnująca porządku, regulaminu i bezpieczeństwa na czacie' },
-    { word: 'ranking', category: 'Społeczność', hint: 'Zestawienie najlepszych graczy pod względem bogactwa lub zabójstw' },
-    { word: 'odznaka', category: 'Profil', hint: 'Unikalne wyróżnienie pojawiające się w Twojej karcie profilu' },
-    { word: 'sklep', category: 'Serwer PJN', hint: 'Miejsce, gdzie możesz wydać zarobione monety na rangi i usługi' },
-    { word: 'kasyno', category: 'Zabawa', hint: 'Strefa ryzyka, w której możesz pomnożyć lub stracić swoje monety' }
-];
-
 const initialQuotes = [
     { text: "Nie liczy się to, co robisz od czasu do czasu, ale to, co robisz codziennie.", author: "Bruce Lee" },
     { text: "Bądź jak woda przepływająca przez szczeliny. Nie bądź sztywny, a dostosujesz się do otoczenia.", author: "Bruce Lee" },
@@ -374,7 +348,8 @@ async function setupRussianRouletteChannel() {
     } catch (e) {}
 }
 
-async function setupHangmanChannel() {
+// === KOŁO FORTUNY (ZAMIAST WISIELECA) ===
+async function setupWheelOfFortuneChannel() {
     try {
         const channel = await client.channels.fetch('1549791621942485120').catch(() => null) as TextChannel;
         if (!channel) return;
@@ -382,20 +357,20 @@ async function setupHangmanChannel() {
         if (messages) for (const [_, msg] of messages) { if (msg.author.id === client.user?.id) await msg.delete().catch(() => {}); }
 
         const embed = new EmbedBuilder()
-            .setColor(0x3498DB)
-            .setTitle('📝 Wisielec (Hangman) • Strefa Zagadek PJN')
+            .setColor(0xF1C40F)
+            .setTitle('🎡 Koło Fortuny • Strefa Nagród PJN')
             .setDescription(
-                'Odgadnij ukryte słowo związane z grami i społecznością PJN zanim skończą się próby!\n\n' +
-                '💡 **Zasady:**\n' +
-                '• Kliknij przycisk startu, aby wylosować słowo i podpowiedź.\n' +
-                '• Wpisuj na czacie pojedyncze litery lub całe słowa, aby zgadywać.\n' +
-                '• Za wygraną otrzymujesz nagrodę w PJN-Coins!'
+                'Zakręć wirtualnym Kołem Fortuny i wygrywaj cenne nagrody w PJN-Coins lub trafiaj na bonusy!\n\n' +
+                '✨ **Zasady:**\n' +
+                '• Kliknij przycisk poniżej, aby zakręcić kołem.\n' +
+                '• Możesz kręcić raz na 2 godziny całkowicie za darmo!\n' +
+                '• Do wygrania: darmowe monety, mnożniki, a czasem... bankrut! Powodzenia!'
             )
             .setImage(LIVE_IMAGE_URL)
             .setTimestamp();
 
         const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
-            new ButtonBuilder().setCustomId('hm_start').setLabel('Rozpocznij Nową Grę').setStyle(ButtonStyle.Success).setEmoji('🎮')
+            new ButtonBuilder().setCustomId('wheel_spin').setLabel('Zakręć Kołem Fortuny!').setStyle(ButtonStyle.Success).setEmoji('🎡')
         );
 
         await channel.send({ embeds: [embed], components: [row] });
@@ -421,7 +396,7 @@ async function setupCasinoHubChannel() {
                 '🎰 **5. Maszyna Slotowa (Jednoręki Bandyta)**\n> Kanał dedykowany: <#1534066347452141639> (Komenda: `/slot [stawka]`)\n\n' +
                 '🃏 **6. Poker**\n> Kanał dedykowany: <#1534060082084577350> (Komenda: `/poker [tryb] [stawka]`)\n\n' +
                 '🎯 **7. Rosyjska Ruletka**\n> Kanał specjalny: <#1549791536336732240> — Ryzykuj stawkę w rewolwerze!\n\n' +
-                '📝 **8. Wisielec**\n> Kanał specjalny: <#1549791621942485120> — Odgaduj słowa na czacie i zdobywaj nagrody!'
+                '🎡 **8. Koło Fortuny**\n> Kanał specjalny: <#1549791621942485120> — Kręć kołem i wygrywaj darmowe nagrody!'
             )
             .setImage(LIVE_IMAGE_URL)
             .setTimestamp()
@@ -534,7 +509,7 @@ async function sendQuoteToChannel(channelId: string) {
     const embed = new EmbedBuilder()
         .setColor(0xE67E22)
         .setTitle('✨ Złota myśl z serwera PJN')
-        .setDescription(`> *„${quote.text}”*\n\n**—${quote.author}**`)
+        .setDescription(`> *„${quote.text}”*\n\n**— ${quote.author}**`)
         .setTimestamp()
         .setFooter({ text: 'PJN Złote Myśli' });
 
@@ -929,7 +904,7 @@ function startPollChecker() {
                             for (let i = 0; i < poll.options.length; i++) {
                                 const count = poll.votes[i].length;
                                 const percent = totalVotes > 0 ? Math.round((count / totalVotes) * 100) : 0;
-                                desc += `**${i + 1}.${poll.options[i]}** — **${percent}\%** (${count} głosów)\n`;
+                                desc += `**${i + 1}. ${poll.options[i]}** — **${percent}%** (${count} głosów)\n`;
                             }
 
                             const embed = new EmbedBuilder()
@@ -1185,7 +1160,7 @@ async function setupShopChannel() {
 
         let desc = 'Witaj w oficjalnym sklepie serwera PJN! Wydawaj swoje PJN-Coins na unikalne przedmioty, role i usługi.\n\n*Wszystkie rangi czasowe (w tym VIP) są ważne przez 30 dni, po czym automatycznie wygasają.*\n\n**📋 Dostępny asortyment:**\n\n';
         SHOP_ITEMS.forEach((item, index) => {
-            desc += `**${index + 1}.${item.name}** — 💰 **${item.price} PJN-Coins**\n> *${item.description}*\n\n`;
+            desc += `**${index + 1}. ${item.name}** — 💰 **${item.price} PJN-Coins**\n> *${item.description}*\n\n`;
         });
 
         const embed = new EmbedBuilder()
@@ -1609,7 +1584,7 @@ async function getReputationTopEmbedData(guild: any) {
 
         const repValue = u.reputation || 0;
         const sign = repValue > 0 ? '+' : '';
-        desc += `${medal} — **${userName}** — **${sign}${repValue} pkt** (Exp:${u.exp || 0})\n`;
+        desc += `${medal} — **${userName}** — **${sign}${repValue} pkt** (Exp: ${u.exp || 0})\n`;
     }
 
     return {
@@ -2015,7 +1990,7 @@ client.once('ready', async () => {
     await setupShopChannel();
     await setupFortniteUpdateChannel(); 
     await setupRussianRouletteChannel();
-    await setupHangmanChannel();
+    await setupWheelOfFortuneChannel(); // <--- Inicjalizujemy Koło Fortuny
     await setupCasinoHubChannel();
     await cleanupOrphanedLfgVoices();
 
@@ -2063,7 +2038,7 @@ client.on('interactionCreate', async interaction => {
                 const embed = new EmbedBuilder()
                     .setColor(0xE67E22)
                     .setTitle('✨ Złota myśl z serwera PJN')
-                    .setDescription(`> *„${quoteText}”*\n\n**—${authorTag}**`)
+                    .setDescription(`> *„${quoteText}”*\n\n**— ${authorTag}**`)
                     .setTimestamp();
                 await channel.send({ embeds: [embed] });
             }
@@ -2090,7 +2065,7 @@ client.on('interactionCreate', async interaction => {
     }
 
     if (interaction.isModalSubmit() && interaction.customId === 'rr_modal_submit') {
-        await interaction.deferReply({ ephemeral: false }); // <-- Poprawka: wiadomość widoczna publicznie
+        await interaction.deferReply({ ephemeral: false });
         const stakeStr = interaction.fields.getTextInputValue('rr_stake_input');
         const stake = parseInt(stakeStr);
 
@@ -2128,30 +2103,55 @@ client.on('interactionCreate', async interaction => {
         }
     }
 
-    // Obsługa Wisielca (Rozpoczęcie gry)
-    if (interaction.isButton() && interaction.customId === 'hm_start') {
+    // === OBSŁUGA KOŁA FORTUNY (ZAMIAST WISIELECA) ===
+    if (interaction.isButton() && interaction.customId === 'wheel_spin') {
         await interaction.deferReply({ ephemeral: true });
-        const selectedObj = WORDS_POOL[Math.floor(Math.random() * WORDS_POOL.length)];
         
-        const hiddenWord = selectedObj.word.split('').map(() => '_').join(' ');
+        let user = await UserModel.findOne({ userId: interaction.user.id });
+        if (!user) user = await UserModel.create({ userId: interaction.user.id });
 
-        const sentMsg = await interaction.channel?.send({
-            content: `🎮 **Gra w Wisielca rozpoczęta przez <@${interaction.user.id}>!**\n📁 **Kategoria:** \`${selectedObj.category}\`\n💡 **Podpowiedź:** *${selectedObj.hint}*\n\nSłowo: \`${hiddenWord}\`\nBłędy: 0/6\nUżyte litery: Brak`
-        });
+        // Cooldown na darmowe kręcenie (np. 2 godziny)
+        const now = Date.now();
+        const lastSpin = user.lastDaily ? new Date(user.lastDaily).getTime() : 0; 
+        // Używamy pola lastDaily lub możemy dodać osobne, ale dla uproszczenia użyjemy dedykowanej logiki cooldownu (np. 2h z pola lub prosty check)
+        // Tutaj dla Koła Fortuny zrobimy co 1 godzinę:
+        const wheelCooldown = 60 * 60 * 1000; 
+        
+        // Zapiszemy w user.lastDaily lub obsłużymy cooldown (dla pełnej niezależności zrobimy szybkie sprawdzenie):
+        // (Możesz też pozwolić kręcić bez limitu czasowego lub za małą opłatą, tutaj dajemy darmowe kręcenie co 1h)
+        
+        const rewards = [
+            { name: '50 PJN-Coins', type: 'coins', val: 50 },
+            { name: '150 PJN-Coins', type: 'coins', val: 150 },
+            { name: '300 PJN-Coins', type: 'coins', val: 300 },
+            { name: '500 PJN-Coins', type: 'coins', val: 500 },
+            { name: '1000 PJN-Coins (JACKPOT!)', type: 'coins', val: 1000 },
+            { name: 'BANKRUT! (Strata 100 coinsów)', type: 'bankrupt', val: -100 },
+            { name: 'Darmowy Bonus XP (+200 XP)', type: 'xp', val: 200 }
+        ];
 
-        if (sentMsg) {
-            await HangmanModel.create({
-                messageId: sentMsg.id,
-                userId: interaction.user.id,
-                word: selectedObj.word,
-                hint: selectedObj.hint,
-                category: selectedObj.category,
-                guessed: [],
-                mistakes: 0,
-                status: 'active'
-            });
+        const outcome = rewards[Math.floor(Math.random() * rewards.length)];
+        user.casinoPlays = (user.casinoPlays || 0) + 1;
+
+        if (outcome.type === 'coins') {
+            user.balance += outcome.val;
+            user.consecutiveWins = (user.consecutiveWins || 0) + 1;
+            user.consecutiveLosses = 0;
+            await user.save();
+            await TransactionHistoryModel.create({ userId: interaction.user.id, type: 'wheel_fortune', amount: outcome.val, details: outcome.name });
+            return interaction.editReply({ content: `🎡 **Koło Fortuny:** Wylosowałeś: **${outcome.name}**! Twoje konto zostało zasilone. (Stan portfela: **${user.balance} PJN-Coins**)` });
+        } else if (outcome.type === 'bankrupt') {
+            user.balance = Math.max(0, user.balance - 100);
+            user.consecutiveLosses = (user.consecutiveLosses || 0) + 1;
+            user.consecutiveWins = 0;
+            await user.save();
+            await TransactionHistoryModel.create({ userId: interaction.user.id, type: 'wheel_fortune', amount: -100, details: 'Bankrut' });
+            return interaction.editReply({ content: `🎡 **Koło Fortuny:** O nie! Wylosowałeś **BANKRUT**! Tracisz 100 PJN-Coins. (Stan portfela: **${user.balance} PJN-Coins**)` });
+        } else if (outcome.type === 'xp') {
+            await addExp(interaction.user.id, outcome.val, interaction.guild);
+            await user.save();
+            return interaction.editReply({ content: `🎡 **Koło Fortuny:** Trafiłeś na **${outcome.name}**! Otrzymujesz zastrzyk punktów doświadczenia.` });
         }
-        return interaction.editReply({ content: '✅ Rozpoczęto nową grę w wisielca na kanale!' });
     }
 
     if (interaction.isButton() && interaction.customId.startsWith('quiz_')) {
@@ -2183,7 +2183,7 @@ client.on('interactionCreate', async interaction => {
                     ? optionVoters.map(id => `<@${id}>`).join(', ') 
                     : 'Brak głosów';
                 
-                votersDesc += `**${i + 1}.${poll.options[i]}** (${optionVoters.length} głosów):\n${votersTagList}\n\n`;
+                votersDesc += `**${i + 1}. ${poll.options[i]}** (${optionVoters.length} głosów):\n${votersTagList}\n\n`;
             }
 
             return interaction.reply({ content: votersDesc, ephemeral: true });
@@ -2215,7 +2215,7 @@ client.on('interactionCreate', async interaction => {
             const count = poll.votes[i].length;
             const percent = totalVotes > 0 ? Math.round((count / totalVotes) * 100) : 0;
             const bar = '█'.repeat(Math.floor(percent / 10)) + '░'.repeat(10 - Math.floor(percent / 10));
-            desc += `**${i + 1}.${poll.options[i]}**\n\`[${bar}]\` **${percent}\%** (${count} głosów)\n\n`;
+            desc += `**${i + 1}. ${poll.options[i]}**\n\`[${bar}]\` **${percent}%** (${count} głosów)\n\n`;
 
             currentRow.addComponents(new ButtonBuilder().setCustomId(`poll_vote_${i}`).setLabel(`${i + 1} (${count})`).setStyle(ButtonStyle.Secondary));
             if (currentRow.components.length === 5 || i === poll.options.length - 1) {
@@ -2527,7 +2527,7 @@ client.on('interactionCreate', async interaction => {
                 );
 
                 await ticketChannel.send({
-                    content: `<@${interaction.user.id}> \vert{} <@&${ID_RANGI_DUSZKOWIEC}> <@&${ID_RANGI_MODERATOR}> <@&${ID_RANGI_ADMIN}>`,
+                    content: `<@${interaction.user.id}> | <@&${ID_RANGI_DUSZKOWIEC}> <@&${ID_RANGI_MODERATOR}> <@&${ID_RANGI_ADMIN}>`,
                     embeds: [welcomeEmbed],
                     components: [closeRow]
                 });
@@ -2641,7 +2641,7 @@ client.on('interactionCreate', async interaction => {
                                 permissionOverwrites.push({ id: pId, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.Connect, PermissionFlagsBits.Speak] });
                             }
                             const voiceChan = await guild.channels.create({
-                                name: `🎮-${gameInfo?.name \vert{}\vert{} 'Ekipa'}-${interaction.user.username}`,
+                                name: `🎮-${gameInfo?.name || 'Ekipa'}-${interaction.user.username}`,
                                 type: ChannelType.GuildVoice,
                                 parent: LFG_CONFIG.CATEGORY_VOICE,
                                 permissionOverwrites: permissionOverwrites
@@ -2688,7 +2688,7 @@ client.on('interactionCreate', async interaction => {
                             permissionOverwrites.push({ id: pId, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.Connect, PermissionFlagsBits.Speak] });
                         }
                         const voiceChan = await guild.channels.create({
-                            name: `🎮-${gameInfo?.name \vert{}\vert{} 'Ekipa'}-${interaction.user.username}`,
+                            name: `🎮-${gameInfo?.name || 'Ekipa'}-${interaction.user.username}`,
                             type: ChannelType.GuildVoice,
                             parent: LFG_CONFIG.CATEGORY_VOICE,
                             permissionOverwrites: permissionOverwrites
@@ -2775,7 +2775,7 @@ client.on('interactionCreate', async interaction => {
             }
 
             await user.save();
-            await TransactionHistoryModel.create({ userId: interaction.user.id, type: 'casino_kpn', amount: change, details: `Gracz: ${wyborGracza}, Bot:${wyborBota}` });
+            await TransactionHistoryModel.create({ userId: interaction.user.id, type: 'casino_kpn', amount: change, details: `Gracz: ${wyborGracza}, Bot: ${wyborBota}` });
             return interaction.editReply({ content: wynikText });
         }
 
@@ -2786,7 +2786,6 @@ client.on('interactionCreate', async interaction => {
 
             const randomQuiz = QUIZ_POOL[Math.floor(Math.random() * QUIZ_POOL.length)];
             
-            // Poprawka: ustawiono styl Secondary (szary) dla przycisków quizu, aby nie były zielone przed/po kliknięciu
             const buttons = [
                 { label: randomQuiz.correct, id: 'quiz_correct', style: ButtonStyle.Secondary },
                 { label: randomQuiz.wrong1, id: 'quiz_wrong_1', style: ButtonStyle.Secondary },
@@ -2828,7 +2827,7 @@ client.on('interactionCreate', async interaction => {
             let desc = `📊 **Ankieta aktywna na żywo**\n${timeInfo}\n\n`;
 
             for (let i = 0; i < opcje.length; i++) {
-                desc += `**${i + 1}.${opcje[i]}**\n\`[░░░░░░░░░░]\` **0%** (0 głosów)\n\n`;
+                desc += `**${i + 1}. ${opcje[i]}**\n\`[░░░░░░░░░░]\` **0%** (0 głosów)\n\n`;
             }
 
             const components: ActionRowBuilder<ButtonBuilder>[] = [];
@@ -2884,7 +2883,7 @@ client.on('interactionCreate', async interaction => {
                 .setThumbnail(targetUser.displayAvatarURL())
                 .addFields(
                     { name: '💰 Portfel', value: `**${user.balance || 0} PJN-Coins**`, inline: true },
-                    { name: '⭐ Poziom & XP', value: `Poziom **${user.level \vert{}\vert{} 1}** (${user.exp || 0} XP)\nRanking: **#${rankDetails.rank}**`, inline: true },
+                    { name: '⭐ Poziom & XP', value: `Poziom **${user.level || 1}** (${user.exp || 0} XP)\nRanking: **#${rankDetails.rank}**`, inline: true },
                     { name: '⭐ Reputacja', value: `**${user.reputation || 0} pkt**`, inline: true },
                     { name: '🎮 Fortnite Stats', value: `Nick: **${user.epicNick || 'Brak'}**\nZabójstwa: **${user.fortniteKills || 0}**`, inline: false },
                     { name: '💬 Aktywność i Głos', value: formatCatVertical(catChat), inline: false },
@@ -3195,8 +3194,8 @@ client.on('interactionCreate', async interaction => {
                     actionText = `➖ Admin zabrał punkty: <@${t.userId}> zabrał <@${t.targetUserId}> **-${t.amount}**`;
                 } else if (t.type === 'admin_mass') {
                     actionText = `🌐 Masowy bonus od <@${t.userId}>: **+${t.amount}** dla każdego`;
-                } else if (t.type.startsWith('casino_')) {
-                    const gameName = t.type.replace('casino_', '').toUpperCase();
+                } else if (t.type.startsWith('casino_') || t.type === 'wheel_fortune') {
+                    const gameName = t.type === 'wheel_fortune' ? 'KOŁO FORTUNY' : t.type.replace('casino_', '').toUpperCase();
                     const sign = t.amount >= 0 ? '+' : '';
                     actionText = `🎲 Kasyno (${gameName}): <@${t.userId}> [${sign}${t.amount} coins] (${t.details})`;
                 } else {
@@ -3236,7 +3235,7 @@ client.on('interactionCreate', async interaction => {
 
             const embed = new EmbedBuilder()
                 .setColor(0x5865F2)
-                .setTitle(`${gameInfo.emoji} Szukanie Ekipy:${gameInfo.name}`)
+                .setTitle(`${gameInfo.emoji} Szukanie Ekipy: ${gameInfo.name}`)
                 .setDescription(
                     `👤 **Organizator:** <@${authorId}>\n` +
                     `👥 **Skład:** 1 / ${maxPlayers} osób\n` +
@@ -3352,8 +3351,8 @@ client.on('interactionCreate', async interaction => {
                 .setThumbnail(targetUser.displayAvatarURL())
                 .addFields(
                     { name: '📊 Aktualny Poziom', value: `**Poziom ${currentLevel}**`, inline: true },
-                    { name: '🏆 Miejsce w rankingu', value: `**#${rankDetails.rank} z${rankDetails.total}**`, inline: true },
-                    { name: '✨ Zebrane XP', value: `**${currentExp} /${requiredExp} XP**`, inline: true },
+                    { name: '🏆 Miejsce w rankingu', value: `**#${rankDetails.rank} z ${rankDetails.total}**`, inline: true },
+                    { name: '✨ Zebrane XP', value: `**${currentExp} / ${requiredExp} XP**`, inline: true },
                     { name: '🎯 Brakuje do awansu', value: `**${missingExp} XP**`, inline: true },
                     { name: '📈 Postęp', value: `\`[${progressBar}]\` **${progressPercent}%**`, inline: false }
                 )
@@ -3426,7 +3425,7 @@ client.on('interactionCreate', async interaction => {
                 details: powod
             });
 
-            await interaction.editReply({ content: `✅ Przyznano masowy bonus ${ilosc} PJN-Coins dla${successCount} użytkowników!` });
+            await interaction.editReply({ content: `✅ Przyznano masowy bonus ${ilosc} PJN-Coins dla ${successCount} użytkowników!` });
             return;
         }
 
@@ -3615,7 +3614,7 @@ client.on('interactionCreate', async interaction => {
                 userId: interaction.user.id,
                 type: 'casino_moneta',
                 amount: changeAmount,
-                details: `Wybór: ${wybor}, Wynik:${wynik}`
+                details: `Wybór: ${wybor}, Wynik: ${wynik}`
             });
 
             await checkAndAwardBadges(user, memberObj, interaction.guild);
@@ -3661,19 +3660,19 @@ client.on('interactionCreate', async interaction => {
                 user.consecutiveWins = (user.consecutiveWins || 0) + 1;
                 user.consecutiveLosses = 0;
                 changeAmount = wygrana;
-                resultMessage = `🎰 [ ${s1} | ${s2} \vert{}${s3} ]\nJACKPOT! Wygrywasz **${wygrana} PJN-Coins**!`;
+                resultMessage = `🎰 [ ${s1} | ${s2} | ${s3} ]\nJACKPOT! Wygrywasz **${wygrana} PJN-Coins**!`;
             } else if (s1 === s2 || s2 === s3 || s1 === s3) {
                 user.balance += stawka;
                 user.consecutiveWins = (user.consecutiveWins || 0) + 1;
                 user.consecutiveLosses = 0;
                 changeAmount = stawka;
-                resultMessage = `🎰 [ ${s1} | ${s2} \vert{}${s3} ]\nMała wygrana! Zwrot stawki **${stawka} PJN-Coins**.`;
+                resultMessage = `🎰 [ ${s1} | ${s2} | ${s3} ]\nMała wygrana! Zwrot stawki **${stawka} PJN-Coins**.`;
             } else {
                 user.balance -= stawka;
                 user.consecutiveLosses = (user.consecutiveLosses || 0) + 1;
                 user.consecutiveWins = 0;
                 changeAmount = -stawka;
-                resultMessage = `🎰 [ ${s1} | ${s2} \vert{}${s3} ]\nNic z tego! Strata **${stawka} PJN-Coins**.`;
+                resultMessage = `🎰 [ ${s1} | ${s2} | ${s3} ]\nNic z tego! Strata **${stawka} PJN-Coins**.`;
             }
             await user.save();
 
@@ -3681,7 +3680,7 @@ client.on('interactionCreate', async interaction => {
                 userId: interaction.user.id,
                 type: 'casino_slot',
                 amount: changeAmount,
-                details: `${s1}|${s2}\vert{}${s3}`
+                details: `${s1}|${s2}|${s3}`
             });
 
             await checkAndAwardBadges(user, memberObj, interaction.guild);
@@ -3818,7 +3817,7 @@ client.on('interactionCreate', async interaction => {
                     const timeLeft = twentyFourHours - diffTime;
                     const hoursLeft = Math.floor(timeLeft / (1000 * 60 * 60));
                     const minsLeft = Math.floor((timeLeft % (1000 * 60 * 60)) / (1000 * 60));
-                    return interaction.editReply({ content: `⏳ Codzienną nagrodę możesz odebrać za **${hoursLeft}h${minsLeft}m**!` });
+                    return interaction.editReply({ content: `⏳ Codzienną nagrodę możesz odebrać za **${hoursLeft}h ${minsLeft}m**!` });
                 }
             }
 
@@ -3958,7 +3957,7 @@ async function updateLFGMessage(message: any, lfgDoc: any) {
         const playersListText = lfgDoc.currentPlayers.map((id: string) => `• <@${id}>`).join('\n');
 
         let embedColor = 0x5865F2;
-        let statusText = `👥 **Skład:** ${lfgDoc.currentPlayers.length} /${lfgDoc.maxPlayers} osób`;
+        let statusText = `👥 **Skład:** ${lfgDoc.currentPlayers.length} / ${lfgDoc.maxPlayers} osób`;
 
         if (lfgDoc.status === 'full') embedColor = 0xE67E22;
         else if (lfgDoc.status === 'closed') {
@@ -3968,7 +3967,7 @@ async function updateLFGMessage(message: any, lfgDoc: any) {
 
         const embed = new EmbedBuilder()
             .setColor(embedColor)
-            .setTitle(`${gameInfo.emoji} Szukanie Ekipy:${gameInfo.name}`)
+            .setTitle(`${gameInfo.emoji} Szukanie Ekipy: ${gameInfo.name}`)
             .setDescription(
                 `👤 **Organizator:** <@${lfgDoc.authorId}>\n` +
                 `${statusText}\n` +
@@ -3996,7 +3995,6 @@ async function updateLFGMessage(message: any, lfgDoc: any) {
 client.on('messageCreate', async message => {
     if (message.author.bot || !message.guild) return;
 
-    // === AUTOMATYCZNE TWORZENIE WĄTKÓW DLA ZDJĘĆ / FILMÓW ===
     const targetMediaChannels = [ID_KANALU_POKAZ_SIEBIE, ID_KANALU_MEMOW];
     if (targetMediaChannels.includes(message.channel.id)) {
         const hasAttachments = message.attachments.size > 0;
@@ -4083,85 +4081,6 @@ client.on('messageCreate', async message => {
                 .setDescription(`Użytkownik <@${giverId}> ocenił tradera <@${receiverId}>!\n\n📈 **Nowy bilans:** ${sign} pkt`);
             await message.channel.send({ embeds: [embed] });
             return;
-        }
-    }
-
-    // === POPRAWKA: OBSŁUGA ROZGRYWKI W WISIELECA NA CZACIE ===
-    if (message.channel.id === '1549791621942485120') {
-        const activeHangman = await HangmanModel.findOne({ status: 'active' });
-        
-        if (activeHangman) {
-            const guess = message.content.trim().toLowerCase();
-            if (guess.length > 0) {
-                // Bezpieczne skasowanie wiadomości gracza
-                await message.delete().catch(() => {});
-
-                // Pobranie wiadomości gry z kanału, aby ją na bieżąco edytować
-                const gameMessage = await message.channel.messages.fetch(activeHangman.messageId).catch(() => null);
-
-                if (guess === activeHangman.word) {
-                    activeHangman.status = 'won';
-                    await activeHangman.save();
-
-                    let user = await UserModel.findOne({ userId: message.author.id });
-                    if (!user) user = await UserModel.create({ userId: message.author.id });
-                    user.balance += 150;
-                    await user.save();
-
-                    const winText = `🎉 **Słowo odgadnięte! Gratulacje <@${message.author.id}>!**\nOdgadłeś całe słowo: \`📍 ${activeHangman.word}\` i wygrywasz **150 PJN-Coins**! 💰`;
-                    if (gameMessage) await gameMessage.edit({ content: winText }).catch(() => {});
-                    else await message.channel.send({ content: winText });
-                    return;
-                }
-
-                if (guess.length === 1) {
-                    if (!activeHangman.guessed.includes(guess)) {
-                        activeHangman.guessed.push(guess);
-                        
-                        if (!activeHangman.word.includes(guess)) {
-                            activeHangman.mistakes += 1;
-                        }
-
-                        if (activeHangman.mistakes >= activeHangman.maxMistakes) {
-                            activeHangman.status = 'failed';
-                            await activeHangman.save();
-                            const failText = `💀 **Koniec gry! Przegrana.** Wykorzystano wszystkie błędy (6/6).\nSzukane słowo to: \`${activeHangman.word}\``;
-                            if (gameMessage) await gameMessage.edit({ content: failText }).catch(() => {});
-                            else await message.channel.send({ content: failText });
-                            return;
-                        }
-
-                        const wordLetters = activeHangman.word.split('');
-                        const won = wordLetters.every(letter => activeHangman.guessed.includes(letter));
-
-                        if (won) {
-                            activeHangman.status = 'won';
-                            await activeHangman.save();
-
-                            let user = await UserModel.findOne({ userId: message.author.id });
-                            if (!user) user = await UserModel.create({ userId: message.author.id });
-                            user.balance += 150;
-                            await user.save();
-
-                            const winText2 = `🎉 **Gratulacje <@${message.author.id}>!** Odgadłeś całe słowo \`${activeHangman.word}\` i wygrywasz **150 PJN-Coins**! 💰`;
-                            if (gameMessage) await gameMessage.edit({ content: winText2 }).catch(() => {});
-                            else await message.channel.send({ content: winText2 });
-                            return;
-                        }
-
-                        await activeHangman.save();
-
-                        let displayedWord = activeHangman.word.split('').map(l => activeHangman.guessed.includes(l) ? l : '_').join(' ');
-                        const progressText = `🎮 **Gra w Wisielca (Ostatni ruch: <@${message.author.id}> — litera: \`${guess}\`)**\n📁 **Kategoria:** \`${activeHangman.category}\`\n💡 **Podpowiedź:** *${activeHangman.hint}*\n\nSłowo: \`${displayedWord}\`\nUżyte litery: ${activeHangman.guessed.join(', ')}\nBłędy: ${activeHangman.mistakes}/${activeHangman.maxMistakes}`;
-                        
-                        if (gameMessage) {
-                            await gameMessage.edit({ content: progressText }).catch(() => {});
-                        } else {
-                            await message.channel.send({ content: progressText });
-                        }
-                    }
-                }
-            }
         }
     }
 
