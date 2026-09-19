@@ -22,10 +22,10 @@ import {
 import mongoose from 'mongoose';
 import cron from 'node-cron';
 import Parser from 'rss-parser';
-import { GoogleGenAI } from '@google/genai'; // <--- Dodano import Gemini
+import { GoogleGenAI } from '@google/genai';
 
 // === INICJALIZACJA GEMINI AI ===
-const ai = new GoogleGenAI(); // Pobiera GEMINI_API_KEY ze zmiennych środowiskowych
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY }); // Jawne przekazanie klucza
 
 // === KONFIGURACJA BAZY DANYCH MONGOOSE ===
 const MONGO_URI = process.env.MONGODB_URI;
@@ -226,7 +226,7 @@ const ID_KANALU_CYTATY = '1534780578912665653';
 const ID_KANALU_MEMOW = '1534833819599769640'; 
 const ID_KANALU_SZUKAM_DO_GRY = '1532449084559069214'; 
 const ID_KANALU_POKAZ_SIEBIE = '1536365057997283469'; 
-const ID_KANAL_AI_GEMINI = '1550780827259113515'; // <--- ID kanału dla PJN AI
+const ID_KANAL_AI_GEMINI = '1550780827259113515'; 
 const CHANNEL_POWITANIA = "witamy";
 const ID_KANALU_DUSZKI = "1532977723843285112"; 
 const ID_RANGI_DUSZKOWIEC = "1532978703842283551";
@@ -296,19 +296,19 @@ function isAuthorized(userId: string): boolean {
     return adminIds.includes(userId);
 }
 
-// === POMOCNICZA FUNKCJA DO OBSŁUGI GEMINI ===
+// === POMOCNICZA FUNKCJA DO OBSŁUGI GEMINI Z POPRAWNYM LOGOWANIEM BŁĘDÓW ===
 async function askGemini(promptText: string): Promise<string> {
     try {
         const response = await ai.models.generateContent({
-            model: 'gemini-2.0-flash', // <--- Zaktualizowano model na nowy
+            model: 'gemini-2.0-flash',
             contents: promptText,
             config: {
                 systemInstruction: "Jesteś pomocnym, inteligentnym i lekko dowcipnym asystentem AI na serwerze Discord społeczności PJN. Odpowiadaj w języku polskim w sposób zwięzły, konkretny i czytelny dla graczy.",
             }
         });
         return response.text || "Przepraszam, ale nie udało mi się wygenerować odpowiedzi.";
-    } catch (error) {
-        console.error("Błąd podczas komunikacji z Gemini API:", error);
+    } catch (error: any) {
+        console.error("SZCZEGÓŁOWY BŁĄD GEMINI:", error?.response?.data || error.message || error);
         return "Wystąpił błąd podczas łączenia z systemem sztucznej inteligencji.";
     }
 }
@@ -2759,7 +2759,7 @@ client.on('interactionCreate', async interaction => {
 
             const embed = new EmbedBuilder()
                 .setColor(0x00D9FF)
-                .setTitle('🤖 Odpowiedź PJN AI') // <--- Zmieniono tytuł na PJN AI
+                .setTitle('🤖 Odpowiedź PJN AI')
                 .setDescription(`> **Pytanie:** *${question}*\n\n${aiResponseText}`)
                 .setTimestamp()
                 .setFooter({ text: `Zapytanie od: ${interaction.user.tag}` });
@@ -4035,7 +4035,7 @@ client.on('messageCreate', async message => {
 
             const aiEmbed = new EmbedBuilder()
                 .setColor(0x00D9FF)
-                .setTitle('🤖 Odpowiedź PJN AI') // <--- Zmieniono tytuł na PJN AI
+                .setTitle('🤖 Odpowiedź PJN AI')
                 .setDescription(aiReplyText)
                 .setTimestamp()
                 .setFooter({ text: `Zapytanie od: ${message.author.tag}` });
