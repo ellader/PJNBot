@@ -226,7 +226,7 @@ const ID_KANALU_CYTATY = '1534780578912665653';
 const ID_KANALU_MEMOW = '1534833819599769640'; 
 const ID_KANALU_SZUKAM_DO_GRY = '1532449084559069214'; 
 const ID_KANALU_POKAZ_SIEBIE = '1536365057997283469'; 
-const ID_KANAL_AI_GEMINI = '1550780827259113515'; // <--- ID kanału dla Gemini AI
+const ID_KANAL_AI_GEMINI = '1550780827259113515'; // <--- ID kanału dla PJN AI
 const CHANNEL_POWITANIA = "witamy";
 const ID_KANALU_DUSZKI = "1532977723843285112"; 
 const ID_RANGI_DUSZKOWIEC = "1532978703842283551";
@@ -300,7 +300,7 @@ function isAuthorized(userId: string): boolean {
 async function askGemini(promptText: string): Promise<string> {
     try {
         const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
+            model: 'gemini-2.0-flash', // <--- Zaktualizowano model na nowy
             contents: promptText,
             config: {
                 systemInstruction: "Jesteś pomocnym, inteligentnym i lekko dowcipnym asystentem AI na serwerze Discord społeczności PJN. Odpowiadaj w języku polskim w sposób zwięzły, konkretny i czytelny dla graczy.",
@@ -1866,7 +1866,7 @@ const commands = [
         .addUserOption(o => o.setName('uzytkownik').setDescription('Użytkownik').setRequired(false)),
     new SlashCommandBuilder()
         .setName('ai')
-        .setDescription('Zadaj pytanie sztucznej inteligencji Gemini AI')
+        .setDescription('Zadaj pytanie sztucznej inteligencji PJN AI')
         .addStringOption(o => o.setName('pytanie').setDescription('Twoje pytanie do sztucznej inteligencji').setRequired(true)),
     new SlashCommandBuilder()
         .setName('ankieta')
@@ -2759,7 +2759,7 @@ client.on('interactionCreate', async interaction => {
 
             const embed = new EmbedBuilder()
                 .setColor(0x00D9FF)
-                .setTitle('🤖 Odpowiedź Gemini AI')
+                .setTitle('🤖 Odpowiedź PJN AI') // <--- Zmieniono tytuł na PJN AI
                 .setDescription(`> **Pytanie:** *${question}*\n\n${aiResponseText}`)
                 .setTimestamp()
                 .setFooter({ text: `Zapytanie od: ${interaction.user.tag}` });
@@ -4025,10 +4025,9 @@ async function updateLFGMessage(message: any, lfgDoc: any) {
 client.on('messageCreate', async message => {
     if (message.author.bot || !message.guild) return;
 
-    // === OBSŁUGA KANAŁU AI GEMINI ===
+    // === OBSŁUGA KANAŁU AI PJN ===
     if (message.channel.id === ID_KANAL_AI_GEMINI) {
         try {
-            // Pokazujemy status pisania, żeby użytkownik wiedział, że AI generuje odpowiedź
             await message.channel.sendTyping();
             
             const promptText = message.content;
@@ -4036,7 +4035,7 @@ client.on('messageCreate', async message => {
 
             const aiEmbed = new EmbedBuilder()
                 .setColor(0x00D9FF)
-                .setTitle('🤖 Odpowiedź Gemini AI')
+                .setTitle('🤖 Odpowiedź PJN AI') // <--- Zmieniono tytuł na PJN AI
                 .setDescription(aiReplyText)
                 .setTimestamp()
                 .setFooter({ text: `Zapytanie od: ${message.author.tag}` });
@@ -4045,7 +4044,7 @@ client.on('messageCreate', async message => {
         } catch (err) {
             console.error('Błąd podczas obsługi wiadomości AI:', err);
         }
-        return; // Przerywamy dalsze naliczanie punktów/obsługę na tym konkretnym kanale, jeśli nie chcesz ich mieszać
+        return; 
     }
 
     const targetMediaChannels = [ID_KANALU_POKAZ_SIEBIE, ID_KANALU_MEMOW];
