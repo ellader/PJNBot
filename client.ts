@@ -297,13 +297,13 @@ function isAuthorized(userId: string): boolean {
     return adminIds.includes(userId);
 }
 
-// === NAPRAWIONA FUNKCJA ASK GEMINI (STABILNA DLA @google/genai) ===
+// === ZAKTUALIZOWANA FUNKCJA ASK GEMINI (GEMINI 3.8 FLASH) ===
 async function askGemini(promptText: string): Promise<string> {
     try {
         console.log(`[AI] Wysyłanie zapytania do Gemini: "${promptText}"`);
         
         const response = await ai.models.generateContent({
-            model: 'gemini-1.5-flash',
+            model: 'gemini-3.8-flash',
             contents: promptText,
             config: {
                 systemInstruction: "Jesteś pomocnym, inteligentnym i lekko dowcipnym asystentem AI na serwerze Discord społeczności PJN. Odpowiadaj w języku polskim w sposób zwięzły, konkretny i czytelny dla graczy.",
