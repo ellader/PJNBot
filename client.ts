@@ -300,7 +300,7 @@ function isAuthorized(userId: string): boolean {
 async function askGemini(promptText: string): Promise<string> {
     try {
         const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
+            model: 'gemini-1.5-flash', // <--- POPRAWIONY MODEL NA STABILNY 1.5-FLASH
             contents: promptText,
             config: {
                 systemInstruction: "Jesteś pomocnym, inteligentnym i lekko dowcipnym asystentem AI na serwerze Discord społeczności PJN. Odpowiadaj w języku polskim w sposób zwięzły, konkretny i czytelny dla graczy.",
