@@ -296,20 +296,24 @@ function isAuthorized(userId: string): boolean {
     return adminIds.includes(userId);
 }
 
-// === POMOCNICZA FUNKCJA DO OBSŁUGI GEMINI Z POPRAWNYM MODELem ===
+// === NAPRAWIONA FUNKCJA ASK GEMINI (STABILNA DLA @google/genai) ===
 async function askGemini(promptText: string): Promise<string> {
     try {
+        console.log(`[AI] Wysyłanie zapytania do Gemini: "${promptText}"`);
+        
         const response = await ai.models.generateContent({
-            model: 'gemini-1.5-flash', // <--- POPRAWIONY MODEL NA STABILNY 1.5-FLASH
+            model: 'gemini-1.5-flash',
             contents: promptText,
             config: {
                 systemInstruction: "Jesteś pomocnym, inteligentnym i lekko dowcipnym asystentem AI na serwerze Discord społeczności PJN. Odpowiadaj w języku polskim w sposób zwięzły, konkretny i czytelny dla graczy.",
             }
         });
-        return response.text || "Przepraszam, ale nie udało mi się wygenerować odpowiedzi.";
+
+        console.log('[AI] Otrzymano odpowiedź od Google API.');
+        return response.text || "Otrzymałem pustą odpowiedź od modelu AI.";
     } catch (error: any) {
-        console.error("SZCZEGÓŁOWY BŁĄD GEMINI:", error?.response?.data || error.message || error);
-        return "Wystąpił błąd podczas łączenia z systemem sztucznej inteligencji.";
+        console.error("❌ BŁĄD PODCZAS WYWOŁANIA GEMINI API:", error?.message || error);
+        return `Przepraszam, moduł AI napotkał błąd techniczny: \`${error?.message || 'Nieznany błąd'}\``;
     }
 }
 
@@ -3573,7 +3577,7 @@ client.on('interactionCreate', async interaction => {
 
             let user = await UserModel.findOne({ userId: interaction.user.id });
             if (!user) user = await UserModel.create({ userId: interaction.user.id });
-            if (user.balance < stawka) return interaction.editReply({ content: `❌ Brak środków (${user.balance})!` });
+            if (user.balance < stawka) return interaction.editReply({ content: `❌ Brak środków (${stawka})!` });
 
             user.casinoPlays = (user.casinoPlays || 0) + 1;
             const memberObj = await interaction.guild?.members.fetch(interaction.user.id).catch(() => null);
@@ -3618,7 +3622,7 @@ client.on('interactionCreate', async interaction => {
 
             let user = await UserModel.findOne({ userId: interaction.user.id });
             if (!user) user = await UserModel.create({ userId: interaction.user.id });
-            if (user.balance < stawka) return interaction.editReply({ content: `❌ Brak środków (${user.balance})!` });
+            if (user.balance < stawka) return interaction.editReply({ content: `❌ Brak środków (${stawka})!` });
 
             user.casinoPlays = (user.casinoPlays || 0) + 1;
             const memberObj = await interaction.guild?.members.fetch(interaction.user.id).catch(() => null);
@@ -3666,7 +3670,7 @@ client.on('interactionCreate', async interaction => {
 
             let user = await UserModel.findOne({ userId: interaction.user.id });
             if (!user) user = await UserModel.create({ userId: interaction.user.id });
-            if (user.balance < stawka) return interaction.editReply({ content: `❌ Brak środków (${user.balance})!` });
+            if (user.balance < stawka) return interaction.editReply({ content: `❌ Brak środków (${stawka})!` });
 
             user.casinoPlays = (user.casinoPlays || 0) + 1;
             const symbols = ['🍎', '🍋', '🍒', '🔔', '💎'];
@@ -3728,7 +3732,7 @@ client.on('interactionCreate', async interaction => {
 
             let user = await UserModel.findOne({ userId: interaction.user.id });
             if (!user) user = await UserModel.create({ userId: interaction.user.id });
-            if (user.balance < stawka) return interaction.editReply({ content: `❌ Brak środków (${user.balance})!` });
+            if (user.balance < stawka) return interaction.editReply({ content: `❌ Brak środków (${stawka})!` });
 
             user.casinoPlays = (user.casinoPlays || 0) + 1;
             const memberObj = await interaction.guild?.members.fetch(interaction.user.id).catch(() => null);
