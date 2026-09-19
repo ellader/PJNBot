@@ -23,9 +23,10 @@ import mongoose from 'mongoose';
 import cron from 'node-cron';
 import Parser from 'rss-parser';
 import { GoogleGenAI } from '@google/genai';
+import http from 'http';
 
 // === INICJALIZACJA GEMINI AI ===
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY }); // Jawne przekazanie klucza
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 // === KONFIGURACJA BAZY DANYCH MONGOOSE ===
 const MONGO_URI = process.env.MONGODB_URI;
@@ -2653,7 +2654,7 @@ client.on('interactionCreate', async interaction => {
                     try {
                         const guild = interaction.guild;
                         if (guild) {
-                            const permissionOverwrites = [{ id: guild.id, deny: [PermissionFlagsBits.ViewChannel] }];
+                            const permissionOverwrites: any[] = [{ id: guild.id, deny: [PermissionFlagsBits.ViewChannel] }];
                             for (const pId of lfgDoc.currentPlayers) {
                                 permissionOverwrites.push({ id: pId, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.Connect, PermissionFlagsBits.Speak] });
                             }
@@ -2700,7 +2701,7 @@ client.on('interactionCreate', async interaction => {
                 try {
                     const guild = interaction.guild;
                     if (guild) {
-                        const permissionOverwrites = [{ id: guild.id, deny: [PermissionFlagsBits.ViewChannel] }];
+                        const permissionOverwrites: any[] = [{ id: guild.id, deny: [PermissionFlagsBits.ViewChannel] }];
                         for (const pId of lfgDoc.currentPlayers) {
                             permissionOverwrites.push({ id: pId, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.Connect, PermissionFlagsBits.Speak] });
                         }
@@ -4344,7 +4345,7 @@ client.on('guildMemberRemove', async member => {
         const memberCount = member.guild.memberCount;
 
         const embed = new EmbedBuilder()
-            .setThumbnail(member.user.displayAvatarURL({ dynamic: true }))
+            .setThumbnail(member.user.displayAvatarURL())
             .setTimestamp();
 
         if (actionType === 'kick') {
@@ -4379,7 +4380,6 @@ client.on('guildMemberRemove', async member => {
     } catch (error) {}
 });
 
-import http from 'http';
 const server = http.createServer((req, res) => {
   res.writeHead(200, { 'Content-Type': 'text/plain' });
   res.end('Bot is running 24/7!\n');
