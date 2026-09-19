@@ -296,11 +296,11 @@ function isAuthorized(userId: string): boolean {
     return adminIds.includes(userId);
 }
 
-// === POMOCNICZA FUNKCJA DO OBSŁUGI GEMINI Z POPRAWNYM LOGOWANIEM BŁĘDÓW ===
+// === POMOCNICZA FUNKCJA DO OBSŁUGI GEMINI Z POPRAWNYM MODELem ===
 async function askGemini(promptText: string): Promise<string> {
     try {
         const response = await ai.models.generateContent({
-            model: 'gemini-2.0-flash',
+            model: 'gemini-2.5-flash',
             contents: promptText,
             config: {
                 systemInstruction: "Jesteś pomocnym, inteligentnym i lekko dowcipnym asystentem AI na serwerze Discord społeczności PJN. Odpowiadaj w języku polskim w sposób zwięzły, konkretny i czytelny dla graczy.",
