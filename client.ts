@@ -104,7 +104,7 @@ const AVAILABLE_BADGES = [
     '🍀 **Ulubieniec Fortuna**',
     '🎯 **Czarna Seria**',
     '🏷️ **Klient sklepu PJN**',
-    '🎖️ **Zaawansowany klient sklepu PJN**',
+    '🎖️ **Nałogowy klient sklepu PJN**',
     '💡 **Filozof**',
     '🤝 **Pomocna Dłoń**',
     '⏳ **Weteran Półrocza**',
