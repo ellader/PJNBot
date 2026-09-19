@@ -297,25 +297,36 @@ function isAuthorized(userId: string): boolean {
     return adminIds.includes(userId);
 }
 
-// === ZAKTUALIZOWANA FUNKCJA ASK GEMINI (GEMINI 3.8 FLASH) ===
+// === BEZPIECZNA FUNKCJA ASK GEMINI Z AUTOMATYCZNYM PONAWIANIEM (RETRY) ===
 async function askGemini(promptText: string): Promise<string> {
-    try {
-        console.log(`[AI] Wysyłanie zapytania do Gemini: "${promptText}"`);
-        
-        const response = await ai.models.generateContent({
-            model: 'gemini-3.8-flash',
-            contents: promptText,
-            config: {
-                systemInstruction: "Jesteś pomocnym, inteligentnym i lekko dowcipnym asystentem AI na serwerze Discord społeczności PJN. Odpowiadaj w języku polskim w sposób zwięzły, konkretny i czytelny dla graczy.",
-            }
-        });
+    const maxRetries = 3;
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+            console.log(`[AI] Wysyłanie zapytania do Gemini (próba ${attempt}): "${promptText}"`);
+            
+            const response = await ai.models.generateContent({
+                model: 'gemini-3.8-flash',
+                contents: promptText,
+                config: {
+                    systemInstruction: "Jesteś pomocnym, inteligentnym i lekko dowcipnym asystentem AI na serwerze Discord społeczności PJN. Odpowiadaj w języku polskim w sposób zwięzły, konkretny i czytelny dla graczy.",
+                }
+            });
 
-        console.log('[AI] Otrzymano odpowiedź od Google API.');
-        return response.text || "Otrzymałem pustą odpowiedź od modelu AI.";
-    } catch (error: any) {
-        console.error("❌ BŁĄD PODCZAS WYWOŁANIA GEMINI API:", error?.message || error);
-        return `Przepraszam, moduł AI napotkał błąd techniczny: \`${error?.message || 'Nieznany błąd'}\``;
+            console.log('[AI] Otrzymano odpowiedź od Google API.');
+            return response.text || "Otrzymałem pustą odpowiedź od modelu AI.";
+        } catch (error: any) {
+            console.error(`❌ Próba ${attempt} nie powiodła się:`, error?.message || error);
+            
+            // Jeśli to ostatnia próba, zwracamy rzadszy, czytelny komunikat o przeciążeniu
+            if (attempt === maxRetries) {
+                return `⚠️ Przepraszam, serwery AI są obecnie mocno obciążone. Spróbuj ponownie za chwilę!`;
+            }
+            
+            // Odczekaj 2 sekundy przed ponowieniem próby, aby nie spamować API
+            await new Promise(resolve => setTimeout(resolve, 2000));
+        }
     }
+    return `Przepraszam, moduł AI napotkał błąd techniczny.`;
 }
 
 // === PULA PYTAŃ DLA QUIZU ===
