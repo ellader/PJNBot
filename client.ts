@@ -22,6 +22,10 @@ import {
 import mongoose from 'mongoose';
 import cron from 'node-cron';
 import Parser from 'rss-parser';
+import { GoogleGenAI } from '@google/genai'; // <--- Dodano import Gemini
+
+// === INICJALIZACJA GEMINI AI ===
+const ai = new GoogleGenAI(); // Pobiera GEMINI_API_KEY ze zmiennych środowiskowych
 
 // === KONFIGURACJA BAZY DANYCH MONGOOSE ===
 const MONGO_URI = process.env.MONGODB_URI;
@@ -222,6 +226,7 @@ const ID_KANALU_CYTATY = '1534780578912665653';
 const ID_KANALU_MEMOW = '1534833819599769640'; 
 const ID_KANALU_SZUKAM_DO_GRY = '1532449084559069214'; 
 const ID_KANALU_POKAZ_SIEBIE = '1536365057997283469'; 
+const ID_KANAL_AI_GEMINI = '1550780827259113515'; // <--- ID kanału dla Gemini AI
 const CHANNEL_POWITANIA = "witamy";
 const ID_KANALU_DUSZKI = "1532977723843285112"; 
 const ID_RANGI_DUSZKOWIEC = "1532978703842283551";
@@ -291,6 +296,23 @@ function isAuthorized(userId: string): boolean {
     return adminIds.includes(userId);
 }
 
+// === POMOCNICZA FUNKCJA DO OBSŁUGI GEMINI ===
+async function askGemini(promptText: string): Promise<string> {
+    try {
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: promptText,
+            config: {
+                systemInstruction: "Jesteś pomocnym, inteligentnym i lekko dowcipnym asystentem AI na serwerze Discord społeczności PJN. Odpowiadaj w języku polskim w sposób zwięzły, konkretny i czytelny dla graczy.",
+            }
+        });
+        return response.text || "Przepraszam, ale nie udało mi się wygenerować odpowiedzi.";
+    } catch (error) {
+        console.error("Błąd podczas komunikacji z Gemini API:", error);
+        return "Wystąpił błąd podczas łączenia z systemem sztucznej inteligencji.";
+    }
+}
+
 // === PULA PYTAŃ DLA QUIZU ===
 const QUIZ_POOL = [
     { q: 'Jakie miasto jest stolicą Polski?', correct: 'Warszawa', wrong1: 'Kraków', wrong2: 'Gdańsk' },
@@ -348,7 +370,6 @@ async function setupRussianRouletteChannel() {
     } catch (e) {}
 }
 
-// === KOŁO FORTUNY (ZAMIAST WISIELECA) ===
 async function setupWheelOfFortuneChannel() {
     try {
         const channel = await client.channels.fetch('1549791621942485120').catch(() => null) as TextChannel;
@@ -1844,6 +1865,10 @@ const commands = [
         .setDescription('Kompleksowa karta profilu gracza z poziomem, odznakami i statystykami')
         .addUserOption(o => o.setName('uzytkownik').setDescription('Użytkownik').setRequired(false)),
     new SlashCommandBuilder()
+        .setName('ai')
+        .setDescription('Zadaj pytanie sztucznej inteligencji Gemini AI')
+        .addStringOption(o => o.setName('pytanie').setDescription('Twoje pytanie do sztucznej inteligencji').setRequired(true)),
+    new SlashCommandBuilder()
         .setName('ankieta')
         .setDescription('Stwórz interaktywną ankietę na żywo ze statusem głosowania i licznikiem')
         .addStringOption(o => o.setName('pytanie').setDescription('Treść pytania ankiety').setRequired(true))
@@ -1990,7 +2015,7 @@ client.once('ready', async () => {
     await setupShopChannel();
     await setupFortniteUpdateChannel(); 
     await setupRussianRouletteChannel();
-    await setupWheelOfFortuneChannel(); // <--- Inicjalizujemy Koło Fortuny
+    await setupWheelOfFortuneChannel();
     await setupCasinoHubChannel();
     await cleanupOrphanedLfgVoices();
 
@@ -2048,7 +2073,6 @@ client.on('interactionCreate', async interaction => {
         }
     }
 
-    // Obsługa Rosyjskiej Ruletki (Modal trigger)
     if (interaction.isButton() && interaction.customId === 'rr_start_modal') {
         const modal = new ModalBuilder()
             .setCustomId('rr_modal_submit')
@@ -2103,9 +2127,7 @@ client.on('interactionCreate', async interaction => {
         }
     }
 
-    // === OBSŁUGA KOŁA FORTUNY (PUBLICZNA DLA WSZYSTKICH) ===
     if (interaction.isButton() && interaction.customId === 'wheel_spin') {
-        // Ustawienie ephemeral na false sprawia, że wynik jest widoczny dla wszystkich na kanale
         await interaction.deferReply({ ephemeral: false });
         
         let user = await UserModel.findOne({ userId: interaction.user.id });
@@ -2729,6 +2751,23 @@ client.on('interactionCreate', async interaction => {
     const { commandName } = interaction;
 
     try {
+        // === OBSŁUGA KOMENDY /ai ===
+        if (commandName === 'ai') {
+            await interaction.deferReply();
+            const question = interaction.options.getString('pytanie', true);
+            const aiResponseText = await askGemini(question);
+
+            const embed = new EmbedBuilder()
+                .setColor(0x00D9FF)
+                .setTitle('🤖 Odpowiedź Gemini AI')
+                .setDescription(`> **Pytanie:** *${question}*\n\n${aiResponseText}`)
+                .setTimestamp()
+                .setFooter({ text: `Zapytanie od: ${interaction.user.tag}` });
+
+            await interaction.editReply({ embeds: [embed] });
+            return;
+        }
+
         if (commandName === 'kpn') {
             if (interaction.channelId !== '1534060126980411423') {
                 return interaction.reply({ content: '❌ Tę komendę można wykonać tylko na kanale salonu gier (<#1534060126980411423>)!', ephemeral: true });
@@ -3985,6 +4024,29 @@ async function updateLFGMessage(message: any, lfgDoc: any) {
 
 client.on('messageCreate', async message => {
     if (message.author.bot || !message.guild) return;
+
+    // === OBSŁUGA KANAŁU AI GEMINI ===
+    if (message.channel.id === ID_KANAL_AI_GEMINI) {
+        try {
+            // Pokazujemy status pisania, żeby użytkownik wiedział, że AI generuje odpowiedź
+            await message.channel.sendTyping();
+            
+            const promptText = message.content;
+            const aiReplyText = await askGemini(promptText);
+
+            const aiEmbed = new EmbedBuilder()
+                .setColor(0x00D9FF)
+                .setTitle('🤖 Odpowiedź Gemini AI')
+                .setDescription(aiReplyText)
+                .setTimestamp()
+                .setFooter({ text: `Zapytanie od: ${message.author.tag}` });
+
+            await message.reply({ embeds: [aiEmbed] });
+        } catch (err) {
+            console.error('Błąd podczas obsługi wiadomości AI:', err);
+        }
+        return; // Przerywamy dalsze naliczanie punktów/obsługę na tym konkretnym kanale, jeśli nie chcesz ich mieszać
+    }
 
     const targetMediaChannels = [ID_KANALU_POKAZ_SIEBIE, ID_KANALU_MEMOW];
     if (targetMediaChannels.includes(message.channel.id)) {
