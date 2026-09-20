@@ -223,7 +223,8 @@ const NOTIF_CONFIG = {
 const parser = new Parser();
 
 const ANNOUNCE_CHANNEL_ID = '1532399010785263799';
-const ID_KANALU_CYTATY = '1534780578912665653'; 
+const ID_KANALU_CYTATY = '1534780578912665653'; // Kanał z cytatem raz dziennie ("Życiowa myśl na dzisiejszy poranek")
+const ID_KANALU_ZLOTE_MYSLI = '1549709251365183558'; // Osobny kanał na złote myśli dodawane przez aplikację (menu kontekstowe)
 const ID_KANALU_MEMOW = '1534833819599769640'; 
 const ID_KANALU_SZUKAM_DO_GRY = '1532449084559069214'; 
 const ID_KANALU_POKAZ_SIEBIE = '1536365057997283469'; 
@@ -317,12 +318,10 @@ async function askGemini(promptText: string): Promise<string> {
         } catch (error: any) {
             console.error(`❌ Próba ${attempt} nie powiodła się:`, error?.message || error);
             
-            // Jeśli to ostatnia próba, zwracamy rzadszy, czytelny komunikat o przeciążeniu
             if (attempt === maxRetries) {
                 return `⚠️ Przepraszam, serwery AI są obecnie mocno obciążone. Spróbuj ponownie za chwilę!`;
             }
             
-            // Odczekaj 2 sekundy przed ponowieniem próby, aby nie spamować API
             await new Promise(resolve => setTimeout(resolve, 2000));
         }
     }
@@ -545,13 +544,13 @@ async function sendQuoteToChannel(channelId: string) {
 
     const embed = new EmbedBuilder()
         .setColor(0xE67E22)
-        .setTitle('✨ Złota myśl z serwera PJN')
+        .setTitle('✨ Życiowa myśl na dzisiejszy poranek')
         .setDescription(`> *„${quote.text}”*\n\n**— ${quote.author}**`)
         .setTimestamp()
-        .setFooter({ text: 'PJN Złote Myśli' });
+        .setFooter({ text: 'PJN Codzienne Cytaty' });
 
     await channel.send({ 
-        content: '@everyone', 
+        content: '@everyone Życiowa myśl na dzisiejszy poranek:', 
         embeds: [embed],
         allowedMentions: { parse: ['everyone'] } 
     });
@@ -2074,7 +2073,8 @@ client.on('interactionCreate', async interaction => {
 
             await QuoteModel.create({ text: quoteText, author: authorTag, addedBy: interaction.user.id });
 
-            const channel = await client.channels.fetch(ID_KANALU_CYTATY).catch(() => null) as TextChannel;
+            // Poprawka: wysyłanie na dedykowany kanał "złote myśli serwera PJN"
+            const channel = await client.channels.fetch(ID_KANALU_ZLOTE_MYSLI).catch(() => null) as TextChannel;
             if (channel) {
                 const embed = new EmbedBuilder()
                     .setColor(0xE67E22)
@@ -2084,7 +2084,7 @@ client.on('interactionCreate', async interaction => {
                 await channel.send({ embeds: [embed] });
             }
 
-            await interaction.editReply({ content: `✅ Pomyślnie dodano wiadomość do **Złotych myśli PJN** (<#${ID_KANALU_CYTATY}>)!` });
+            await interaction.editReply({ content: `✅ Pomyślnie dodano wiadomość do **Złotych myśli serwera PJN** (<#${ID_KANALU_ZLOTE_MYSLI}>)!` });
             return;
         }
     }
@@ -2767,7 +2767,6 @@ client.on('interactionCreate', async interaction => {
     const { commandName } = interaction;
 
     try {
-        // === OBSŁUGA KOMENDY /ai ===
         if (commandName === 'ai') {
             await interaction.deferReply();
             const question = interaction.options.getString('pytanie', true);
