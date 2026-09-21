@@ -41,7 +41,7 @@ const userSchema = new mongoose.Schema({
     balance: { type: Number, default: 0 },
     lastDaily: { type: Date, default: null },
     lastWheelSpin: { type: Date, default: null },
-    guaranteedWinUntil: { type: Date, default: null }, 
+    guaranteedWinUntil: { type: Date, default: null }, // <-- DODANE: 100% wygranych (Admin)
     messageCount: { type: Number, default: 0 },
     emojiCount: { type: Number, default: 0 },
     voiceMinutes: { type: Number, default: 0 },
@@ -313,13 +313,13 @@ function isAuthorized(userId: string): boolean {
     return adminIds.includes(userId);
 }
 
-// === FUNKCJA POBIERANIA DARMOWYCH GIER (EPIC GAMES & STEAM) ===
+// === FUNKCJA POBIERANIA I ROZDZIELANIA DARMOWYCH GIER (EPIC GAMES & STEAM) ===
 async function postFreeGamesToChannel() {
     try {
         const channel = await client.channels.fetch(NOTIF_CONFIG.freeGamesChannelId).catch(() => null) as TextChannel;
         if (!channel) return;
 
-        // Czyszczenie starego podsumowania bota
+        // Czyszczenie poprzednich wiadomości bota
         const messages = await channel.messages.fetch({ limit: 20 }).catch(() => null);
         if (messages) {
             for (const [_, msg] of messages) {
@@ -329,40 +329,41 @@ async function postFreeGamesToChannel() {
             }
         }
 
-        // 1. POBIERANIE Z EPIC GAMES
-        const epicRes = await fetch('https://store-site-backend-static-ipv4.ak.epicgames.com/freeGamesPromotions?locale=pl&country=PL&allowCountries=PL');
-        const epicData = await epicRes.json() as any;
-        const epicElements = epicData?.data?.Catalog?.searchStore?.elements || [];
-
+        // 1. POBIERANIE Z EPIC GAMES STORE
         let epicDesc = 'Aktualnie darmowe gry w Epic Games Store:\n\n';
         let epicCount = 0;
+        try {
+            const epicRes = await fetch('https://store-site-backend-static-ipv4.ak.epicgames.com/freeGamesPromotions?locale=pl&country=PL&allowCountries=PL');
+            const epicData = await epicRes.json() as any;
+            const epicElements = epicData?.data?.Catalog?.searchStore?.elements || [];
 
-        for (const element of epicElements) {
-            const promotions = element.promotions?.promotionalOffers;
-            const upcomingPromotions = element.promotions?.upcomingPromotionalOffers;
-            
-            let isFreeNow = false;
-            if (promotions && promotions.length > 0) {
-                for (const promoGroup of promotions) {
-                    for (const offer of promoGroup.promotionalOffers || []) {
-                        const start = new Date(offer.startDate).getTime();
-                        const end = new Date(offer.endDate).getTime();
-                        const now = Date.now();
-                        if (now >= start && now <= end && (offer.discountSetting?.discountPercentage === 0)) {
-                            isFreeNow = true;
+            for (const element of epicElements) {
+                const promotions = element.promotions?.promotionalOffers;
+                let isFreeNow = false;
+                if (promotions && promotions.length > 0) {
+                    for (const promoGroup of promotions) {
+                        for (const offer of promoGroup.promotionalOffers || []) {
+                            const start = new Date(offer.startDate).getTime();
+                            const end = new Date(offer.endDate).getTime();
+                            const now = Date.now();
+                            if (now >= start && now <= end && (offer.discountSetting?.discountPercentage === 0)) {
+                                isFreeNow = true;
+                            }
                         }
                     }
                 }
-            }
 
-            if (isFreeNow) {
-                const title = element.title || 'Darmowa gra';
-                const desc = element.description || 'Brak opisu.';
-                const slug = element.productSlug || element.urlSlug || '';
-                const link = `https://store.epicgames.com/pl/p/${slug}`;
-                epicDesc += `🎮 **[${title}](${link})**\n> *${desc}*\n\n`;
-                epicCount++;
+                if (isFreeNow) {
+                    const title = element.title || 'Darmowa gra';
+                    const desc = element.description || 'Brak opisu.';
+                    const slug = element.productSlug || element.urlSlug || '';
+                    const link = `https://store.epicgames.com/pl/p/${slug}`;
+                    epicDesc += `🎮 **[${title}](${link})**\n> *${desc}*\n\n`;
+                    epicCount++;
+                }
             }
+        } catch (e) {
+            epicDesc += '• Nie udało się pobrać danych z Epic Games Store.';
         }
 
         if (epicCount === 0) {
@@ -377,18 +378,22 @@ async function postFreeGamesToChannel() {
             .setTimestamp()
             .setFooter({ text: 'PJN Darmowe Gry • Epic Games' });
 
-        // 2. POBIERANIE ZE STEAM (Przez oficjalne / publiczne zapytania)
-        const steamRes = await fetch('https://store.steampowered.com/search/results/?query&specials=1&maxprice=free&cc=PL&json=1');
-        const steamData = await steamRes.json() as any;
-        
-        let steamDesc = 'Aktualne promocje i darmowe gry na Steam:\n\n';
-        if (steamData && steamData.items && steamData.items.length > 0) {
-            const freeItems = steamData.items.slice(0, 5);
-            for (const item of freeItems) {
-                steamDesc += `🎮 **[${item.name}](${item.url})**\n> 💰 Cena: ~~${item.original_price || 'Płatna'}~~ ➔ **DARMOWA / PROMOCJA**\n\n`;
+        // 2. POBIERANIE ZE STEAM
+        let steamDesc = 'Aktualne promocje i darmowe gry na platformie Steam:\n\n';
+        try {
+            const steamRes = await fetch('https://store.steampowered.com/search/results/?query&specials=1&maxprice=free&cc=PL&json=1');
+            const steamData = await steamRes.json() as any;
+            
+            if (steamData && steamData.items && steamData.items.length > 0) {
+                const freeItems = steamData.items.slice(0, 5);
+                for (const item of freeItems) {
+                    steamDesc += `🎮 **[${item.name}](${item.url})**\n> 💰 Cena: ~~${item.original_price || 'Płatna'}~~ ➔ **DARMOWA / PROMOCJA**\n\n`;
+                }
+            } else {
+                steamDesc += '• Sprawdź aktualne darmowe pakiety bezpośrednio na Steam:\n[Otwórz Steam - Darmowe gry](https://store.steampowered.com/search/?maxprice=free&specials=1)';
             }
-        } else {
-            steamDesc += '• Sprawdź aktualne darmowe pakiety i gry bezpośrednio na platformie Steam:\n[Otwórz Steam - Darmowe gry](https://store.steampowered.com/search/?maxprice=free&specials=1)';
+        } catch (e) {
+            steamDesc += '• [Otwórz Steam - Darmowe gry](https://store.steampowered.com/search/?maxprice=free&specials=1)';
         }
 
         const steamEmbed = new EmbedBuilder()
@@ -399,7 +404,11 @@ async function postFreeGamesToChannel() {
             .setTimestamp()
             .setFooter({ text: 'PJN Darmowe Gry • Steam Store' });
 
-        await channel.send({ content: '@everyone Świeże zestawienie darmowych gier z platform Epic Games oraz Steam!', embeds: [epicEmbed, steamEmbed], allowedMentions: { parse: ['everyone'] } });
+        await channel.send({ 
+            content: '@everyone Świeże zestawienie darmowych gier z platform Epic Games oraz Steam!', 
+            embeds: [epicEmbed, steamEmbed], 
+            allowedMentions: { parse: ['everyone'] } 
+        });
 
     } catch (e) {
         console.error('Błąd podczas pobierania darmowych gier:', e);
@@ -734,7 +743,6 @@ client.on('interactionCreate', async interaction => {
             if (lobby.hostId !== userId) return interaction.editReply({ content: '❌ Tylko właściciel (host) pokoju może rozpocząć grę!' });
             if (lobby.players.length < 2) return interaction.editReply({ content: '❌ Do gry potrzeba minimum 2 graczy!' });
 
-            // Pobieramy wszystkich graczy i sprawdzamy saldo
             for (const pId of lobby.players) {
                 let pDoc = await UserModel.findOne({ userId: pId });
                 if (!pDoc || pDoc.balance < lobby.stake) {
@@ -742,13 +750,11 @@ client.on('interactionCreate', async interaction => {
                 }
             }
 
-            // Pobieramy stawkę z kont wszystkich graczy
             const totalPool = lobby.stake * lobby.players.length;
             for (const pId of lobby.players) {
                 await UserModel.updateOne({ userId: pId }, { $inc: { balance: -lobby.stake, casinoPlays: 1 } });
             }
 
-            // Losujemy zwycięzcę spośród graczy w pokoju
             const winnerId = lobby.players[Math.floor(Math.random() * lobby.players.length)];
             let winnerUser = await UserModel.findOne({ userId: winnerId });
             winnerUser!.balance += totalPool;
@@ -939,7 +945,6 @@ client.on('interactionCreate', async interaction => {
             return interaction.editReply({ content: won ? `🃏 [Poker z botem] Wygrywasz **${stawka} PJN-Coins**!` : `🃏 [Poker z botem] Przegrywasz **${stawka} PJN-Coins**!` });
         }
 
-        // Pozostałe standardowe komendy
         if (commandName === 'portfel') {
             await interaction.deferReply({ ephemeral: true });
             let user = await UserModel.findOne({ userId: interaction.user.id });
