@@ -392,10 +392,10 @@ async function postFreeGamesToChannel() {
             .setTimestamp()
             .setFooter({ text: 'PJN Darmowe Gry • Steam Store' });
 
+        // Wysłanie wiadomości bez pingu everyone i bez @everyone w tekście
         await channel.send({ 
-            content: '@everyone Świeże zestawienie darmowych gier z platform Epic Games oraz Steam!', 
-            embeds: [epicEmbed, steamEmbed], 
-            allowedMentions: { parse: ['everyone'] } 
+            content: 'Świeże zestawienie darmowych gier z platform Epic Games oraz Steam!', 
+            embeds: [epicEmbed, steamEmbed]
         });
 
     } catch (e) {
