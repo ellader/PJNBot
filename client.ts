@@ -40,6 +40,7 @@ const userSchema = new mongoose.Schema({
     userId: { type: String, required: true, unique: true },
     balance: { type: Number, default: 0 },
     lastDaily: { type: Date, default: null },
+    lastWheelSpin: { type: Date, default: null }, // <-- DODANE: Czas ostatniego kręcenia kołem fortuny
     messageCount: { type: Number, default: 0 },
     emojiCount: { type: Number, default: 0 },
     voiceMinutes: { type: Number, default: 0 },
@@ -223,8 +224,8 @@ const NOTIF_CONFIG = {
 const parser = new Parser();
 
 const ANNOUNCE_CHANNEL_ID = '1532399010785263799';
-const ID_KANALU_CYTATY = '1534780578912665653'; // Kanał z cytatem raz dziennie ("Życiowa myśl na dzisiejszy poranek")
-const ID_KANALU_ZLOTE_MYSLI = '1549709251365183558'; // Osobny kanał na złote myśli dodawane przez aplikację (menu kontekstowe)
+const ID_KANALU_CYTATY = '1534780578912665653'; 
+const ID_KANALU_ZLOTE_MYSLI = '1549709251365183558'; 
 const ID_KANALU_MEMOW = '1534833819599769640'; 
 const ID_KANALU_SZUKAM_DO_GRY = '1532449084559069214'; 
 const ID_KANALU_POKAZ_SIEBIE = '1536365057997283469'; 
@@ -372,6 +373,7 @@ async function setupRussianRouletteChannel() {
                 '🔫 **Zasady:**\n' +
                 '• W bębnie rewolweru jest 1 kula na 6 komór.\n' +
                 '• Kliknij przycisk poniżej, podaj stawkę i pociągnij za spust!\n' +
+                '• Im wyższa stawka, tym większe ryzyko trafienia na kulę!\n' +
                 '• Jeśli przeżyjesz, podwajasz swoją stawkę (**x2**). Jeśli trafiłeś na kulę – tracisz postawione monety!'
             )
             .setImage(LIVE_IMAGE_URL)
@@ -399,7 +401,7 @@ async function setupWheelOfFortuneChannel() {
                 'Zakręć wirtualnym Kołem Fortuny i wygrywaj cenne nagrody w PJN-Coins lub trafiaj na bonusy!\n\n' +
                 '✨ **Zasady:**\n' +
                 '• Kliknij przycisk poniżej, aby zakręcić kołem.\n' +
-                '• Możesz kręcić raz na 2 godziny całkowicie za darmo!\n' +
+                '• Możesz kręcić **raz na 2 godziny**!\n' +
                 '• Do wygrania: darmowe monety, mnożniki, a czasem... bankrut! Powodzenia!'
             )
             .setImage(LIVE_IMAGE_URL)
@@ -431,8 +433,8 @@ async function setupCasinoHubChannel() {
                 '🪙 **4. Orzeł czy Reszka**\n> Komenda: `/moneta [wybór] [stawka]` — Obstaw stronę monety.\n\n' +
                 '🎰 **5. Maszyna Slotowa (Jednoręki Bandyta)**\n> Kanał dedykowany: <#1534066347452141639> (Komenda: `/slot [stawka]`)\n\n' +
                 '🃏 **6. Poker**\n> Kanał dedykowany: <#1534060082084577350> (Komenda: `/poker [tryb] [stawka]`)\n\n' +
-                '🎯 **7. Rosyjska Ruletka**\n> Kanał specjalny: <#1549791536336732240> — Ryzykuj stawkę w rewolwerze!\n\n' +
-                '🎡 **8. Koło Fortuny**\n> Kanał specjalny: <#1549791621942485120> — Kręć kołem i wygrywaj darmowe nagrody!'
+                '🎯 **7. Rosyjska Ruletka**\n> Kanał specjalny: <#1549791536336732240> — Ryzykuj stawkę w rewolwerze (większe ryzyko przy dużych stawkach)!\n\n' +
+                '🎡 **8. Koło Fortuny**\n> Kanał specjalny: <#1549791621942485120> — Kręć kołem co 2 godziny i wygrywaj darmowe nagrody!'
             )
             .setImage(LIVE_IMAGE_URL)
             .setTimestamp()
@@ -1925,6 +1927,10 @@ const commands = [
         .addStringOption(o => o.setName('powod').setDescription('Powód przyznania bonusu').setRequired(false))
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
     new SlashCommandBuilder()
+        .setName('reset-ekonomii')
+        .setDescription('Resetuje stan wszystkich PJN-Coins do 0 dla wszystkich użytkowników (Admin)')
+        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+    new SlashCommandBuilder()
         .setName('nowości')
         .setDescription('Wyślij ogłoszenie o nowościach na serwer (Admin)')
         .addStringOption(o => o.setName('tytul').setDescription('Tytuł ogłoszenia (np. System Odznak)').setRequired(true))
@@ -2073,7 +2079,6 @@ client.on('interactionCreate', async interaction => {
 
             await QuoteModel.create({ text: quoteText, author: authorTag, addedBy: interaction.user.id });
 
-            // Poprawka: wysyłanie na dedykowany kanał "złote myśli serwera PJN"
             const channel = await client.channels.fetch(ID_KANALU_ZLOTE_MYSLI).catch(() => null) as TextChannel;
             if (channel) {
                 const embed = new EmbedBuilder()
@@ -2104,6 +2109,7 @@ client.on('interactionCreate', async interaction => {
         return interaction.showModal(modal);
     }
 
+    // === ZMIANA 2: DYNAMICZNE RYZYKO W ROSYJSKIEJ RULETCE (BEZ SZTYWNEGO LIMITU) ===
     if (interaction.isModalSubmit() && interaction.customId === 'rr_modal_submit') {
         await interaction.deferReply({ ephemeral: false });
         const stakeStr = interaction.fields.getTextInputValue('rr_stake_input');
@@ -2123,32 +2129,54 @@ client.on('interactionCreate', async interaction => {
         user.balance -= stake;
         user.casinoPlays = (user.casinoPlays || 0) + 1;
 
-        const bullet = Math.floor(Math.random() * 6) + 1;
-        const choice = Math.floor(Math.random() * 6) + 1;
+        let bulletChance = 1 / 6; // bazowa szansa (~16.6%) przy małych stawkach
+        if (stake >= 10000) {
+            bulletChance = 0.65; // 65% szans na przegraną przy stawkach 10k+
+        } else if (stake >= 5000) {
+            bulletChance = 0.50; // 50% szans przy stawkach 5k+
+        } else if (stake >= 1000) {
+            bulletChance = 0.35; // 35% szans przy stawkach 1k+
+        }
 
-        if (bullet === choice) {
+        const isDead = Math.random() < bulletChance;
+
+        if (isDead) {
             user.consecutiveLosses = (user.consecutiveLosses || 0) + 1;
             user.consecutiveWins = 0;
             await user.save();
-            await TransactionHistoryModel.create({ userId: interaction.user.id, type: 'casino_roulette', amount: -stake, details: 'Przegrana (Strzał)' });
-            return interaction.editReply({ content: `🎯 **Rosyjska Ruletka:** <@${interaction.user.id}> pociągnął za spust ze stawką **${stake} PJN-Coins**...\n💥 **BAM!** Trafiłeś na kulę w komorze ${bullet}. Straciłeś monety! (Stan portfela: **${user.balance}**)` });
+            await TransactionHistoryModel.create({ userId: interaction.user.id, type: 'casino_roulette', amount: -stake, details: `Przegrana (Wysoka stawka: ${stake})` });
+            return interaction.editReply({ content: `🎯 **Rosyjska Ruletka:** <@${interaction.user.id}> zaryzykował ogromną stawkę **${stake} PJN-Coins** i pociągnął za spust...\n💥 **BAM!** Przy tak dużej stawce ryzyko dopadło go od razu – trafił na kulę! Straciłeś monety! (Stan portfela: **${user.balance}**)` });
         } else {
             const winAmount = stake * 2;
             user.balance += winAmount;
             user.consecutiveWins = (user.consecutiveWins || 0) + 1;
             user.consecutiveLosses = 0;
             await user.save();
-            await TransactionHistoryModel.create({ userId: interaction.user.id, type: 'casino_roulette', amount: stake, details: 'Wygrana (Przeżył)' });
-            return interaction.editReply({ content: `🎯 **Rosyjska Ruletka:** <@${interaction.user.id}> pociągnął za spust ze stawką **${stake} PJN-Coins**...\n✨ **Klik!** Pusto w komorze ${choice}! Przeżyłeś i wygrywasz **${winAmount} PJN-Coins**! (Stan portfela: **${user.balance}**)` });
+            await TransactionHistoryModel.create({ userId: interaction.user.id, type: 'casino_roulette', amount: stake, details: `Wygrana (Stawka: ${stake})` });
+            return interaction.editReply({ content: `🎯 **Rosyjska Ruletka:** <@${interaction.user.id}> zaryzykował **${stake} PJN-Coins** i pociągnął za spust...\n✨ **Klik!** Cud! Przeżył ryzykowny strzał i wygrywa **${winAmount} PJN-Coins**! (Stan portfela: **${user.balance}**)` });
         }
     }
 
+    // === ZMIANA 1: KOŁO FORTUNY (RAZ NA 2 GODZINY) ===
     if (interaction.isButton() && interaction.customId === 'wheel_spin') {
-        await interaction.deferReply({ ephemeral: false });
+        await interaction.deferReply({ ephemeral: true });
         
         let user = await UserModel.findOne({ userId: interaction.user.id });
         if (!user) user = await UserModel.create({ userId: interaction.user.id });
 
+        const now = new Date();
+        const twoHours = 2 * 60 * 60 * 1000;
+        if (user.lastWheelSpin) {
+            const diffTime = now.getTime() - new Date(user.lastWheelSpin).getTime();
+            if (diffTime < twoHours) {
+                const timeLeft = twoHours - diffTime;
+                const hoursLeft = Math.floor(timeLeft / (1000 * 60 * 60));
+                const minsLeft = Math.floor((timeLeft % (1000 * 60 * 60)) / (1000 * 60));
+                return interaction.editReply({ content: `⏳ Koło Fortuny możesz kręcić raz na 2 godziny! Spróbuj ponownie za **${hoursLeft}h ${minsLeft}m**.` });
+            }
+        }
+
+        user.lastWheelSpin = now;
         const rewards = [
             { name: '50 PJN-Coins', type: 'coins', val: 50 },
             { name: '150 PJN-Coins', type: 'coins', val: 150 },
@@ -2168,18 +2196,18 @@ client.on('interactionCreate', async interaction => {
             user.consecutiveLosses = 0;
             await user.save();
             await TransactionHistoryModel.create({ userId: interaction.user.id, type: 'wheel_fortune', amount: outcome.val, details: outcome.name });
-            return interaction.editReply({ content: `🎡 **Koło Fortuny:** <@${interaction.user.id}> zakręcił kołem i wylosował: **${outcome.name}**! Jego konto zostało zasilone. (Stan portfela: **${user.balance} PJN-Coins**)` });
+            return interaction.editReply({ content: `🎡 **Koło Fortuny:** Zakręciłeś kołem i wylosowałeś: **${outcome.name}**! Twoje konto zostało zasilone. (Stan portfela: **${user.balance} PJN-Coins**)` });
         } else if (outcome.type === 'bankrupt') {
             user.balance = Math.max(0, user.balance - 100);
             user.consecutiveLosses = (user.consecutiveLosses || 0) + 1;
             user.consecutiveWins = 0;
             await user.save();
             await TransactionHistoryModel.create({ userId: interaction.user.id, type: 'wheel_fortune', amount: -100, details: 'Bankrut' });
-            return interaction.editReply({ content: `🎡 **Koło Fortuny:** O nie! <@${interaction.user.id}> zakręcił kołem i wylosował **BANKRUT**! Traci 100 PJN-Coins. (Stan portfela: **${user.balance} PJN-Coins**)` });
+            return interaction.editReply({ content: `🎡 **Koło Fortuny:** O nie! Wylosowałeś **BANKRUT**! Tracisz 100 PJN-Coins. (Stan portfela: **${user.balance} PJN-Coins**)` });
         } else if (outcome.type === 'xp') {
             await addExp(interaction.user.id, outcome.val, interaction.guild);
             await user.save();
-            return interaction.editReply({ content: `🎡 **Koło Fortuny:** <@${interaction.user.id}> zakręcił kołem i trafił na **${outcome.name}**! Otrzymuje zastrzyk punktów doświadczenia.` });
+            return interaction.editReply({ content: `🎡 **Koło Fortuny:** Trafiłeś na **${outcome.name}**! Otrzymujesz zastrzyk punktów doświadczenia.` });
         }
     }
 
@@ -3239,6 +3267,8 @@ client.on('interactionCreate', async interaction => {
                     actionText = `➖ Admin zabrał punkty: <@${t.userId}> zabrał <@${t.targetUserId}> **-${t.amount}**`;
                 } else if (t.type === 'admin_mass') {
                     actionText = `🌐 Masowy bonus od <@${t.userId}>: **+${t.amount}** dla każdego`;
+                } else if (t.type === 'admin_economy_reset') {
+                    actionText = `🚨 Reset ekonomii przez <@${t.userId}>: ${t.details}`;
                 } else if (t.type.startsWith('casino_') || t.type === 'wheel_fortune') {
                     const gameName = t.type === 'wheel_fortune' ? 'KOŁO FORTUNY' : t.type.replace('casino_', '').toUpperCase();
                     const sign = t.amount >= 0 ? '+' : '';
@@ -3256,6 +3286,46 @@ client.on('interactionCreate', async interaction => {
                 .setDescription(desc)
                 .setTimestamp();
             await interaction.editReply({ embeds: [embed] });
+            return;
+        }
+
+        if (commandName === 'reset-ekonomii') {
+            if (!isAuthorized(interaction.user.id) && !interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) {
+                return interaction.reply({ content: '❌ Nie masz uprawnień do wykonania tej komendy!', ephemeral: true });
+            }
+
+            await interaction.deferReply({ ephemeral: true });
+
+            // Resetuje stan PJN-Coins oraz totalDonated dla wszystkich dokumentów w kolekcji User
+            const result = await UserModel.updateMany({}, { $set: { balance: 0, totalDonated: 0 } });
+
+            // Zapisujemy zdarzenie w historii transakcji
+            await TransactionHistoryModel.create({
+                userId: interaction.user.id,
+                type: 'admin_economy_reset',
+                amount: 0,
+                details: `Zresetowano ekonomię dla ${result.modifiedCount} użytkowników.`
+            });
+
+            // Wysyłamy publiczne ogłoszenie na kanał, żeby każdy gracz wiedział o resecie
+            const embed = new EmbedBuilder()
+                .setColor(0xE74C3C)
+                .setTitle('🚨 CAŁKOWITY RESET EKONOMII SERWERA!')
+                .setDescription(
+                    `Ekonomia serwera PJN została oficjalnie zresetowana przez administrację!\n\n` +
+                    `💰 Stan konta wszystkich graczy został wyzerowany (**0 PJN-Coins**).\n` +
+                    `⚔️ Rozpoczyna się zupełnie nowy sezon handlowy i kasynowy. Powodzenia w zbieraniu waluty od nowa! 🚀`
+                )
+                .setImage(LIVE_IMAGE_URL)
+                .setTimestamp()
+                .setFooter({ text: 'PJN System Ekonomii • Reset Sezonu' });
+
+            const channel = interaction.channel as TextChannel;
+            if (channel) {
+                await channel.send({ content: '@everyone', embeds: [embed], allowedMentions: { parse: ['everyone'] } }).catch(() => {});
+            }
+
+            await interaction.editReply({ content: `✅ Pomyślnie zresetowano ekonomię dla **${result.modifiedCount}** użytkowników w bazie danych!` });
             return;
         }
 
@@ -4040,7 +4110,6 @@ async function updateLFGMessage(message: any, lfgDoc: any) {
 client.on('messageCreate', async message => {
     if (message.author.bot || !message.guild) return;
 
-    // === OBSŁUGA KANAŁU AI PJN ===
     if (message.channel.id === ID_KANAL_AI_GEMINI) {
         try {
             await message.channel.sendTyping();
@@ -4171,7 +4240,14 @@ client.on('messageCreate', async message => {
         await user.save();
         await checkAndAwardBadges(user, message.member, message.guild);
 
-        await addExp(message.author.id, 75, message.guild);
+        // === ZMIANA 3: BLOKADA ZDOBYWANIA EXP PODCZAS GRANIA W GRY ===
+        const isPlayingGame = message.member?.presence?.activities?.some(
+            act => act.type === 0 // 0 oznacza zwykłą aktywność typu "Gram w..."
+        );
+
+        if (!isPlayingGame) {
+            await addExp(message.author.id, 75, message.guild);
+        }
 
     } catch (error) {}
 });
