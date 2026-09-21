@@ -40,7 +40,8 @@ const userSchema = new mongoose.Schema({
     userId: { type: String, required: true, unique: true },
     balance: { type: Number, default: 0 },
     lastDaily: { type: Date, default: null },
-    lastWheelSpin: { type: Date, default: null }, // <-- DODANE: Czas ostatniego kręcenia kołem fortuny
+    lastWheelSpin: { type: Date, default: null },
+    guaranteedWinUntil: { type: Date, default: null }, // <-- DODANE: 100% wygranych (Admin)
     messageCount: { type: Number, default: 0 },
     emojiCount: { type: Number, default: 0 },
     voiceMinutes: { type: Number, default: 0 },
@@ -878,11 +879,17 @@ function startExpirationChecker() {
                     { doubleChanceUntil: { $ne: null, $lte: now } },
                     { dailyBoostUntil: { $ne: null, $lte: now } },
                     { customRoleExpiresAt: { $ne: null, $lte: now } },
-                    { customVoiceExpiresAt: { $ne: null, $lte: now } }
+                    { customVoiceExpiresAt: { $ne: null, $lte: now } },
+                    { guaranteedWinUntil: { $ne: null, $lte: now } } // <-- Wygaśnięcie bonusu 100% wygranych
                 ]
             });
 
             for (const userDoc of expiredUsers) {
+                if (userDoc.guaranteedWinUntil && new Date(userDoc.guaranteedWinUntil) <= now) {
+                    userDoc.guaranteedWinUntil = null;
+                    await userDoc.save();
+                }
+
                 for (const [_, guild] of client.guilds.cache) {
                     const member = await guild.members.fetch(userDoc.userId).catch(() => null);
                     if (!member) continue;
@@ -1921,6 +1928,11 @@ const commands = [
         .setName('fn-top')
         .setDescription('Ręcznie wymuś odświeżenie i wyświetlenie rankingów zabójstw Fortnite'),
     new SlashCommandBuilder()
+        .setName('daj-bonus-wygranych')
+        .setDescription('Aktywuje 100% wygranych w kasynie na 30 minut dla wybranego gracza (Admin)')
+        .addUserOption(o => o.setName('uzytkownik').setDescription('Gracz, który otrzyma bonus').setRequired(true))
+        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+    new SlashCommandBuilder()
         .setName('daj-wszystkim')
         .setDescription('Rozdaje PJN-Coins absolutnie każdemu użytkownikowi w bazie (Admin)')
         .addIntegerOption(o => o.setName('ilosc').setDescription('Ile PJN-Coins ma otrzymać każdy').setRequired(true))
@@ -2109,7 +2121,6 @@ client.on('interactionCreate', async interaction => {
         return interaction.showModal(modal);
     }
 
-    // === ZMIANA 2: DYNAMICZNE RYZYKO W ROSYJSKIEJ RULETCE (BEZ SZTYWNEGO LIMITU) ===
     if (interaction.isModalSubmit() && interaction.customId === 'rr_modal_submit') {
         await interaction.deferReply({ ephemeral: false });
         const stakeStr = interaction.fields.getTextInputValue('rr_stake_input');
@@ -2129,16 +2140,16 @@ client.on('interactionCreate', async interaction => {
         user.balance -= stake;
         user.casinoPlays = (user.casinoPlays || 0) + 1;
 
-        let bulletChance = 1 / 6; // bazowa szansa (~16.6%) przy małych stawkach
-        if (stake >= 10000) {
-            bulletChance = 0.65; // 65% szans na przegraną przy stawkach 10k+
-        } else if (stake >= 5000) {
-            bulletChance = 0.50; // 50% szans przy stawkach 5k+
-        } else if (stake >= 1000) {
-            bulletChance = 0.35; // 35% szans przy stawkach 1k+
-        }
+        // Sprawdzenie bonusu 100% wygranych od administratora
+        const now = new Date();
+        const hasGuaranteedWin = user.guaranteedWinUntil && new Date(user.guaranteedWinUntil) > now;
 
-        const isDead = Math.random() < bulletChance;
+        let bulletChance = 1 / 6; 
+        if (stake >= 10000) bulletChance = 0.65;
+        else if (stake >= 5000) bulletChance = 0.50;
+        else if (stake >= 1000) bulletChance = 0.35;
+
+        const isDead = hasGuaranteedWin ? false : (Math.random() < bulletChance);
 
         if (isDead) {
             user.consecutiveLosses = (user.consecutiveLosses || 0) + 1;
@@ -2157,9 +2168,9 @@ client.on('interactionCreate', async interaction => {
         }
     }
 
-    // === ZMIANA 1: KOŁO FORTUNY (RAZ NA 2 GODZINY) ===
+    // === ZMIANA: KOŁO FORTUNY - WYNIK WIDOCZNY DLA WSZYSTKICH (ephemeral: false) ===
     if (interaction.isButton() && interaction.customId === 'wheel_spin') {
-        await interaction.deferReply({ ephemeral: true });
+        await interaction.deferReply({ ephemeral: false });
         
         let user = await UserModel.findOne({ userId: interaction.user.id });
         if (!user) user = await UserModel.create({ userId: interaction.user.id });
@@ -2172,7 +2183,7 @@ client.on('interactionCreate', async interaction => {
                 const timeLeft = twoHours - diffTime;
                 const hoursLeft = Math.floor(timeLeft / (1000 * 60 * 60));
                 const minsLeft = Math.floor((timeLeft % (1000 * 60 * 60)) / (1000 * 60));
-                return interaction.editReply({ content: `⏳ Koło Fortuny możesz kręcić raz na 2 godziny! Spróbuj ponownie za **${hoursLeft}h ${minsLeft}m**.` });
+                return interaction.editReply({ content: `⏳ <@${interaction.user.id}>, Koło Fortuny możesz kręcić raz na 2 godziny! Spróbuj ponownie za **${hoursLeft}h ${minsLeft}m**.` });
             }
         }
 
@@ -2196,18 +2207,18 @@ client.on('interactionCreate', async interaction => {
             user.consecutiveLosses = 0;
             await user.save();
             await TransactionHistoryModel.create({ userId: interaction.user.id, type: 'wheel_fortune', amount: outcome.val, details: outcome.name });
-            return interaction.editReply({ content: `🎡 **Koło Fortuny:** Zakręciłeś kołem i wylosowałeś: **${outcome.name}**! Twoje konto zostało zasilone. (Stan portfela: **${user.balance} PJN-Coins**)` });
+            return interaction.editReply({ content: `🎡 **Koło Fortuny:** <@${interaction.user.id}> zakręcił kołem i wylosował: **${outcome.name}**! Portfel zasilony. (Stan portfela: **${user.balance} PJN-Coins**)` });
         } else if (outcome.type === 'bankrupt') {
             user.balance = Math.max(0, user.balance - 100);
             user.consecutiveLosses = (user.consecutiveLosses || 0) + 1;
             user.consecutiveWins = 0;
             await user.save();
             await TransactionHistoryModel.create({ userId: interaction.user.id, type: 'wheel_fortune', amount: -100, details: 'Bankrut' });
-            return interaction.editReply({ content: `🎡 **Koło Fortuny:** O nie! Wylosowałeś **BANKRUT**! Tracisz 100 PJN-Coins. (Stan portfela: **${user.balance} PJN-Coins**)` });
+            return interaction.editReply({ content: `🎡 **Koło Fortuny:** O nie! <@${interaction.user.id}> wylosował **BANKRUT**! Tracisz 100 PJN-Coins. (Stan portfela: **${user.balance} PJN-Coins**)` });
         } else if (outcome.type === 'xp') {
             await addExp(interaction.user.id, outcome.val, interaction.guild);
             await user.save();
-            return interaction.editReply({ content: `🎡 **Koło Fortuny:** Trafiłeś na **${outcome.name}**! Otrzymujesz zastrzyk punktów doświadczenia.` });
+            return interaction.editReply({ content: `🎡 **Koło Fortuny:** <@${interaction.user.id}> trafił na **${outcome.name}**! Otrzymujesz zastrzyk punktów doświadczenia.` });
         }
     }
 
@@ -2825,8 +2836,18 @@ client.on('interactionCreate', async interaction => {
             if (!user) user = await UserModel.create({ userId: interaction.user.id });
             if (user.balance < stawka) return interaction.editReply({ content: `❌ Brak środków (${user.balance} coins).` });
 
+            // Sprawdzenie bonusu 100% wygranych
+            const now = new Date();
+            const hasGuaranteedWin = user.guaranteedWinUntil && new Date(user.guaranteedWinUntil) > now;
+
             const opcje = ['kamien', 'papier', 'nozyce'];
-            const wyborBota = opcje[Math.floor(Math.random() * opcje.length)];
+            let wyborBota = opcje[Math.floor(Math.random() * opcje.length)];
+
+            if (hasGuaranteedWin) {
+                if (wyborGracza === 'kamien') wyborBota = 'nozyce';
+                else if (wyborGracza === 'papier') wyborBota = 'kamien';
+                else if (wyborGracza === 'nozyce') wyborBota = 'papier';
+            }
 
             let wynikText = '';
             let change = 0;
@@ -2834,6 +2855,7 @@ client.on('interactionCreate', async interaction => {
             if (wyborGracza === wyborBota) {
                 wynikText = `🤝 Remis! Wybory były identyczne (\`${wyborBota}\`). Stawka zostaje zwrócona.`;
             } else if (
+                hasGuaranteedWin ||
                 (wyborGracza === 'kamien' && wyborBota === 'nozyce') ||
                 (wyborGracza === 'papier' && wyborBota === 'kamien') ||
                 (wyborGracza === 'nozyce' && wyborBota === 'papier')
@@ -3207,6 +3229,11 @@ client.on('interactionCreate', async interaction => {
                 desc += `🎙️ **Własny kanał głosowy**\n> ${formatTimeLeft(user.customVoiceExpiresAt)}\n\n`;
             }
 
+            if (user.guaranteedWinUntil && new Date(user.guaranteedWinUntil) > now) {
+                activeCount++;
+                desc += `🔥 **100% Wygranych w Kasynie (Admin)**\n> ${formatTimeLeft(user.guaranteedWinUntil)}\n\n`;
+            }
+
             if (activeCount === 0) {
                 desc += `*Nie masz obecnie żadnych aktywnych usług czasowych ze sklepu.*`;
             }
@@ -3269,6 +3296,8 @@ client.on('interactionCreate', async interaction => {
                     actionText = `🌐 Masowy bonus od <@${t.userId}>: **+${t.amount}** dla każdego`;
                 } else if (t.type === 'admin_economy_reset') {
                     actionText = `🚨 Reset ekonomii przez <@${t.userId}>: ${t.details}`;
+                } else if (t.type === 'admin_guaranteed_win') {
+                    actionText = `🔥 Bonus 100% wygranych przyznany przez <@${t.userId}> dla <@${t.targetUserId}>`;
                 } else if (t.type.startsWith('casino_') || t.type === 'wheel_fortune') {
                     const gameName = t.type === 'wheel_fortune' ? 'KOŁO FORTUNY' : t.type.replace('casino_', '').toUpperCase();
                     const sign = t.amount >= 0 ? '+' : '';
@@ -3296,10 +3325,8 @@ client.on('interactionCreate', async interaction => {
 
             await interaction.deferReply({ ephemeral: true });
 
-            // Resetuje stan PJN-Coins oraz totalDonated dla wszystkich dokumentów w kolekcji User
             const result = await UserModel.updateMany({}, { $set: { balance: 0, totalDonated: 0 } });
 
-            // Zapisujemy zdarzenie w historii transakcji
             await TransactionHistoryModel.create({
                 userId: interaction.user.id,
                 type: 'admin_economy_reset',
@@ -3307,7 +3334,6 @@ client.on('interactionCreate', async interaction => {
                 details: `Zresetowano ekonomię dla ${result.modifiedCount} użytkowników.`
             });
 
-            // Wysyłamy publiczne ogłoszenie na kanał, żeby każdy gracz wiedział o resecie
             const embed = new EmbedBuilder()
                 .setColor(0xE74C3C)
                 .setTitle('🚨 CAŁKOWITY RESET EKONOMII SERWERA!')
@@ -3326,6 +3352,46 @@ client.on('interactionCreate', async interaction => {
             }
 
             await interaction.editReply({ content: `✅ Pomyślnie zresetowano ekonomię dla **${result.modifiedCount}** użytkowników w bazie danych!` });
+            return;
+        }
+
+        // === NOWA KOMENDA ADMINISTRACYJNA: /daj-bonus-wygranych ===
+        if (commandName === 'daj-bonus-wygranych') {
+            if (!isAuthorized(interaction.user.id) && !interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) {
+                return interaction.reply({ content: '❌ Nie masz uprawnień do użycia tej komendy!', ephemeral: true });
+            }
+
+            await interaction.deferReply({ ephemeral: true });
+            const targetUser = interaction.options.getUser('uzytkownik', true);
+
+            let user = await UserModel.findOne({ userId: targetUser.id });
+            if (!user) user = await UserModel.create({ userId: targetUser.id });
+
+            // Ustawiamy 100% wygranych na 30 minut od teraz
+            user.guaranteedWinUntil = new Date(Date.now() + 30 * 60 * 1000);
+            await user.save();
+
+            await TransactionHistoryModel.create({
+                userId: interaction.user.id,
+                targetUserId: targetUser.id,
+                type: 'admin_guaranteed_win',
+                amount: 0,
+                details: 'Przyznano 100% wygranych w kasynie na 30 minut'
+            });
+
+            try {
+                await targetUser.send({
+                    embeds: [
+                        new EmbedBuilder()
+                            .setColor(0xF1C40F)
+                            .setTitle('🔥 Otrzymałeś specjalny bonus od administracji!')
+                            .setDescription(`Administrator przyznał Ci **100% wygranych w kasynie na 30 minut** na serwerze **${interaction.guild?.name}**!\n\nKażda gra (kostka, moneta, slot, poker, ruletka, kpn) w tym czasie zakończy się Twoją wygraną. Powodzenia! 🚀`)
+                            .setTimestamp()
+                    ]
+                }).catch(() => {});
+            } catch (e) {}
+
+            await interaction.editReply({ content: `✅ Pomyślnie aktywowano bonus 100% wygranych na 30 minut dla gracza <@${targetUser.id}>!` });
             return;
         }
 
@@ -3639,9 +3705,13 @@ client.on('interactionCreate', async interaction => {
         }
 
         const getCasinoMultiplier = async (userId: string, member: any) => {
-            let winChance = 0.4; 
             let user = await UserModel.findOne({ userId });
             const now = new Date();
+            const hasGuaranteedWin = user?.guaranteedWinUntil && new Date(user.guaranteedWinUntil) > now;
+            
+            if (hasGuaranteedWin) return 1.0; // 100% szans na wygraną
+
+            let winChance = 0.4; 
             const hasVipRole = member?.roles?.cache?.has(ID_ROLI_VIP) || (user?.vipExpiresAt && new Date(user.vipExpiresAt) > now);
             const hasDoubleChance = user?.doubleChanceUntil && new Date(user.doubleChanceUntil) > now;
 
@@ -3708,7 +3778,7 @@ client.on('interactionCreate', async interaction => {
             user.casinoPlays = (user.casinoPlays || 0) + 1;
             const memberObj = await interaction.guild?.members.fetch(interaction.user.id).catch(() => null);
             const winChance = await getCasinoMultiplier(interaction.user.id, memberObj);
-            const wynik = Math.random() < 0.5 ? 'orzel' : 'reszka';
+            const wynik = (winChance === 1.0) ? wybor : (Math.random() < 0.5 ? 'orzel' : 'reszka');
             const guessed = (wybor === wynik) || (Math.random() < winChance && Math.random() < 0.3);
 
             let changeAmount = 0;
@@ -3762,7 +3832,9 @@ client.on('interactionCreate', async interaction => {
             let s2 = symbols[Math.floor(Math.random() * symbols.length)];
             let s3 = symbols[Math.floor(Math.random() * symbols.length)];
 
-            if (Math.random() < winChance) {
+            if (winChance === 1.0) {
+                s1 = s2 = s3 = symbols[Math.floor(Math.random() * symbols.length)];
+            } else if (Math.random() < winChance) {
                 s1 = s2 = symbols[Math.floor(Math.random() * symbols.length)];
             }
 
@@ -3818,7 +3890,7 @@ client.on('interactionCreate', async interaction => {
             user.casinoPlays = (user.casinoPlays || 0) + 1;
             const memberObj = await interaction.guild?.members.fetch(interaction.user.id).catch(() => null);
             const winChance = await getCasinoMultiplier(interaction.user.id, memberObj);
-            const wygrana = Math.random() < (winChance + 0.1) ? stawka * 2 : -stawka;
+            const wygrana = (winChance === 1.0) ? (stawka * 2) : (Math.random() < (winChance + 0.1) ? stawka * 2 : -stawka);
 
             user.balance += wygrana;
             if (wygrana > 0) {
@@ -4240,9 +4312,8 @@ client.on('messageCreate', async message => {
         await user.save();
         await checkAndAwardBadges(user, message.member, message.guild);
 
-        // === ZMIANA 3: BLOKADA ZDOBYWANIA EXP PODCZAS GRANIA W GRY ===
         const isPlayingGame = message.member?.presence?.activities?.some(
-            act => act.type === 0 // 0 oznacza zwykłą aktywność typu "Gram w..."
+            act => act.type === 0 
         );
 
         if (!isPlayingGame) {
