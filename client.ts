@@ -25,6 +25,18 @@ import Parser from 'rss-parser';
 import { GoogleGenAI } from '@google/genai';
 import http from 'http';
 
+// === DIAGNOSTYKA STARTOWA TOKENU ===
+console.log('--- START DIAGNOSTYKI TOKENU ---');
+console.log('Czy DISCORD_BOT_TOKEN istnieje:', !!process.env.DISCORD_BOT_TOKEN);
+console.log('Długość tokenu:', process.env.DISCORD_BOT_TOKEN ? process.env.DISCORD_BOT_TOKEN.length : 0);
+console.log('--------------------------------');
+
+const token = process.env.DISCORD_BOT_TOKEN;
+if (!token) {
+    console.error("❌ KRYTYCZNY BŁĄD: Brak zmiennej środowiskowej DISCORD_BOT_TOKEN!");
+    process.exit(1);
+}
+
 // === INICJALIZACJA GEMINI AI ===
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
@@ -183,9 +195,6 @@ const pollSchema = new mongoose.Schema({
     endsAt: { type: Date, default: null }
 });
 const PollModel = mongoose.model('Poll', pollSchema);
-
-const token = process.env.DISCORD_BOT_TOKEN;
-if (!token) throw new Error("Brak tokena Discord bota!");
 
 const client = new Client({
     intents: [
@@ -2036,7 +2045,7 @@ const commands = [
 ].map(c => c.toJSON());
 
 client.once('ready', async () => {
-    console.log(`Zalogowano jako ${client.user?.tag}!`);
+    console.log(`✅ Zalogowano pomyślnie jako ${client.user?.tag}!`);
     await seedQuotesIfNeeded();
     await setupVerificationChannel(); 
     await setupMemeChannelInstruction();
@@ -2052,7 +2061,7 @@ client.once('ready', async () => {
     await setupCasinoHubChannel();
     await cleanupOrphanedLfgVoices();
 
-    const rest = new REST({ version: '10' }).setToken(token);
+    const rest = new REST({ version: '10' }).setToken(token!);
     try {
         console.log('Rozpoczęto rejestrację komend globalnych...');
         await rest.put(
@@ -4555,6 +4564,9 @@ server.listen(PORT, () => {
   console.log(`Serwer HTTP nasłuchuje na porcie ${PORT}`);
 });
 
-client.login(token).catch((err) => {
-    console.error('❌ BŁĄD PODCZAS LOGOWANIA BOTA DO DISCORDA:', err);
+// === BEZPIECZNE LOGOWANIE BOTA ===
+client.login(token).then(() => {
+    console.log('✅ client.login() zakończone pomyślnie.');
+}).catch((err) => {
+    console.error('❌ KRYTYCZNY BŁĄD PODCZAS LOGOWANIA BOTA DO DISCORDA:', err);
 });
