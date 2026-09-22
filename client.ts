@@ -89,6 +89,17 @@ const transactionHistorySchema = new mongoose.Schema({
 });
 const TransactionHistoryModel = mongoose.model('TransactionHistory', transactionHistorySchema);
 
+const pokerRoomSchema = new mongoose.Schema({
+    messageId: { type: String, required: true, unique: true },
+    channelId: { type: String, required: true },
+    hostId: { type: String, required: true },
+    stake: { type: Number, required: true },
+    players: { type: [String], required: true },
+    status: { type: String, default: 'waiting' },
+    lastActivity: { type: Date, default: Date.now }
+});
+const PokerRoomModel = mongoose.model('PokerRoom', pokerRoomSchema);
+
 const AVAILABLE_BADGES = [
     '💬 **Początkujący Gadulec**',
     '📜 **Kronikarz Chatu**',
@@ -1765,6 +1776,39 @@ async function cleanupOrphanedLfgVoices() {
     } catch (e) {}
 }
 
+function startPokerRoomInactivityChecker() {
+    setInterval(async () => {
+        try {
+            const fifteenMinutesAgo = new Date(Date.now() - 15 * 60 * 1000);
+            const inactiveRooms = await PokerRoomModel.find({
+                status: { $ne: 'closed' },
+                lastActivity: { $lte: fifteenMinutesAgo }
+            });
+
+            for (const room of inactiveRooms) {
+                room.status = 'closed';
+                await room.save();
+
+                for (const [_, guild] of client.guilds.cache) {
+                    const channel = await guild.channels.fetch(room.channelId).catch(() => null) as TextChannel;
+                    if (channel) {
+                        const message = await channel.messages.fetch(room.messageId).catch(() => null);
+                        if (message) {
+                            const embed = new EmbedBuilder()
+                                .setColor(0xE74C3C)
+                                .setTitle('🃏 Poker • Pokój ZAMKNIĘTY')
+                                .setDescription('Ten pokój pokera został automatycznie zamknięty przez bota z powodu 15 minut nieaktywności.')
+                                .setTimestamp();
+                            await message.edit({ embeds: [embed], components: [] }).catch(() => {});
+                            break;
+                        }
+                    }
+                }
+            }
+        } catch (e) {}
+    }, 60 * 1000);
+}
+
 function startHourlyAnnouncements() {
     cron.schedule('0 */5 * * *', async () => {
         try {
@@ -1949,6 +1993,12 @@ const commands = [
         .addStringOption(o => o.setName('co_nowego').setDescription('Krótko opisz co faktycznie dodano').setRequired(true))
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
     new SlashCommandBuilder()
+        .setName('ogloszenie-techniczne')
+        .setDescription('Tworzy ogłoszenie o przerwie technicznej lub pracach (Admin)')
+        .addStringOption(o => o.setName('tytul').setDescription('Tytuł ogłoszenia technicznego').setRequired(true))
+        .addStringOption(o => o.setName('opis').setDescription('Opis przerwy technicznej / prac').setRequired(true))
+        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+    new SlashCommandBuilder()
         .setName('odpalstream')
         .setDescription('Ogłasza start streama (Streamer/Admin)')
         .addStringOption(o => o.setName('tytul').setDescription('Tytuł streama').setRequired(true))
@@ -2081,6 +2131,7 @@ client.once('ready', async () => {
     startFortniteStatusCron(); 
     startServerStatsCron();
     startPollChecker();
+    startPokerRoomInactivityChecker();
 });
 
 client.on('interactionCreate', async interaction => {
@@ -2109,6 +2160,105 @@ client.on('interactionCreate', async interaction => {
 
             await interaction.editReply({ content: `✅ Pomyślnie dodano wiadomość do **Złotych myśli serwera PJN** (<#${ID_KANALU_ZLOTE_MYSLI}>)!` });
             return;
+        }
+    }
+
+    if (interaction.isButton() && (interaction.customId === 'poker_join' || interaction.customId === 'poker_start')) {
+        await interaction.deferReply({ ephemeral: true });
+        const room = await PokerRoomModel.findOne({ messageId: interaction.message.id });
+        if (!room || room.status === 'closed') {
+            return interaction.editReply({ content: '❌ Ten pokój pokera jest już nieaktualny lub został zamknięty.' });
+        }
+
+        room.lastActivity = new Date();
+        const userId = interaction.user.id;
+
+        if (interaction.customId === 'poker_join') {
+            if (room.players.includes(userId)) {
+                return interaction.editReply({ content: '⚠️ Już dołączyłeś do tego pokoju!' });
+            }
+            if (room.players.length >= 4) {
+                return interaction.editReply({ content: '❌ Pokój jest pełny (maksymalnie 4 graczy)!' });
+            }
+
+            let userDoc = await UserModel.findOne({ userId });
+            if (!userDoc) userDoc = await UserModel.create({ userId });
+            if (userDoc.balance < room.stake) {
+                return interaction.editReply({ content: `❌ Nie masz wystarczająco środków (${room.stake} PJN-Coins).` });
+            }
+
+            room.players.push(userId);
+            await room.save();
+
+            const playersListText = room.players.map(id => `• <@${id}>`).join('\n');
+            const embed = new EmbedBuilder()
+                .setColor(0x9B59B6)
+                .setTitle('🃏 Prywatny Pokój Pokerowy')
+                .setDescription(
+                    `👤 **Host:** <@${room.hostId}>\n` +
+                    `💰 **Stawka:** ${room.stake} PJN-Coins\n` +
+                    `👥 **Gracze (${room.players.length}/4):**\n${playersListText}\n\n` +
+                    `⏱️ Pokój zostanie zamknięty po 15 minutach bezczynności.`
+                )
+                .setTimestamp();
+
+            const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+                new ButtonBuilder().setCustomId('poker_join').setLabel('Dołącz do pokoju').setStyle(ButtonStyle.Success).setEmoji('🃏'),
+                new ButtonBuilder().setCustomId('poker_start').setLabel('Natychmiastowy start').setStyle(ButtonStyle.Primary).setEmoji('🚀')
+            );
+
+            await interaction.message.edit({ embeds: [embed], components: [row] }).catch(() => {});
+            return interaction.editReply({ content: '✅ Pomyślnie dołączyłeś do pokoju pokera!' });
+        }
+
+        if (interaction.customId === 'poker_start') {
+            if (room.hostId !== userId && !isAuthorized(userId)) {
+                return interaction.editReply({ content: '❌ Tylko host pokoju może wymusić natychmiastowy start!' });
+            }
+            if (room.players.length < 2) {
+                return interaction.editReply({ content: '❌ Do startu potrzeba minimum 2 graczy!' });
+            }
+
+            room.status = 'started';
+            await room.save();
+
+            const winnerId = room.players[Math.floor(Math.random() * room.players.length)];
+            const totalPot = room.stake * room.players.length;
+
+            for (const pId of room.players) {
+                let pUser = await UserModel.findOne({ userId: pId });
+                if (!pUser) pUser = await UserModel.create({ userId: pId });
+                pUser.balance -= room.stake;
+                pUser.casinoPlays = (pUser.casinoPlays || 0) + 1;
+                if (pId === winnerId) {
+                    pUser.balance += totalPot;
+                    pUser.consecutiveWins = (pUser.consecutiveWins || 0) + 1;
+                    pUser.consecutiveLosses = 0;
+                } else {
+                    pUser.consecutiveLosses = (pUser.consecutiveLosses || 0) + 1;
+                    pUser.consecutiveWins = 0;
+                }
+                await pUser.save();
+                await TransactionHistoryModel.create({
+                    userId: pId,
+                    type: 'casino_poker_multi',
+                    amount: pId === winnerId ? (totalPot - room.stake) : -room.stake,
+                    details: `Rozgrywka Pokerowa (Graczy: ${room.players.length})`
+                });
+            }
+
+            const embed = new EmbedBuilder()
+                .setColor(0x2ECC71)
+                .setTitle('🃏 Poker • Rozgrywka Zakończona!')
+                .setDescription(
+                    `🏆 **Zwycięzca:** <@${winnerId}>\n` +
+                    `💰 **Pula nagród:** ${totalPot} PJN-Coins!\n\n` +
+                    `Wszyscy gracze rozegrali partię. Gratulacje dla wygranego!`
+                )
+                .setTimestamp();
+
+            await interaction.message.edit({ embeds: [embed], components: [] }).catch(() => {});
+            return interaction.editReply({ content: '🚀 Pomyślnie rozpoczęto i rozstrzygnięto grę w pokera!' });
         }
     }
 
@@ -3598,6 +3748,25 @@ client.on('interactionCreate', async interaction => {
                 userDoc.balance = (userDoc.balance || 0) + ilosc;
                 await userDoc.save();
                 successCount++;
+
+                try {
+                    const discordUser = await client.users.fetch(userDoc.userId).catch(() => null);
+                    if (discordUser) {
+                        await discordUser.send({
+                            embeds: [
+                                new EmbedBuilder()
+                                    .setColor(0xF1C40F)
+                                    .setTitle('🎁 Otrzymałeś PJN Coins od administracji!')
+                                    .setDescription(
+                                        `Otrzymałeś **${ilosc} PJN-Coins** od administracji na serwerze **${interaction.guild?.name}**!\n\n` +
+                                        `📌 **Powód:** ${powod}\n` +
+                                        `💰 **Twój nowy stan portfela:** ${userDoc.balance} PJN-Coins`
+                                    )
+                                    .setTimestamp()
+                            ]
+                        }).catch(() => {});
+                    }
+                } catch (e) {}
             }
 
             await TransactionHistoryModel.create({
@@ -3607,7 +3776,7 @@ client.on('interactionCreate', async interaction => {
                 details: powod
             });
 
-            await interaction.editReply({ content: `✅ Przyznano masowy bonus ${ilosc} PJN-Coins dla ${successCount} użytkowników!` });
+            await interaction.editReply({ content: `✅ Przyznano masowy bonus ${ilosc} PJN-Coins dla ${successCount} użytkowników wraz z powiadomieniem na PW!` });
             return;
         }
 
@@ -3627,6 +3796,28 @@ client.on('interactionCreate', async interaction => {
             const channel = interaction.channel as TextChannel;
             if (channel) await channel.send({ content: '@everyone', embeds: [embed], allowedMentions: { parse: ['everyone'] } });
             await interaction.editReply({ content: `✅ Wysłano ogłoszenie!` });
+            return;
+        }
+
+        if (commandName === 'ogloszenie-techniczne') {
+            if (!isAuthorized(interaction.user.id)) return interaction.reply({ content: '❌ Brak uprawnień!', ephemeral: true });
+            const tytul = interaction.options.getString('tytul', true);
+            const opis = interaction.options.getString('opis', true);
+
+            await interaction.deferReply({ ephemeral: true });
+            const embed = new EmbedBuilder()
+                .setColor(0xE67E22)
+                .setTitle(`🛠️ OGŁOSZENIE TECHNICZNE • ${tytul}`)
+                .setDescription(`⚠️ **Przerwa techniczna / Informacja:**\n${opis}`)
+                .setImage(LIVE_IMAGE_URL)
+                .setTimestamp()
+                .setFooter({ text: 'PJN System Techniczny' });
+
+            const channel = interaction.channel as TextChannel;
+            if (channel) {
+                await channel.send({ content: '@everyone', embeds: [embed], allowedMentions: { parse: ['everyone'] } });
+            }
+            await interaction.editReply({ content: `✅ Pomyślnie wysłano ogłoszenie techniczne na ten kanał!` });
             return;
         }
 
@@ -3888,34 +4079,64 @@ client.on('interactionCreate', async interaction => {
             if (!user) user = await UserModel.create({ userId: interaction.user.id });
             if (user.balance < stawka) return interaction.editReply({ content: `❌ Brak środków (${stawka})!` });
 
-            user.casinoPlays = (user.casinoPlays || 0) + 1;
-            const memberObj = await interaction.guild?.members.fetch(interaction.user.id).catch(() => null);
-            const winChance = await getCasinoMultiplier(interaction.user.id, memberObj);
-            const wygrana = (winChance === 1.0) ? (stawka * 2) : (Math.random() < (winChance + 0.1) ? stawka * 2 : -stawka);
+            if (tryb === 'bot') {
+                user.casinoPlays = (user.casinoPlays || 0) + 1;
+                const memberObj = await interaction.guild?.members.fetch(interaction.user.id).catch(() => null);
+                const winChance = await getCasinoMultiplier(interaction.user.id, memberObj);
+                const wygrana = (winChance === 1.0) ? (stawka * 2) : (Math.random() < (winChance + 0.1) ? stawka * 2 : -stawka);
 
-            user.balance += wygrana;
-            if (wygrana > 0) {
-                user.consecutiveWins = (user.consecutiveWins || 0) + 1;
-                user.consecutiveLosses = 0;
+                user.balance += wygrana;
+                if (wygrana > 0) {
+                    user.consecutiveWins = (user.consecutiveWins || 0) + 1;
+                    user.consecutiveLosses = 0;
+                } else {
+                    user.consecutiveLosses = (user.consecutiveLosses || 0) + 1;
+                    user.consecutiveWins = 0;
+                }
+                await user.save();
+
+                await TransactionHistoryModel.create({
+                    userId: interaction.user.id,
+                    type: 'casino_poker',
+                    amount: wygrana,
+                    details: `Tryb: bot`
+                });
+
+                await checkAndAwardBadges(user, memberObj, interaction.guild);
+
+                if (wygrana > 0) {
+                    return interaction.editReply({ content: `🃏 [Poker - Z botem] Wygrywasz **${wygrana} PJN-Coins**!` });
+                } else {
+                    return interaction.editReply({ content: `🃏 [Poker - Z botem] Przegrywasz **${stawka} PJN-Coins**!` });
+                }
             } else {
-                user.consecutiveLosses = (user.consecutiveLosses || 0) + 1;
-                user.consecutiveWins = 0;
-            }
-            await user.save();
+                const embed = new EmbedBuilder()
+                    .setColor(0x9B59B6)
+                    .setTitle('🃏 Prywatny Pokój Pokerowy (Z ludźmi)')
+                    .setDescription(
+                        `👤 **Host:** <@${interaction.user.id}>\n` +
+                        `💰 **Stawka:** ${stawka} PJN-Coins\n` +
+                        `👥 **Gracze (1/4):**\n• <@${interaction.user.id}>\n\n` +
+                        `⏱️ Pokój ma czas oczekiwania 15 minut. Po 15 minutach nieaktywności bot zamknie ten pokój.`
+                    )
+                    .setTimestamp();
 
-            await TransactionHistoryModel.create({
-                userId: interaction.user.id,
-                type: 'casino_poker',
-                amount: wygrana,
-                details: `Tryb: ${tryb}`
-            });
+                const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+                    new ButtonBuilder().setCustomId('poker_join').setLabel('Dołącz do pokoju').setStyle(ButtonStyle.Success).setEmoji('🃏'),
+                    new ButtonBuilder().setCustomId('poker_start').setLabel('Natychmiastowy start').setStyle(ButtonStyle.Primary).setEmoji('🚀')
+                );
 
-            await checkAndAwardBadges(user, memberObj, interaction.guild);
-
-            if (wygrana > 0) {
-                return interaction.editReply({ content: `🃏 [Poker - ${tryb}] Wygrywasz **${wygrana} PJN-Coins**!` });
-            } else {
-                return interaction.editReply({ content: `🃏 [Poker - ${tryb}] Przegrywasz **${stawka} PJN-Coins**!` });
+                const sentMessage = await interaction.editReply({ embeds: [embed], components: [row] });
+                await PokerRoomModel.create({
+                    messageId: sentMessage.id,
+                    channelId: interaction.channelId,
+                    hostId: interaction.user.id,
+                    stake: stawka,
+                    players: [interaction.user.id],
+                    status: 'waiting',
+                    lastActivity: new Date()
+                });
+                return;
             }
         }
 
