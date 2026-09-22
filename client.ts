@@ -415,20 +415,7 @@ async function askGemini(promptText: string): Promise<string> {
     const maxRetries = 3;
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
         try {
-            console.log(`[AI] Wysyłanie zapytania do Gemini (próba ${attempt}): "${promptText}"`);
-            
-            const response = await ai.models.generateContent({
-                model: 'gemini-3.8-flash',
-                contents: promptText,
-                config: {
-                    systemInstruction: "Jesteś pomocnym, inteligentnym i lekko dowcipnym asystentem AI na serwerze Discord społeczności PJN. Odpowiadaj w języku polskim w sposób zwięzły, konkretny i czytelny dla graczy.",
-                }
-            });
-
-            console.log('[AI] Otrzymano odpowiedź od Google API.');
-            return response.text || "Otrzymałem pustą odpowiedź od modelu AI.";
-        } catch (error: any) {
-            console.error(`❌ Próba ${attempt} nie powiodła się:`, error?.message || error);
+            console.log(`[AI] Wysyłanie zapytania do Gemini (próba ${attempt}): "${promptText}"`);                          const response = await ai.models.generateContent({                 model: 'gemini-3.8-flash',                 contents: promptText,                 config: {                     systemInstruction: "Jesteś pomocnym, inteligentnym i lekko dowcipnym asystentem AI na serwerze Discord społeczności PJN. Odpowiadaj w języku polskim w sposób zwięzły, konkretny i czytelny dla graczy.",                 }             });              console.log('[AI] Otrzymano odpowiedź od Google API.');             return response.text \vert{}\vert{} "Otrzymałem pustą odpowiedź od modelu AI.";         } catch (error: any) {             console.error(`❌ Próba ${attempt} nie powiodła się:`, error?.message || error);
             
             if (attempt === maxRetries) {
                 return `⚠️ Przepraszam, serwery AI są obecnie mocno obciążone. Spróbuj ponownie za chwilę!`;
@@ -623,13 +610,7 @@ async function updateServerStats(guild: any) {
         }).size;
         const fnChannel = guild.channels.cache.get(STATS_CHANNELS.FORTNITE);
         if (fnChannel && fnChannel.isVoiceBased()) {
-            await fnChannel.setName(`🎮 Gracze Fortnite: ${fnCount}`).catch(() => {});
-        }
-
-        const totalUsers = guild.memberCount;
-        const usersChannel = guild.channels.cache.get(STATS_CHANNELS.USERS);
-        if (usersChannel && usersChannel.isVoiceBased()) {
-            await usersChannel.setName(`👥 PJN Users: ${totalUsers}`).catch(() => {});
+            await fnChannel.setName(`🎮 Gracze Fortnite: ${fnCount}`).catch(() => {});         }          const totalUsers = guild.memberCount;         const usersChannel = guild.channels.cache.get(STATS_CHANNELS.USERS);         if (usersChannel && usersChannel.isVoiceBased()) {             await usersChannel.setName(`👥 PJN Users: ${totalUsers}`).catch(() => {});
         }
     } catch (err) {
         console.error('Błąd podczas aktualizacji dynamicznych statystyk:', err);
@@ -658,7 +639,7 @@ async function sendQuoteToChannel(channelId: string) {
     const embed = new EmbedBuilder()
         .setColor(0xE67E22)
         .setTitle('✨ Życiowa myśl na dzisiejszy poranek')
-        .setDescription(`> *„${quote.text}”*\n\n**— ${quote.author}**`)
+        .setDescription(`> *„${quote.text}”*\n\n**—${quote.author}**`)
         .setTimestamp()
         .setFooter({ text: 'PJN Codzienne Cytaty' });
 
@@ -672,12 +653,15 @@ async function sendQuoteToChannel(channelId: string) {
 }
 
 function startDailyQuotes() {
-    cron.schedule('30 3 * * *', async () => {
+    // 05:30 czasu polskiego (Europe/Warsaw)
+    cron.schedule('30 5 * * *', async () => {
         try {
             await sendQuoteToChannel(ID_KANALU_CYTATY);
         } catch (err) {
             console.error('Błąd podczas wysyłania codziennego cytatu:', err);
         }
+    }, {
+        timezone: "Europe/Warsaw"
     });
 }
 
@@ -796,18 +780,9 @@ async function checkFortniteServerStatus() {
         const channel = await client.channels.fetch(ID_KANAL_AKTUALIZACJI_FORTNITE).catch(() => null) as TextChannel;
         if (!channel) return;
 
-        const rolePing = `<@&${ID_RANGI_AKTUALIZACJE_FORTNITE}>`;
-
-        if (activeIncident && activeIncident.id !== lastFortniteIncidentId && activeIncident.status === 'scheduled') {
-            lastFortniteIncidentId = activeIncident.id;
-            const embed = new EmbedBuilder()
-                .setColor(0xF1C40F)
-                .setTitle('📢 Zapowiedziano nową aktualizację / przerwę techniczną Fortnite!')
-                .setDescription(
-                    `**Nazwa wydarzenia:** ${activeIncident.name}\n` +
+        const rolePing = `<@&${ID_RANGI_AKTUALIZACJE_FORTNITE}>`;          if (activeIncident && activeIncident.id !== lastFortniteIncidentId && activeIncident.status === 'scheduled') {             lastFortniteIncidentId = activeIncident.id;             const embed = new EmbedBuilder()                 .setColor(0xF1C40F)                 .setTitle('📢 Zapowiedziano nową aktualizację / przerwę techniczną Fortnite!')                 .setDescription(                     `**Nazwa wydarzenia:** ${activeIncident.name}\n` +
                     `📌 **Status:** Zaplanowana konserwacja\n` +
-                    `🕒 **Zaplanowany start:** ${new Date(activeIncident.scheduled_for).toLocaleString('pl-PL')}\n` +
-                    `🕒 **Planowany koniec:** ${new Date(activeIncident.scheduled_until).toLocaleString('pl-PL')}\n\n` +
+                    `🕒 **Zaplanowany start:** ${new Date(activeIncident.scheduled_for).toLocaleString('pl-PL')}\n` +                     `🕒 **Planowany koniec:** ${new Date(activeIncident.scheduled_until).toLocaleString('pl-PL')}\n\n` +
                     `*Wkrótce serwery zostaną wyłączone. Przygotujcie się do zejścia z gry!*`
                 )
                 .setTimestamp()
@@ -872,38 +847,7 @@ async function updateAllFortniteStats() {
     const users = await UserModel.find({ epicNick: { $ne: null } });
     for (const u of users) {
         try {
-            const res = await fetch(`https://fortnite-api.com/v2/stats/br/v2?name=${encodeURIComponent(u.epicNick!)}`, {
-                headers: { 'Authorization': process.env.FORTNITE_API_KEY || '' }
-            });
-            const data = await res.json() as any;
-            if (data && data.status === 200 && data.data && data.data.stats) {
-                const overall = data.data.stats.all?.overall || {};
-                u.fortniteKills = overall.kills || 0;
-                u.matchesPlayed = overall.matches || 0;
-                u.estimatedPlaytimeHours = Math.round(u.matchesPlayed * 0.25);
-                await u.save();
-            }
-        } catch (e) {}
-    }
-}
-
-async function generateFortniteRankingEmbeds(guild: any, topUsers: any[], categoryTitle: string, categoryColor: number, page: number = 0) {
-    const pageSize = 10;
-    const totalPages = Math.ceil(topUsers.length / pageSize) || 1;
-    const currentPage = Math.max(0, Math.min(page, totalPages - 1));
-    const slice = topUsers.slice(currentPage * pageSize, (currentPage + 1) * pageSize);
-
-    let desc = `Zabójstwa graczy z naszego serwera (analiza na podstawie meczów).\nAktualizowane automatycznie co 24h.\n\n`;
-    
-    if (slice.length === 0) {
-        desc += `Brak zarejestrowanych graczy w tej kategorii.`;
-    } else {
-        for (let idx = 0; idx < slice.length; idx++) {
-            const u = slice[idx];
-            const globalIdx = currentPage * pageSize + idx;
-            const medal = globalIdx === 0 ? '🥇' : globalIdx === 1 ? '🥈' : globalIdx === 2 ? '🥉' : `**${globalIdx + 1}.**`;
-            
-            let displayName = `<@${u.userId}>`;
+            const res = await fetch(`https://fortnite-api.com/v2/stats/br/v2?name=${encodeURIComponent(u.epicNick!)}`, {                 headers: { 'Authorization': process.env.FORTNITE_API_KEY \vert{}\vert{} '' }             });             const data = await res.json() as any;             if (data && data.status === 200 && data.data && data.data.stats) {                 const overall = data.data.stats.all?.overall \vert{}\vert{} {};                 u.fortniteKills = overall.kills \vert{}\vert{} 0;                 u.matchesPlayed = overall.matches \vert{}\vert{} 0;                 u.estimatedPlaytimeHours = Math.round(u.matchesPlayed * 0.25);                 await u.save();             }         } catch (e) {}     } }  async function generateFortniteRankingEmbeds(guild: any, topUsers: any[], categoryTitle: string, categoryColor: number, page: number = 0) {     const pageSize = 10;     const totalPages = Math.ceil(topUsers.length / pageSize) \vert{}\vert{} 1;     const currentPage = Math.max(0, Math.min(page, totalPages - 1));     const slice = topUsers.slice(currentPage * pageSize, (currentPage + 1) * pageSize);      let desc = `Zabójstwa graczy z naszego serwera (analiza na podstawie meczów).\nAktualizowane automatycznie co 24h.\n\n`;          if (slice.length === 0) {         desc += `Brak zarejestrowanych graczy w tej kategorii.`;     } else {         for (let idx = 0; idx < slice.length; idx++) {             const u = slice[idx];             const globalIdx = currentPage * pageSize + idx;             const medal = globalIdx === 0 ? '🥇' : globalIdx === 1 ? '🥈' : globalIdx === 2 ? '🥉' : `**${globalIdx + 1}.**`;                          let displayName = `<@${u.userId}>`;
             if (guild) {
                 try {
                     const member = await guild.members.fetch(u.userId).catch(() => null);
@@ -913,13 +857,7 @@ async function generateFortniteRankingEmbeds(guild: any, topUsers: any[], catego
                 } catch (e) {}
             }
 
-            desc += `${medal} — **${displayName}** (${u.epicNick}) — **${u.fortniteKills || 0} zabójstw** | Meczów: \`${u.matchesPlayed || 0}\` *(Szac. czasu: ~${u.estimatedPlaytimeHours || 0}h)*\n`;
-        }
-    }
-
-    const embed = new EmbedBuilder()
-        .setColor(categoryColor)
-        .setTitle(`${categoryTitle} (Strona ${currentPage + 1}/${totalPages})`)
+            desc += `${medal} — **${displayName}** (${u.epicNick}) — **${u.fortniteKills || 0} zabójstw** | Meczów: \`${u.matchesPlayed || 0}\` *(Szac. czasu: ~${u.estimatedPlaytimeHours \vert{}\vert{} 0}h)*\n`;         }     }      const embed = new EmbedBuilder()         .setColor(categoryColor)         .setTitle(`${categoryTitle} (Strona ${currentPage + 1}/${totalPages})`)
         .setDescription(desc)
         .setImage(LIVE_IMAGE_URL)
         .setTimestamp()
@@ -1059,12 +997,7 @@ function startPollChecker() {
                             for (let i = 0; i < poll.options.length; i++) {
                                 const count = poll.votes[i].length;
                                 const percent = totalVotes > 0 ? Math.round((count / totalVotes) * 100) : 0;
-                                desc += `**${i + 1}. ${poll.options[i]}** — **${percent}%** (${count} głosów)\n`;
-                            }
-
-                            const embed = new EmbedBuilder()
-                                .setColor(0xE74C3C)
-                                .setTitle(`🗳️ ${poll.question} (Wyniki końcowe)`)
+                                desc += `**${i + 1}. ${poll.options[i]}** — **${percent}%** (${count} głosów)\n`;                             }                              const embed = new EmbedBuilder()                                 .setColor(0xE74C3C)                                 .setTitle(`🗳️ ${poll.question} (Wyniki końcowe)`)
                                 .setDescription(desc)
                                 .setTimestamp();
 
@@ -1315,24 +1248,7 @@ async function setupShopChannel() {
 
         let desc = 'Witaj w oficjalnym sklepie serwera PJN! Wydawaj swoje PJN-Coins na unikalne przedmioty, role i usługi.\n\n*Wszystkie rangi czasowe (w tym VIP) są ważne przez 30 dni, po czym automatycznie wygasają.*\n\n**📋 Dostępny asortyment:**\n\n';
         SHOP_ITEMS.forEach((item, index) => {
-            desc += `**${index + 1}. ${item.name}** — 💰 **${item.price} PJN-Coins**\n> *${item.description}*\n\n`;
-        });
-
-        const embed = new EmbedBuilder()
-            .setColor(0xF1C40F)
-            .setTitle('🛒 Oficjalny Sklep Serwera PJN')
-            .setDescription(desc)
-            .setImage(LIVE_IMAGE_URL)
-            .setTimestamp()
-            .setFooter({ text: 'PJN System Ekonomii • Wybierz przedmiot poniżej' });
-
-        const selectMenu = new StringSelectMenuBuilder()
-            .setCustomId('shop_select')
-            .setPlaceholder('Wybierz przedmiot, który chcesz kupić...')
-            .addOptions(
-                SHOP_ITEMS.map(item => ({
-                    label: item.name.substring(0, 25),
-                    description: `Cena: ${item.price} PJN-Coins`,
+            desc += `**${index + 1}.${item.name}** — 💰 **${item.price} PJN-Coins**\n> *${item.description}*\n\n`;         });          const embed = new EmbedBuilder()             .setColor(0xF1C40F)             .setTitle('🛒 Oficjalny Sklep Serwera PJN')             .setDescription(desc)             .setImage(LIVE_IMAGE_URL)             .setTimestamp()             .setFooter({ text: 'PJN System Ekonomii • Wybierz przedmiot poniżej' });          const selectMenu = new StringSelectMenuBuilder()             .setCustomId('shop_select')             .setPlaceholder('Wybierz przedmiot, który chcesz kupić...')             .addOptions(                 SHOP_ITEMS.map(item => ({                     label: item.name.substring(0, 25),                     description: `Cena: ${item.price} PJN-Coins`,
                     value: item.id
                 }))
             );
@@ -1566,25 +1482,7 @@ async function checkAndAwardBadges(user: any, memberOrUser: any, guild?: any) {
                     new EmbedBuilder()
                         .setColor(0xFFD700)
                         .setTitle('🎉 Nowa odznaka odblokowana!')
-                        .setDescription(`Gratulacje! Otrzymałeś nowe odznaki:\n\n` + newBadges.map(b => `• ✨ ${b}`).join('\n'))
-                        .setTimestamp()
-                ]
-            });
-        } catch (e) {}
-
-        const rareBadgesToAnnounce = newBadges.filter(b => RARE_ANNOUNCE_BADGES.includes(b));
-
-        if (rareBadgesToAnnounce.length > 0 && targetGuild) {
-            try {
-                const announceChannel = await targetGuild.channels.fetch(ANNOUNCE_CHANNEL_ID).catch(() => null) as TextChannel;
-                if (announceChannel) {
-                    const consoleEmbed = new EmbedBuilder()
-                        .setColor(0x107C10)
-                        .setTitle('🏆 RZADKA ODZNAKA ODBLOKOWANA!')
-                        .setThumbnail(targetUserObj.displayAvatarURL ? targetUserObj.displayAvatarURL() : client.user?.displayAvatarURL())
-                        .setDescription(
-                            `🎮 **SPECJALNE OSIĄGNIĘCIE**\n\n` +
-                            `Gracz <@${user.userId}> właśnie zdobył unikalne, rzadkie wyróżnienie na serwerze:\n\n` +
+                        .setDescription(`Gratulacje! Otrzymałeś nowe odznaki:\n\n` + newBadges.map(b => `• ✨ ${b}`).join('\n'))                         .setTimestamp()                 ]             });         } catch (e) {}          const rareBadgesToAnnounce = newBadges.filter(b => RARE_ANNOUNCE_BADGES.includes(b));          if (rareBadgesToAnnounce.length > 0 && targetGuild) {             try {                 const announceChannel = await targetGuild.channels.fetch(ANNOUNCE_CHANNEL_ID).catch(() => null) as TextChannel;                 if (announceChannel) {                     const consoleEmbed = new EmbedBuilder()                         .setColor(0x107C10)                         .setTitle('🏆 RZADKA ODZNAKA ODBLOKOWANA!')                         .setThumbnail(targetUserObj.displayAvatarURL ? targetUserObj.displayAvatarURL() : client.user?.displayAvatarURL())                         .setDescription(                             `🎮 **SPECJALNE OSIĄGNIĘCIE**\n\n` +                             `Gracz <@${user.userId}> właśnie zdobył unikalne, rzadkie wyróżnienie na serwerze:\n\n` +
                             rareBadgesToAnnounce.map(b => `> ✨ **${b}**`).join('\n') + `\n\n` +
                             `*Zdobądź swój własny tytuł, budując aktywność i walcząc o odznaki w grach!*`
                         )
@@ -1593,73 +1491,7 @@ async function checkAndAwardBadges(user: any, memberOrUser: any, guild?: any) {
                         .setFooter({ text: 'PJN Achievement System • Xbox / PlayStation Style' });
 
                     await announceChannel.send({
-                        content: `<@${user.userId}>`,
-                        embeds: [consoleEmbed],
-                        allowedMentions: { users: [user.userId] }
-                    });
-                }
-            } catch (err) {}
-        }
-    }
-}
-
-async function getUserLevelRankDetails(userId: string): Promise<{ rank: number, total: number }> {
-    const targetUser = await UserModel.findOne({ userId });
-    if (!targetUser) return { rank: 1, total: 1 };
-
-    const total = await UserModel.countDocuments({});
-    const higherCount = await UserModel.countDocuments({
-        $or: [
-            { level: { $gt: targetUser.level || 1 } },
-            { level: targetUser.level || 1, exp: { $gt: targetUser.exp || 0 } }
-        ]
-    });
-
-    return { rank: higherCount + 1, total: Math.max(1, total) };
-}
-
-async function addExp(userId: string, amount: number, guild: any) {
-    let user = await UserModel.findOne({ userId });
-    if (!user) user = await UserModel.create({ userId });
-
-    user.exp = (user.exp || 0) + amount;
-    
-    let requiredExpForNextLevel = user.level * 150;
-    let leveledUp = false;
-
-    while (user.exp >= requiredExpForNextLevel) {
-        user.exp -= requiredExpForNextLevel;
-        user.level = (user.level || 1) + 1;
-        leveledUp = true;
-        requiredExpForNextLevel = user.level * 150;
-    }
-
-    if (leveledUp && user.level % 10 === 0) {
-        user.balance += 1500;
-    }
-
-    await user.save();
-
-    if (leveledUp) {
-        try {
-            const channelToSend = await guild.channels.fetch(ID_KANAL_AWANSOW).catch(() => null) as TextChannel;
-            if (!channelToSend) return;
-
-            const member = await guild.members.fetch(userId).catch(() => null);
-            const avatarUrl = member ? member.user.displayAvatarURL() : client.user?.displayAvatarURL();
-            const rankDetails = await getUserLevelRankDetails(userId);
-
-            let rewardText = '';
-            if (user.level % 10 === 0) {
-                rewardText = `\n\n🎁 **Nagroda za awans na ${user.level} lvl:** Otrzymałeś **1500 PJN-Coins** do portfela! 💰`;
-            }
-
-            const embed = new EmbedBuilder()
-                .setColor(0x9B59B6)
-                .setTitle('🚀 AWANS NA WYŻSZY POZIOM!')
-                .setThumbnail(avatarUrl)
-                .setDescription(
-                    `Gratulacje <@${userId}>! Właśnie wskoczyłeś na wyższy poziom na serwerze! 🌟\n\n` +
+                        content: `<@${user.userId}>`,                         embeds: [consoleEmbed],                         allowedMentions: { users: [user.userId] }                     });                 }             } catch (err) {}         }     } }  async function getUserLevelRankDetails(userId: string): Promise<{ rank: number, total: number }> {     const targetUser = await UserModel.findOne({ userId });     if (!targetUser) return { rank: 1, total: 1 };      const total = await UserModel.countDocuments({});     const higherCount = await UserModel.countDocuments({         $or: [             { level: { $gt: targetUser.level \vert{}\vert{} 1 } },             { level: targetUser.level \vert{}\vert{} 1, exp: { $gt: targetUser.exp \vert{}\vert{} 0 } }         ]     });      return { rank: higherCount + 1, total: Math.max(1, total) }; }  async function addExp(userId: string, amount: number, guild: any) {     let user = await UserModel.findOne({ userId });     if (!user) user = await UserModel.create({ userId });      user.exp = (user.exp \vert{}\vert{} 0) + amount;          let requiredExpForNextLevel = user.level * 150;     let leveledUp = false;      while (user.exp >= requiredExpForNextLevel) {         user.exp -= requiredExpForNextLevel;         user.level = (user.level \vert{}\vert{} 1) + 1;         leveledUp = true;         requiredExpForNextLevel = user.level * 150;     }      if (leveledUp && user.level \% 10 === 0) {         user.balance += 1500;     }      await user.save();      if (leveledUp) {         try {             const channelToSend = await guild.channels.fetch(ID_KANAL_AWANSOW).catch(() => null) as TextChannel;             if (!channelToSend) return;              const member = await guild.members.fetch(userId).catch(() => null);             const avatarUrl = member ? member.user.displayAvatarURL() : client.user?.displayAvatarURL();             const rankDetails = await getUserLevelRankDetails(userId);              let rewardText = '';             if (user.level \% 10 === 0) {                 rewardText = `\n\n🎁 **Nagroda za awans na ${user.level} lvl:** Otrzymałeś **1500 PJN-Coins** do portfela! 💰`;             }              const embed = new EmbedBuilder()                 .setColor(0x9B59B6)                 .setTitle('🚀 AWANS NA WYŻSZY POZIOM!')                 .setThumbnail(avatarUrl)                 .setDescription(                     `Gratulacje <@${userId}>! Właśnie wskoczyłeś na wyższy poziom na serwerze! 🌟\n\n` +
                     `⭐ **Nowy Poziom:** \`${user.level}\`\n` +
                     `🏆 **Miejsce w rankingu XP:** \`#${rankDetails.rank} z ${rankDetails.total}\`\n` +
                     `🎯 **Twój Postęp:** \`${user.exp} / ${user.level * 150} XP\`` +
@@ -2193,627 +2025,675 @@ client.once('ready', async () => {
 });
 
 client.on('interactionCreate', async interaction => {
-    if (interaction.isMessageContextMenuCommand()) {
-        if (interaction.commandName === 'Zapisz jako złoty tekst') {
-            await interaction.deferReply({ ephemeral: true });
-            const targetMessage = interaction.targetMessage;
-            if (!targetMessage || !targetMessage.content) {
-                return interaction.editReply({ content: '❌ Wybrana wiadomość nie zawiera tekstu.' });
-            }
+    try {
+        if (interaction.isMessageContextMenuCommand()) {
+            if (interaction.commandName === 'Zapisz jako złoty tekst') {
+                await interaction.deferReply({ ephemeral: true });
+                const targetMessage = interaction.targetMessage;
+                if (!targetMessage || !targetMessage.content) {
+                    return interaction.editReply({ content: '❌ Wybrana wiadomość nie zawiera tekstu.' });
+                }
 
-            const quoteText = targetMessage.content;
-            const authorTag = targetMessage.author.tag;
+                const quoteText = targetMessage.content;
+                const authorTag = targetMessage.author.tag;
 
-            await QuoteModel.create({ text: quoteText, author: authorTag, addedBy: interaction.user.id });
+                await QuoteModel.create({ text: quoteText, author: authorTag, addedBy: interaction.user.id });
 
-            const channel = await client.channels.fetch(ID_KANALU_ZLOTE_MYSLI).catch(() => null) as TextChannel;
-            if (channel) {
-                const embed = new EmbedBuilder()
-                    .setColor(0xE67E22)
-                    .setTitle('✨ Złota myśl z serwera PJN')
-                    .setDescription(`> *„${quoteText}”*\n\n**— ${authorTag}**`)
-                    .setTimestamp();
-                await channel.send({ embeds: [embed] });
-            }
+                const channel = await client.channels.fetch(ID_KANALU_ZLOTE_MYSLI).catch(() => null) as TextChannel;
+                if (channel) {
+                    const embed = new EmbedBuilder()
+                        .setColor(0xE67E22)
+                        .setTitle('✨ Złota myśl z serwera PJN')
+                        .setDescription(`> *„${quoteText}”*\n\n**— ${authorTag}**`)
+                        .setTimestamp();
+                    await channel.send({ embeds: [embed] });
+                }
 
-            await interaction.editReply({ content: `✅ Pomyślnie dodano wiadomość do **Złotych myśli serwera PJN** (<#${ID_KANALU_ZLOTE_MYSLI}>)!` });
-            return;
-        }
-    }
-
-    if (interaction.isButton() && interaction.customId === 'rr_start_modal') {
-        const modal = new ModalBuilder()
-            .setCustomId('rr_modal_submit')
-            .setTitle('Rosyjska Ruletka - Stawka');
-        
-        const input = new TextInputBuilder()
-            .setCustomId('rr_stake_input')
-            .setLabel('Wpisz stawkę PJN-Coins:')
-            .setStyle(TextInputStyle.Short)
-            .setRequired(true);
-
-        modal.addComponents(new ActionRowBuilder<TextInputBuilder>().addComponents(input));
-        return interaction.showModal(modal);
-    }
-
-    if (interaction.isModalSubmit() && interaction.customId === 'rr_modal_submit') {
-        await interaction.deferReply({ ephemeral: false });
-        const stakeStr = interaction.fields.getTextInputValue('rr_stake_input');
-        const stake = parseInt(stakeStr);
-
-        if (isNaN(stake) || stake <= 0) {
-            return interaction.editReply({ content: '❌ Podaj prawidłową stawkę większą od zera.' });
-        }
-
-        let user = await UserModel.findOne({ userId: interaction.user.id });
-        if (!user) user = await UserModel.create({ userId: interaction.user.id });
-
-        if (user.balance < stake) {
-            return interaction.editReply({ content: `❌ Nie masz tylu środków! Posiadasz **${user.balance} PJN-Coins**.` });
-        }
-
-        user.balance -= stake;
-        user.casinoPlays = (user.casinoPlays || 0) + 1;
-
-        const now = new Date();
-        const hasGuaranteedWin = user.guaranteedWinUntil && new Date(user.guaranteedWinUntil) > now;
-
-        let bulletChance = 1 / 6; 
-        if (stake >= 10000) bulletChance = 0.65;
-        else if (stake >= 5000) bulletChance = 0.50;
-        else if (stake >= 1000) bulletChance = 0.35;
-
-        const isDead = hasGuaranteedWin ? false : (Math.random() < bulletChance);
-
-        if (isDead) {
-            user.consecutiveLosses = (user.consecutiveLosses || 0) + 1;
-            user.consecutiveWins = 0;
-            await user.save();
-            await TransactionHistoryModel.create({ userId: interaction.user.id, type: 'casino_roulette', amount: -stake, details: `Przegrana (Wysoka stawka: ${stake})` });
-            return interaction.editReply({ content: `🎯 **Rosyjska Ruletka:** <@${interaction.user.id}> zaryzykował ogromną stawkę **${stake} PJN-Coins** i pociągnął za spust...\n💥 **BAM!** Przy tak dużej stawce ryzyko dopadło go od razu – trafił na kulę! Straciłeś monety! (Stan portfela: **${user.balance}**)` });
-        } else {
-            const winAmount = stake * 2;
-            user.balance += winAmount;
-            user.consecutiveWins = (user.consecutiveWins || 0) + 1;
-            user.consecutiveLosses = 0;
-            await user.save();
-            await TransactionHistoryModel.create({ userId: interaction.user.id, type: 'casino_roulette', amount: stake, details: `Wygrana (Stawka: ${stake})` });
-            return interaction.editReply({ content: `🎯 **Rosyjska Ruletka:** <@${interaction.user.id}> zaryzykował **${stake} PJN-Coins** i pociągnął za spust...\n✨ **Klik!** Cud! Przeżył ryzykowny strzał i wygrywa **${winAmount} PJN-Coins**! (Stan portfela: **${user.balance}**)` });
-        }
-    }
-
-    if (interaction.isButton() && interaction.customId === 'wheel_spin') {
-        await interaction.deferReply({ ephemeral: false });
-        
-        let user = await UserModel.findOne({ userId: interaction.user.id });
-        if (!user) user = await UserModel.create({ userId: interaction.user.id });
-
-        const now = new Date();
-        const twoHours = 2 * 60 * 60 * 1000;
-        if (user.lastWheelSpin) {
-            const diffTime = now.getTime() - new Date(user.lastWheelSpin).getTime();
-            if (diffTime < twoHours) {
-                const timeLeft = twoHours - diffTime;
-                const hoursLeft = Math.floor(timeLeft / (1000 * 60 * 60));
-                const minsLeft = Math.floor((timeLeft % (1000 * 60 * 60)) / (1000 * 60));
-                return interaction.editReply({ content: `⏳ <@${interaction.user.id}>, Koło Fortuny możesz kręcić raz na 2 godziny! Spróbuj ponownie za **${hoursLeft}h ${minsLeft}m**.` });
+                await interaction.editReply({ content: `✅ Pomyślnie dodano wiadomość do **Złotych myśli serwera PJN** (<#${ID_KANALU_ZLOTE_MYSLI}>)!` });
+                return;
             }
         }
 
-        user.lastWheelSpin = now;
-        const rewards = [
-            { name: '50 PJN-Coins', type: 'coins', val: 50 },
-            { name: '150 PJN-Coins', type: 'coins', val: 150 },
-            { name: '300 PJN-Coins', type: 'coins', val: 300 },
-            { name: '500 PJN-Coins', type: 'coins', val: 500 },
-            { name: '1000 PJN-Coins (JACKPOT!)', type: 'coins', val: 1000 },
-            { name: 'BANKRUT! (Strata 100 coinsów)', type: 'bankrupt', val: -100 },
-            { name: 'Darmowy Bonus XP (+200 XP)', type: 'xp', val: 200 }
-        ];
-
-        const outcome = rewards[Math.floor(Math.random() * rewards.length)];
-        user.casinoPlays = (user.casinoPlays || 0) + 1;
-
-        if (outcome.type === 'coins') {
-            user.balance += outcome.val;
-            user.consecutiveWins = (user.consecutiveWins || 0) + 1;
-            user.consecutiveLosses = 0;
-            await user.save();
-            await TransactionHistoryModel.create({ userId: interaction.user.id, type: 'wheel_fortune', amount: outcome.val, details: outcome.name });
-            return interaction.editReply({ content: `🎡 **Koło Fortuny:** <@${interaction.user.id}> zakręcił kołem i wylosował: **${outcome.name}**! Portfel zasilony. (Stan portfela: **${user.balance} PJN-Coins**)` });
-        } else if (outcome.type === 'bankrupt') {
-            user.balance = Math.max(0, user.balance - 100);
-            user.consecutiveLosses = (user.consecutiveLosses || 0) + 1;
-            user.consecutiveWins = 0;
-            await user.save();
-            await TransactionHistoryModel.create({ userId: interaction.user.id, type: 'wheel_fortune', amount: -100, details: 'Bankrut' });
-            return interaction.editReply({ content: `🎡 **Koło Fortuny:** O nie! <@${interaction.user.id}> wylosował **BANKRUT**! Tracisz 100 PJN-Coins. (Stan portfela: **${user.balance} PJN-Coins**)` });
-        } else if (outcome.type === 'xp') {
-            await addExp(interaction.user.id, outcome.val, interaction.guild);
-            await user.save();
-            return interaction.editReply({ content: `🎡 **Koło Fortuny:** <@${interaction.user.id}> trafił na **${outcome.name}**! Otrzymujesz zastrzyk punktów doświadczenia.` });
-        }
-    }
-
-    if (interaction.isButton() && interaction.customId.startsWith('quiz_')) {
-        await interaction.deferReply({ ephemeral: true });
-        if (interaction.customId === 'quiz_correct') {
-            let user = await UserModel.findOne({ userId: interaction.user.id });
-            if (!user) user = await UserModel.create({ userId: interaction.user.id });
-            user.balance += 250;
-            await user.save();
-            return interaction.editReply({ content: '✅ **Prawidłowa odpowiedź!** Otrzymujesz nagrodę **250 PJN-Coins** do portfela!' });
-        } else {
-            return interaction.editReply({ content: '❌ **Błędna odpowiedź!** Spróbuj ponownie następnym razem.' });
-        }
-    }
-
-    if (interaction.isButton() && (interaction.customId.startsWith('poll_vote_') || interaction.customId === 'poll_show_voters')) {
-        const poll = await PollModel.findOne({ messageId: interaction.message.id });
-        if (!poll) return interaction.reply({ content: '❌ Ta ankieta nie istnieje w bazie.', ephemeral: true });
-
-        if (interaction.customId === 'poll_show_voters') {
-            if (!isAuthorized(interaction.user.id) && !interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) {
-                return interaction.reply({ content: '❌ Tylko administratorzy mogą podejrzeć, kto głosował!', ephemeral: true });
-            }
-
-            let votersDesc = `🔍 **Szczegóły głosowania dla ankiety:**\n*${poll.question}*\n\n`;
-            for (let i = 0; i < poll.options.length; i++) {
-                const optionVoters = poll.votes[i];
-                const votersTagList = optionVoters.length > 0 
-                    ? optionVoters.map(id => `<@${id}>`).join(', ') 
-                    : 'Brak głosów';
-                
-                votersDesc += `**${i + 1}. ${poll.options[i]}** (${optionVoters.length} głosów):\n${votersTagList}\n\n`;
-            }
-
-            return interaction.reply({ content: votersDesc, ephemeral: true });
-        }
-
-        if (poll.ended) {
-            return interaction.reply({ content: '❌ Ta ankieta została już zakończona!', ephemeral: true });
-        }
-
-        await interaction.deferUpdate();
-        const optionIndex = parseInt(interaction.customId.replace('poll_vote_', ''));
-
-        const userId = interaction.user.id;
-        for (let i = 0; i < poll.votes.length; i++) {
-            poll.votes[i] = poll.votes[i].filter(id => id !== userId);
-        }
-        poll.votes[optionIndex].push(userId);
-        poll.markModified('votes');
-        await poll.save();
-
-        const totalVotes = poll.votes.reduce((acc, curr) => acc + curr.length, 0);
-        let timeInfo = poll.endsAt ? `⏳ Koniec: <t:${Math.floor(new Date(poll.endsAt).getTime() / 1000)}:R>` : '⏳ Ankieta bez limitu czasu';
-        let desc = `📊 **Ankieta aktywna na żywo**\n${timeInfo}\n\n`;
-
-        const components: ActionRowBuilder<ButtonBuilder>[] = [];
-        let currentRow = new ActionRowBuilder<ButtonBuilder>();
-
-        for (let i = 0; i < poll.options.length; i++) {
-            const count = poll.votes[i].length;
-            const percent = totalVotes > 0 ? Math.round((count / totalVotes) * 100) : 0;
-            const bar = '█'.repeat(Math.floor(percent / 10)) + '░'.repeat(10 - Math.floor(percent / 10));
-            desc += `**${i + 1}. ${poll.options[i]}**\n\`[${bar}]\` **${percent}%** (${count} głosów)\n\n`;
-
-            currentRow.addComponents(new ButtonBuilder().setCustomId(`poll_vote_${i}`).setLabel(`${i + 1} (${count})`).setStyle(ButtonStyle.Secondary));
-            if (currentRow.components.length === 5 || i === poll.options.length - 1) {
-                components.push(currentRow);
-                currentRow = new ActionRowBuilder<ButtonBuilder>();
-            }
-        }
-
-        const adminRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
-            new ButtonBuilder().setCustomId('poll_show_voters').setLabel('🔍 Kto głosował? (Admin)').setStyle(ButtonStyle.Primary)
-        );
-        components.push(adminRow);
-
-        const embed = new EmbedBuilder().setColor(0x3498DB).setTitle(`🗳️ ${poll.question}`).setDescription(desc).setTimestamp();
-        await interaction.message.edit({ embeds: [embed], components });
-        return;
-    }
-
-    if (interaction.isStringSelectMenu()) {
-        if (interaction.customId === 'verification_gender_select') {
-            await interaction.deferReply({ ephemeral: true });
-            const guild = interaction.guild;
-            if (!guild) return;
-
-            const member = await guild.members.fetch(interaction.user.id).catch(() => null);
-            if (!member) {
-                return interaction.editReply({ content: '❌ Nie udało się pobrać Twoich danych na serwerze.' });
-            }
-
-            const selectedValue = interaction.values[0];
-            const roleVerified = guild.roles.cache.get(ID_RANGI_ZWERYFIKOWANY);
+        if (interaction.isButton() && interaction.customId === 'rr_start_modal') {
+            const modal = new ModalBuilder()
+                .setCustomId('rr_modal_submit')
+                .setTitle('Rosyjska Ruletka - Stawka');
             
-            if (!roleVerified) {
-                return interaction.editReply({ content: '❌ Ranga zweryfikowanego nie istnieje na serwerze.' });
-            }
+            const input = new TextInputBuilder()
+                .setCustomId('rr_stake_input')
+                .setLabel('Wpisz stawkę PJN-Coins:')
+                .setStyle(TextInputStyle.Short)
+                .setRequired(true);
 
-            try {
-                await member.roles.add(roleVerified);
-
-                if (selectedValue === 'verify_male') {
-                    const roleMale = guild.roles.cache.get(ID_ROLI_MEZCZYZNA);
-                    if (roleMale) await member.roles.add(roleMale);
-                    await interaction.editReply({ content: `✅ **Pomyślnie zweryfikowano!** Otrzymałeś dostęp do serwera oraz rangę męską. Miłej zabawy!` });
-                } else if (selectedValue === 'verify_female') {
-                    const roleFemale = guild.roles.cache.get(ID_ROLI_KOBIETA);
-                    if (roleFemale) await member.roles.add(roleFemale);
-                    await interaction.editReply({ content: `✅ **Pomyślnie zweryfikowano!** Otrzymałeś dostęp do serwera oraz rangę damską. Miłej zabawy!` });
-                }
-            } catch (err) {
-                await interaction.editReply({ content: '❌ Wystąpił błąd podczas nadawania ról weryfikacyjnych. Skontaktuj się z administracją.' });
-            }
-            return;
+            modal.addComponents(new ActionRowBuilder<TextInputBuilder>().addComponents(input));
+            return interaction.showModal(modal);
         }
 
-        if (interaction.customId === 'shop_select') {
-            await interaction.deferReply({ ephemeral: true });
-            const itemId = interaction.values[0];
-            const item = SHOP_ITEMS.find(i => i.id === itemId);
-            if (!item) return;
+        if (interaction.isModalSubmit() && interaction.customId === 'rr_modal_submit') {
+            await interaction.deferReply({ ephemeral: false });
+            const stakeStr = interaction.fields.getTextInputValue('rr_stake_input');
+            const stake = parseInt(stakeStr);
+
+            if (isNaN(stake) || stake <= 0) {
+                return interaction.editReply({ content: '❌ Podaj prawidłową stawkę większą od zera.' });
+            }
 
             let user = await UserModel.findOne({ userId: interaction.user.id });
             if (!user) user = await UserModel.create({ userId: interaction.user.id });
 
-            const canAfford = user.balance >= item.price;
-            const diff = item.price - user.balance;
-
-            const previewEmbed = new EmbedBuilder()
-                .setColor(canAfford ? 0x2ECC71 : 0xE74C3C)
-                .setTitle(`🛒 Podgląd przedmiotu: ${item.name}`)
-                .setDescription(
-                    `📝 **Opis:** ${item.description}\n` +
-                    `💰 **Cena:** ${item.price} PJN-Coins\n` +
-                    `💼 **Twój stan portfela:** ${user.balance} PJN-Coins\n\n` +
-                    (canAfford 
-                        ? `✅ **Status:** Stać Cię na ten zakup! Kliknij przycisk poniżej, aby sfinalizować transakcję.` 
-                        : `❌ **Status:** Brakuje Ci jeszcze **${diff} PJN-Coins**!`)
-                );
-
-            const components = [];
-            if (canAfford) {
-                const buyButtonRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
-                    new ButtonBuilder()
-                        .setCustomId(`shop_buy_${item.id}`)
-                        .setLabel('Potwierdź zakup')
-                        .setStyle(ButtonStyle.Success)
-                        .setEmoji('🛍️')
-                );
-                components.push(buyButtonRow);
+            if (user.balance < stake) {
+                return interaction.editReply({ content: `❌ Nie masz tylu środków! Posiadasz **${user.balance} PJN-Coins**.` });
             }
 
-            await interaction.editReply({ embeds: [previewEmbed], components: components });
-            return;
-        }
-    }
+            user.balance -= stake;
+            user.casinoPlays = (user.casinoPlays || 0) + 1;
 
-    if (interaction.isButton()) {
-        if (interaction.customId === 'temp_voice_lock' || interaction.customId === 'temp_voice_unlock') {
-            await interaction.deferReply({ ephemeral: true });
-            const channel = interaction.channel;
-            if (!channel || channel.type !== ChannelType.GuildVoice) {
-                return interaction.editReply({ content: '❌ Ta opcja działa wyłącznie na czacie pokoju głosowego.' });
-            }
+            const now = new Date();
+            const hasGuaranteedWin = user.guaranteedWinUntil && new Date(user.guaranteedWinUntil) > now;
 
-            const isLocked = interaction.customId === 'temp_voice_lock';
+            let bulletChance = 1 / 6; 
+            if (stake >= 10000) bulletChance = 0.65;
+            else if (stake >= 5000) bulletChance = 0.50;
+            else if (stake >= 1000) bulletChance = 0.35;
 
-            try {
-                await channel.permissionOverwrites.edit(interaction.guildId!, {
-                    Connect: isLocked ? false : null 
-                });
+            const isDead = hasGuaranteedWin ? false : (Math.random() < bulletChance);
 
-                await interaction.editReply({ 
-                    content: isLocked 
-                        ? '🔒 Pomyślnie **zablokowałeś** swój pokój (nikt nowy nie może dołączyć).' 
-                        : '🔓 Pomyślnie **odblokowałeś** swój pokój (każdy może teraz wejść).' 
-                });
-            } catch (e) {
-                await interaction.editReply({ content: '❌ Wystąpił błąd podczas zmiany uprawnień pokoju.' });
-            }
-            return;
-        }
-
-        if (interaction.customId === 'role_fn_updates_toggle') {
-            await interaction.deferReply({ ephemeral: true });
-            const guild = interaction.guild;
-            if (!guild) return;
-
-            const member = await guild.members.fetch(interaction.user.id).catch(() => null);
-            if (!member) {
-                return interaction.editReply({ content: '❌ Nie udało się pobrać Twoich danych na serwerze.' });
-            }
-
-            const role = guild.roles.cache.get(ID_RANGI_AKTUALIZACJE_FORTNITE);
-            if (!role) {
-                return interaction.editReply({ content: '❌ Ranga powiadomień Fortnite nie istnieje na serwerze.' });
-            }
-
-            try {
-                if (member.roles.cache.has(ID_RANGI_AKTUALIZACJE_FORTNITE)) {
-                    await member.roles.remove(role);
-                    await interaction.editReply({ content: `✅ Pomyślnie **usunięto** rangę powiadomień o aktualizacjach Fortnite z Twojego konta.` });
-                } else {
-                    await member.roles.add(role);
-                    await interaction.editReply({ content: `✅ Pomyślnie **przyznano** rangę powiadomień o aktualizacjach Fortnite! Od teraz będziesz otrzymywać powiadomienia.` });
-                }
-            } catch (err) {
-                await interaction.editReply({ content: '❌ Wystąpił błąd podczas zmiany rangi.' });
-            }
-            return;
-        }
-
-        if (interaction.customId.startsWith('fn_rank_')) {
-            await interaction.deferUpdate();
-            const parts = interaction.customId.split('_');
-            const type = parts[2]; 
-            const direction = parts[3];
-            let currentPage = parseInt(parts[4]) || 0;
-
-            if (direction === 'prev') currentPage--;
-            if (direction === 'next') currentPage++;
-
-            if (type === 'under') {
-                const topUsers = await UserModel.find({ epicNick: { $ne: null }, matchesPlayed: { $lt: 2800 } }).sort({ fortniteKills: -1 }).limit(100);
-                const payload = await generateFortniteRankingEmbeds(interaction.guild, topUsers, '🟢 TOP • Początkujący (<2800 meczów)', 0x2ECC71, currentPage);
-                await interaction.editReply(payload);
+            if (isDead) {
+                user.consecutiveLosses = (user.consecutiveLosses || 0) + 1;
+                user.consecutiveWins = 0;
+                await user.save();
+                await TransactionHistoryModel.create({ userId: interaction.user.id, type: 'casino_roulette', amount: -stake, details: `Przegrana (Wysoka stawka: ${stake})` });
+                return interaction.editReply({ content: `🎯 **Rosyjska Ruletka:** <@${interaction.user.id}> zaryzykował ogromną stawkę **${stake} PJN-Coins** i pociągnął za spust...\n💥 **BAM!** Przy tak dużej stawce ryzyko dopadło go od razu – trafił na kulę! Straciłeś monety! (Stan portfela: **${user.balance}**)` });
             } else {
-                const topUsers = await UserModel.find({ epicNick: { $ne: null }, matchesPlayed: { $gte: 2800 } }).sort({ fortniteKills: -1 }).limit(100);
-                const payload = await generateFortniteRankingEmbeds(interaction.guild, topUsers, '🔥 TOP • Weterani (2800+ meczów)', 0xE74C3C, currentPage);
-                await interaction.editReply(payload);
+                const winAmount = stake * 2;
+                user.balance += winAmount;
+                user.consecutiveWins = (user.consecutiveWins || 0) + 1;
+                user.consecutiveLosses = 0;
+                await user.save();
+                await TransactionHistoryModel.create({ userId: interaction.user.id, type: 'casino_roulette', amount: stake, details: `Wygrana (Stawka: ${stake})` });
+                return interaction.editReply({ content: `🎯 **Rosyjska Ruletka:** <@${interaction.user.id}> zaryzykował **${stake} PJN-Coins** i pociągnął za spust...\n✨ **Klik!** Cud! Przeżył ryzykowny strzał i wygrywa **${winAmount} PJN-Coins**! (Stan portfela: **${user.balance}**)` });
             }
-            return;
         }
 
-        if (interaction.customId.startsWith('role_')) {
-            await interaction.deferReply({ ephemeral: true });
-            const roleConfig = ROLE_BUTTONS_MAP[interaction.customId];
-            if (!roleConfig) {
-                return interaction.editReply({ content: '❌ Nie znaleziono takiej rangi.' });
-            }
-
-            const guild = interaction.guild;
-            if (!guild) return;
-
-            const member = await guild.members.fetch(interaction.user.id).catch(() => null);
-            if (!member) {
-                return interaction.editReply({ content: '❌ Nie udało się pobrać Twoich danych na serwerze.' });
-            }
-
-            const role = guild.roles.cache.get(roleConfig.roleId);
-            if (!role) {
-                return interaction.editReply({ content: '❌ Ta rola nie istnieje już na serwerze.' });
-            }
-
-            try {
-                if (member.roles.cache.has(roleConfig.roleId)) {
-                    await member.roles.remove(role);
-                    await interaction.editReply({ content: `✅ Pomyślnie **usunięto** rangę **${role.name}** z Twojego konta.` });
-                } else {
-                    await member.roles.add(role);
-                    await interaction.editReply({ content: `✅ Pomyślnie **przyznano** rangę **${role.name}**!` });
-                }
-            } catch (err) {
-                await interaction.editReply({ content: '❌ Wystąpił błąd podczas zmiany rangi.' });
-            }
-            return;
-        }
-
-        if (interaction.customId.startsWith('shop_buy_')) {
-            await interaction.deferReply({ ephemeral: true });
-            const itemId = interaction.customId.replace('shop_buy_', '');
-            const item = SHOP_ITEMS.find(i => i.id === itemId);
-            if (!item) return interaction.editReply({ content: '❌ Nie znaleziono takiego przedmiotu.' });
-
+        if (interaction.isButton() && interaction.customId === 'wheel_spin') {
+            await interaction.deferReply({ ephemeral: false });
+            
             let user = await UserModel.findOne({ userId: interaction.user.id });
             if (!user) user = await UserModel.create({ userId: interaction.user.id });
 
-            if (user.balance < item.price) {
-                return interaction.editReply({ content: `❌ Nie masz wystarczająco środków! Posiadasz **${user.balance} PJN-Coins**.` });
+            const now = new Date();
+            const twoHours = 2 * 60 * 60 * 1000;
+            if (user.lastWheelSpin) {
+                const diffTime = now.getTime() - new Date(user.lastWheelSpin).getTime();
+                if (diffTime < twoHours) {
+                    const timeLeft = twoHours - diffTime;
+                    const hoursLeft = Math.floor(timeLeft / (1000 * 60 * 60));
+                    const minsLeft = Math.floor((timeLeft % (1000 * 60 * 60)) / (1000 * 60));
+                    return interaction.editReply({ content: `⏳ <@${interaction.user.id}>, Koło Fortuny możesz kręcić raz na 2 godziny! Spróbuj ponownie za **${hoursLeft}h ${minsLeft}m**.` });
+                }
             }
 
-            user.balance -= item.price;
-            await user.save();
+            user.lastWheelSpin = now;
+            const rewards = [
+                { name: '50 PJN-Coins', type: 'coins', val: 50 },
+                { name: '150 PJN-Coins', type: 'coins', val: 150 },
+                { name: '300 PJN-Coins', type: 'coins', val: 300 },
+                { name: '500 PJN-Coins', type: 'coins', val: 500 },
+                { name: '1000 PJN-Coins (JACKPOT!)', type: 'coins', val: 1000 },
+                { name: 'BANKRUT! (Strata 100 coinsów)', type: 'bankrupt', val: -100 },
+                { name: 'Darmowy Bonus XP (+200 XP)', type: 'xp', val: 200 }
+            ];
 
-            await ShopHistoryModel.create({
-                userId: interaction.user.id,
-                itemName: item.name,
-                price: item.price
-            });
+            const outcome = rewards[Math.floor(Math.random() * rewards.length)];
+            user.casinoPlays = (user.casinoPlays || 0) + 1;
 
-            const member = await interaction.guild?.members.fetch(interaction.user.id).catch(() => null);
-            await checkAndAwardBadges(user, member, interaction.guild);
-
-            if (item.type === 'vip') {
-                user.vipExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); 
+            if (outcome.type === 'coins') {
+                user.balance += outcome.val;
+                user.consecutiveWins = (user.consecutiveWins || 0) + 1;
+                user.consecutiveLosses = 0;
                 await user.save();
-
-                if (member) {
-                    try {
-                        await member.roles.add(ID_ROLI_VIP);
-                        await interaction.user.send({
-                            embeds: [
-                                new EmbedBuilder()
-                                    .setColor(0xF1C40F)
-                                    .setTitle('🎉 Gratulacje! Otrzymałeś rangę VIP na 30 dni')
-                                    .setDescription(`Twoja transakcja w sklepie serwera **PJN** została pomyślnie zrealizowana!\n\n🟡 Ranga **VIP** została właśnie automatycznie przypisana do Twojego konta na okres **30 dni** na serwerze **${interaction.guild?.name}**.\n\nCiesz się ze swoich nowych przywilejów! 🚀`)
-                                    .setTimestamp()
-                            ]
-                        }).catch(() => {});
-                    } catch (err) {}
-                }
-            } else if (item.type === 'double_chance') {
-                user.doubleChanceUntil = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+                await TransactionHistoryModel.create({ userId: interaction.user.id, type: 'wheel_fortune', amount: outcome.val, details: outcome.name });
+                return interaction.editReply({ content: `🎡 **Koło Fortuny:** <@${interaction.user.id}> zakręcił kołem i wylosował: **${outcome.name}**! Portfel zasilony. (Stan portfela: **${user.balance} PJN-Coins**)` });
+            } else if (outcome.type === 'bankrupt') {
+                user.balance = Math.max(0, user.balance - 100);
+                user.consecutiveLosses = (user.consecutiveLosses || 0) + 1;
+                user.consecutiveWins = 0;
                 await user.save();
-            } else if (item.type === 'custom_role') {
-                user.customRoleExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+                await TransactionHistoryModel.create({ userId: interaction.user.id, type: 'wheel_fortune', amount: -100, details: 'Bankrut' });
+                return interaction.editReply({ content: `🎡 **Koło Fortuny:** O nie! <@${interaction.user.id}> wylosował **BANKRUT**! Tracisz 100 PJN-Coins. (Stan portfela: **${user.balance} PJN-Coins**)` });
+            } else if (outcome.type === 'xp') {
+                await addExp(interaction.user.id, outcome.val, interaction.guild);
                 await user.save();
-            } else if (item.type === 'badge') {
-                if (!user.badges.includes(item.badgeName)) {
-                    user.badges.push(item.badgeName);
-                    await user.save();
-                    const memberObj = await interaction.guild?.members.fetch(interaction.user.id).catch(() => null);
-                    await checkAndAwardBadges(user, memberObj || interaction.user, interaction.guild);
-                }
-            } else if (item.type === 'custom_voice') {
-                user.customVoiceExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
-                await user.save();
-            } else if (item.type === 'daily_boost') {
-                user.dailyBoostUntil = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-                await user.save();
+                return interaction.editReply({ content: `🎡 **Koło Fortuny:** <@${interaction.user.id}> trafił na **${outcome.name}**! Otrzymujesz zastrzyk punktów doświadczenia.` });
             }
-
-            await interaction.editReply({ content: `🎉 Dziękuję za zakup przedmiotu **${item.name}**! Pomyślnie pobrano **${item.price} PJN-Coins** z Twojego portfela.` });
-            return;
         }
 
-        if (interaction.customId === 'create_ticket') {
+        if (interaction.isButton() && interaction.customId.startsWith('quiz_')) {
             await interaction.deferReply({ ephemeral: true });
-            const guild = interaction.guild;
-            if (!guild) return;
-
-            const existingChannel = guild.channels.cache.find(
-                ch => ch.name === `ticket-${interaction.user.username.toLowerCase().replace(/[^a-z0-9]/g, '')}`
-            );
-
-            if (existingChannel) {
-                return interaction.editReply({ content: `❌ Masz już otwarty ticket: <#${existingChannel.id}>!` });
+            if (interaction.customId === 'quiz_correct') {
+                let user = await UserModel.findOne({ userId: interaction.user.id });
+                if (!user) user = await UserModel.create({ userId: interaction.user.id });
+                user.balance += 250;
+                await user.save();
+                return interaction.editReply({ content: '✅ **Prawidłowa odpowiedź!** Otrzymujesz nagrodę **250 PJN-Coins** do portfela!' });
+            } else {
+                return interaction.editReply({ content: '❌ **Błędna odpowiedź!** Spróbuj ponownie następnym razem.' });
             }
-
-            try {
-                const ticketChannel = await guild.channels.create({
-                    name: `ticket-${interaction.user.username}`,
-                    type: ChannelType.GuildText,
-                    permissionOverwrites: [
-                        { id: guild.id, deny: [PermissionFlagsBits.ViewChannel] },
-                        { id: interaction.user.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] },
-                        { id: ID_RANGI_DUSZKOWIEC, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] },
-                        { id: ID_RANGI_MODERATOR, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] },
-                        { id: ID_RANGI_ADMIN, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] }
-                    ],
-                });
-
-                const welcomeEmbed = new EmbedBuilder()
-                    .setColor(0x2ECC71)
-                    .setTitle(`🎫 Ticket od: ${interaction.user.tag}`)
-                    .setDescription(`Witaj <@${interaction.user.id}>!\n\nNapisz jakiego duszka potrzebujesz, ktoś z ekipy wejdzie i od razu zobaczy Twoją wiadomość.\n\nKliknij przycisk **Zamknij Ticket**, gdy już otrzymasz duszka.`)
-                    .setTimestamp();
-
-                const closeRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
-                    new ButtonBuilder().setCustomId('close_ticket').setLabel('Zamknij Ticket').setStyle(ButtonStyle.Danger).setEmoji('🔒')
-                );
-
-                await ticketChannel.send({
-                    content: `<@${interaction.user.id}> | <@&${ID_RANGI_DUSZKOWIEC}> <@&${ID_RANGI_MODERATOR}> <@&${ID_RANGI_ADMIN}>`,
-                    embeds: [welcomeEmbed],
-                    components: [closeRow]
-                });
-
-                await interaction.editReply({ content: `✅ Stworzono dla Ciebie prywatny ticket: <#${ticketChannel.id}>!` });
-            } catch (err) {
-                await interaction.editReply({ content: '❌ Wystąpił błąd podczas tworzenia ticketu.' });
-            }
-            return;
         }
 
-        if (interaction.customId === 'close_ticket') {
-            await interaction.deferReply({ ephemeral: true });
-            const channel = interaction.channel as TextChannel;
-            if (!channel) return;
+        if (interaction.isButton() && (interaction.customId.startsWith('poll_vote_') || interaction.customId === 'poll_show_voters')) {
+            const poll = await PollModel.findOne({ messageId: interaction.message.id });
+            if (!poll) return interaction.reply({ content: '❌ Ta ankieta nie istnieje w bazie.', ephemeral: true });
 
-            try {
-                const overwrites = channel.permissionOverwrites.cache;
-                let ticketCreatorId: string | null = null;
-                for (const [id, overwrite] of overwrites) {
-                    if (id !== interaction.guild?.id && (overwrite.allow.has(PermissionFlagsBits.SendMessages))) {
-                        const role = interaction.guild?.roles.cache.get(id);
-                        if (!role) {
-                            ticketCreatorId = id;
-                            break;
-                        }
-                    }
+            if (interaction.customId === 'poll_show_voters') {
+                if (!isAuthorized(interaction.user.id) && !interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) {
+                    return interaction.reply({ content: '❌ Tylko administratorzy mogą podejrzeć, kto głosował!', ephemeral: true });
                 }
 
-                if (ticketCreatorId) {
-                    await channel.permissionOverwrites.edit(ticketCreatorId, {
-                        SendMessages: false,
-                        ViewChannel: true
-                    }).catch(() => {});
+                let votersDesc = `🔍 **Szczegóły głosowania dla ankiety:**\n*${poll.question}*\n\n`;
+                for (let i = 0; i < poll.options.length; i++) {
+                    const optionVoters = poll.votes[i];
+                    const votersTagList = optionVoters.length > 0 
+                        ? optionVoters.map(id => `<@${id}>`).join(', ') 
+                        : 'Brak głosów';
+                    
+                    votersDesc += `**${i + 1}. ${poll.options[i]}** (${optionVoters.length} głosów):\n${votersTagList}\n\n`;
                 }
 
-                const currentName = channel.name;
-                if (!currentName.startsWith('zamkniety-')) {
-                    await channel.setName(`zamkniety-${currentName.replace('ticket-', '')}`).catch(() => {});
-                }
-
-                const closedEmbed = new EmbedBuilder()
-                    .setColor(0xE74C3C)
-                    .setTitle('🔒 Ticket Został Zamknięty')
-                    .setDescription(`Ten ticket został zamknięty przez <@${interaction.user.id}>.\nKanał został zarchiwizowany.`)
-                    .setTimestamp();
-
-                await channel.send({ embeds: [closedEmbed] });
-                await interaction.editReply({ content: `✅ Pomyślnie zamknięto i zarchiwizowano ten ticket.` });
-            } catch (e) {
-                await interaction.editReply({ content: `❌ Wystąpił błąd podczas zamykania ticketu.` });
-            }
-            return;
-        }
-
-        if (['lfg_join', 'lfg_leave', 'lfg_create_voice', 'lfg_close'].includes(interaction.customId)) {
-            await interaction.deferReply({ ephemeral: true });
-            const lfgDoc = await LFGModel.findOne({ messageId: interaction.message.id });
-
-            if (!lfgDoc) {
-                return interaction.editReply({ content: '❌ To ogłoszenie LFG jest już nieaktualne.' });
+                return interaction.reply({ content: votersDesc, ephemeral: true });
             }
 
-            if (lfgDoc.status === 'closed') {
-                return interaction.editReply({ content: '❌ Ta ekipa została już zamknięta.' });
+            if (poll.ended) {
+                return interaction.reply({ content: '❌ Ta ankieta została już zakończona!', ephemeral: true });
             }
+
+            await interaction.deferUpdate();
+            const optionIndex = parseInt(interaction.customId.replace('poll_vote_', ''));
 
             const userId = interaction.user.id;
-            const gameInfo = LFG_CONFIG.GAMES[lfgDoc.game as keyof typeof LFG_CONFIG.GAMES];
+            for (let i = 0; i < poll.votes.length; i++) {
+                poll.votes[i] = poll.votes[i].filter(id => id !== userId);
+            }
+            poll.votes[optionIndex].push(userId);
+            poll.markModified('votes');
+            await poll.save();
 
-            if (interaction.customId === 'lfg_close') {
-                if (lfgDoc.authorId !== userId) {
-                    return interaction.editReply({ content: '❌ Tylko autor ogłoszenia może je zamknąć!' });
+            const totalVotes = poll.votes.reduce((acc, curr) => acc + curr.length, 0);
+            let timeInfo = poll.endsAt ? `⏳ Koniec: <t:${Math.floor(new Date(poll.endsAt).getTime() / 1000)}:R>` : '⏳ Ankieta bez limitu czasu';
+            let desc = `📊 **Ankieta aktywna na żywo**\n${timeInfo}\n\n`;
+
+            const components: ActionRowBuilder<ButtonBuilder>[] = [];
+            let currentRow = new ActionRowBuilder<ButtonBuilder>();
+
+            for (let i = 0; i < poll.options.length; i++) {
+                const count = poll.votes[i].length;
+                const percent = totalVotes > 0 ? Math.round((count / totalVotes) * 100) : 0;
+                const bar = '█'.repeat(Math.floor(percent / 10)) + '░'.repeat(10 - Math.floor(percent / 10));
+                desc += `**${i + 1}. ${poll.options[i]}**\n\`[${bar}]\` **${percent}%** (${count} głosów)\n\n`;
+
+                currentRow.addComponents(new ButtonBuilder().setCustomId(`poll_vote_${i}`).setLabel(`${i + 1} (${count})`).setStyle(ButtonStyle.Secondary));
+                if (currentRow.components.length === 5 || i === poll.options.length - 1) {
+                    components.push(currentRow);
+                    currentRow = new ActionRowBuilder<ButtonBuilder>();
                 }
-
-                lfgDoc.status = 'closed';
-                await lfgDoc.save();
-
-                if (lfgDoc.voiceChannelId) {
-                    try {
-                        const guild = interaction.guild;
-                        if (guild) {
-                            const voiceChannel = await guild.channels.fetch(lfgDoc.voiceChannelId).catch(() => null);
-                            if (voiceChannel) await voiceChannel.delete('Autor zamknął ogłoszenie LFG');
-                        }
-                    } catch (err) {}
-                }
-
-                await updateLFGMessage(interaction.message, lfgDoc);
-                return interaction.editReply({ content: '✅ Pomyślnie zamknąłeś ogłoszenie LFG.' });
             }
 
-            if (interaction.customId === 'lfg_join') {
-                if (lfgDoc.currentPlayers.includes(userId)) {
-                    return interaction.editReply({ content: '⚠️ Jesteś już na liście tej ekipy!' });
-                }
-                if (lfgDoc.currentPlayers.length >= lfgDoc.maxPlayers) {
-                    return interaction.editReply({ content: '❌ Ta ekipa jest już w pełni zapełniona!' });
+            const adminRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+                new ButtonBuilder().setCustomId('poll_show_voters').setLabel('🔍 Kto głosował? (Admin)').setStyle(ButtonStyle.Primary)
+            );
+            components.push(adminRow);
+
+            const embed = new EmbedBuilder().setColor(0x3498DB).setTitle(`🗳️ ${poll.question}`).setDescription(desc).setTimestamp();
+            await interaction.message.edit({ embeds: [embed], components });
+            return;
+        }
+
+        if (interaction.isStringSelectMenu()) {
+            if (interaction.customId === 'verification_gender_select') {
+                await interaction.deferReply({ ephemeral: true });
+                const guild = interaction.guild;
+                if (!guild) return;
+
+                const member = await guild.members.fetch(interaction.user.id).catch(() => null);
+                if (!member) {
+                    return interaction.editReply({ content: '❌ Nie udało się pobrać Twoich danych na serwerze.' });
                 }
 
-                lfgDoc.currentPlayers.push(userId);
-                if (lfgDoc.currentPlayers.length >= lfgDoc.maxPlayers) lfgDoc.status = 'full';
-                await lfgDoc.save();
+                const selectedValue = interaction.values[0];
+                const roleVerified = guild.roles.cache.get(ID_RANGI_ZWERYFIKOWANY);
+                
+                if (!roleVerified) {
+                    return interaction.editReply({ content: '❌ Ranga zweryfikowanego nie istnieje na serwerze.' });
+                }
 
-                if (lfgDoc.status === 'full' && !lfgDoc.voiceChannelId) {
+                try {
+                    await member.roles.add(roleVerified);
+
+                    if (selectedValue === 'verify_male') {
+                        const roleMale = guild.roles.cache.get(ID_ROLI_MEZCZYZNA);
+                        if (roleMale) await member.roles.add(roleMale);
+                        await interaction.editReply({ content: `✅ **Pomyślnie zweryfikowano!** Otrzymałeś dostęp do serwera oraz rangę męską. Miłej zabawy!` });
+                    } else if (selectedValue === 'verify_female') {
+                        const roleFemale = guild.roles.cache.get(ID_ROLI_KOBIETA);
+                        if (roleFemale) await member.roles.add(roleFemale);
+                        await interaction.editReply({ content: `✅ **Pomyślnie zweryfikowano!** Otrzymałeś dostęp do serwera oraz rangę damską. Miłej zabawy!` });
+                    }
+                } catch (err) {
+                    await interaction.editReply({ content: '❌ Wystąpił błąd podczas nadawania ról weryfikacyjnych. Skontaktuj się z administracją.' });
+                }
+                return;
+            }
+
+            if (interaction.customId === 'shop_select') {
+                await interaction.deferReply({ ephemeral: true });
+                const itemId = interaction.values[0];
+                const item = SHOP_ITEMS.find(i => i.id === itemId);
+                if (!item) return;
+
+                let user = await UserModel.findOne({ userId: interaction.user.id });
+                if (!user) user = await UserModel.create({ userId: interaction.user.id });
+
+                const canAfford = user.balance >= item.price;
+                const diff = item.price - user.balance;
+
+                const previewEmbed = new EmbedBuilder()
+                    .setColor(canAfford ? 0x2ECC71 : 0xE74C3C)
+                    .setTitle(`🛒 Podgląd przedmiotu: ${item.name}`)
+                    .setDescription(
+                        `📝 **Opis:** ${item.description}\n` +
+                        `💰 **Cena:** ${item.price} PJN-Coins\n` +
+                        `💼 **Twój stan portfela:** ${user.balance} PJN-Coins\n\n` +
+                        (canAfford 
+                            ? `✅ **Status:** Stać Cię na ten zakup! Kliknij przycisk poniżej, aby sfinalizować transakcję.` 
+                            : `❌ **Status:** Brakuje Ci jeszcze **${diff} PJN-Coins**!`)
+                    );
+
+                const components = [];
+                if (canAfford) {
+                    const buyButtonRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+                        new ButtonBuilder()
+                            .setCustomId(`shop_buy_${item.id}`)
+                            .setLabel('Potwierdź zakup')
+                            .setStyle(ButtonStyle.Success)
+                            .setEmoji('🛍️')
+                    );
+                    components.push(buyButtonRow);
+                }
+
+                await interaction.editReply({ embeds: [previewEmbed], components: components });
+                return;
+            }
+        }
+
+        if (interaction.isButton()) {
+            if (interaction.customId === 'temp_voice_lock' || interaction.customId === 'temp_voice_unlock') {
+                await interaction.deferReply({ ephemeral: true });
+                const channel = interaction.channel;
+                if (!channel || channel.type !== ChannelType.GuildVoice) {
+                    return interaction.editReply({ content: '❌ Ta opcja działa wyłącznie na czacie pokoju głosowego.' });
+                }
+
+                const isLocked = interaction.customId === 'temp_voice_lock';
+
+                try {
+                    await channel.permissionOverwrites.edit(interaction.guildId!, {
+                        Connect: isLocked ? false : null 
+                    });
+
+                    await interaction.editReply({ 
+                        content: isLocked 
+                            ? '🔒 Pomyślnie **zablokowałeś** swój pokój (nikt nowy nie może dołączyć).' 
+                            : '🔓 Pomyślnie **odblokowałeś** swój pokój (każdy może teraz wejść).' 
+                    });
+                } catch (e) {
+                    await interaction.editReply({ content: '❌ Wystąpił błąd podczas zmiany uprawnień pokoju.' });
+                }
+                return;
+            }
+
+            if (interaction.customId === 'role_fn_updates_toggle') {
+                await interaction.deferReply({ ephemeral: true });
+                const guild = interaction.guild;
+                if (!guild) return;
+
+                const member = await guild.members.fetch(interaction.user.id).catch(() => null);
+                if (!member) {
+                    return interaction.editReply({ content: '❌ Nie udało się pobrać Twoich danych na serwerze.' });
+                }
+
+                const role = guild.roles.cache.get(ID_RANGI_AKTUALIZACJE_FORTNITE);
+                if (!role) {
+                    return interaction.editReply({ content: '❌ Ranga powiadomień Fortnite nie istnieje na serwerze.' });
+                }
+
+                try {
+                    if (member.roles.cache.has(ID_RANGI_AKTUALIZACJE_FORTNITE)) {
+                        await member.roles.remove(role);
+                        await interaction.editReply({ content: `✅ Pomyślnie **usunięto** rangę powiadomień o aktualizacjach Fortnite z Twojego konta.` });
+                    } else {
+                        await member.roles.add(role);
+                        await interaction.editReply({ content: `✅ Pomyślnie **przyznano** rangę powiadomień o aktualizacjach Fortnite! Od teraz będziesz otrzymywać powiadomienia.` });
+                    }
+                } catch (err) {
+                    await interaction.editReply({ content: '❌ Wystąpił błąd podczas zmiany rangi.' });
+                }
+                return;
+            }
+
+            if (interaction.customId.startsWith('fn_rank_')) {
+                await interaction.deferUpdate();
+                const parts = interaction.customId.split('_');
+                const type = parts[2]; 
+                const direction = parts[3];
+                let currentPage = parseInt(parts[4]) || 0;
+
+                if (direction === 'prev') currentPage--;
+                if (direction === 'next') currentPage++;
+
+                if (type === 'under') {
+                    const topUsers = await UserModel.find({ epicNick: { $ne: null }, matchesPlayed: { $lt: 2800 } }).sort({ fortniteKills: -1 }).limit(100);
+                    const payload = await generateFortniteRankingEmbeds(interaction.guild, topUsers, '🟢 TOP • Początkujący (<2800 meczów)', 0x2ECC71, currentPage);
+                    await interaction.editReply(payload);
+                } else {
+                    const topUsers = await UserModel.find({ epicNick: { $ne: null }, matchesPlayed: { $gte: 2800 } }).sort({ fortniteKills: -1 }).limit(100);
+                    const payload = await generateFortniteRankingEmbeds(interaction.guild, topUsers, '🔥 TOP • Weterani (2800+ meczów)', 0xE74C3C, currentPage);
+                    await interaction.editReply(payload);
+                }
+                return;
+            }
+
+            if (interaction.customId.startsWith('role_')) {
+                await interaction.deferReply({ ephemeral: true });
+                const roleConfig = ROLE_BUTTONS_MAP[interaction.customId];
+                if (!roleConfig) {
+                    return interaction.editReply({ content: '❌ Nie znaleziono takiej rangi.' });
+                }
+
+                const guild = interaction.guild;
+                if (!guild) return;
+
+                const member = await guild.members.fetch(interaction.user.id).catch(() => null);
+                if (!member) {
+                    return interaction.editReply({ content: '❌ Nie udało się pobrać Twoich danych na serwerze.' });
+                }
+
+                const role = guild.roles.cache.get(roleConfig.roleId);
+                if (!role) {
+                    return interaction.editReply({ content: '❌ Ta rola nie istnieje już na serwerze.' });
+                }
+
+                try {
+                    if (member.roles.cache.has(roleConfig.roleId)) {
+                        await member.roles.remove(role);
+                        await interaction.editReply({ content: `✅ Pomyślnie **usunięto** rangę **${role.name}** z Twojego konta.` });
+                    } else {
+                        await member.roles.add(role);
+                        await interaction.editReply({ content: `✅ Pomyślnie **przyznano** rangę **${role.name}**!` });
+                    }
+                } catch (err) {
+                    await interaction.editReply({ content: '❌ Wystąpił błąd podczas zmiany rangi.' });
+                }
+                return;
+            }
+
+            if (interaction.customId.startsWith('shop_buy_')) {
+                await interaction.deferReply({ ephemeral: true });
+                const itemId = interaction.customId.replace('shop_buy_', '');
+                const item = SHOP_ITEMS.find(i => i.id === itemId);
+                if (!item) return interaction.editReply({ content: '❌ Nie znaleziono takiego przedmiotu.' });
+
+                let user = await UserModel.findOne({ userId: interaction.user.id });
+                if (!user) user = await UserModel.create({ userId: interaction.user.id });
+
+                if (user.balance < item.price) {
+                    return interaction.editReply({ content: `❌ Nie masz wystarczająco środków! Posiadasz **${user.balance} PJN-Coins**.` });
+                }
+
+                user.balance -= item.price;
+                await user.save();
+
+                await ShopHistoryModel.create({
+                    userId: interaction.user.id,
+                    itemName: item.name,
+                    price: item.price
+                });
+
+                const member = await interaction.guild?.members.fetch(interaction.user.id).catch(() => null);
+                await checkAndAwardBadges(user, member, interaction.guild);
+
+                if (item.type === 'vip') {
+                    user.vipExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); 
+                    await user.save();
+
+                    if (member) {
+                        try {
+                            await member.roles.add(ID_ROLI_VIP);
+                            await interaction.user.send({
+                                embeds: [
+                                    new EmbedBuilder()
+                                        .setColor(0xF1C40F)
+                                        .setTitle('🎉 Gratulacje! Otrzymałeś rangę VIP na 30 dni')
+                                        .setDescription(`Twoja transakcja w sklepie serwera **PJN** została pomyślnie zrealizowana!\n\n🟡 Ranga **VIP** została właśnie automatycznie przypisana do Twojego konta na okres **30 dni** na serwerze **${interaction.guild?.name}**.\n\nCiesz się ze swoich nowych przywilejów! 🚀`)
+                                        .setTimestamp()
+                                ]
+                            }).catch(() => {});
+                        } catch (err) {}
+                    }
+                } else if (item.type === 'double_chance') {
+                    user.doubleChanceUntil = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+                    await user.save();
+                } else if (item.type === 'custom_role') {
+                    user.customRoleExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+                    await user.save();
+                } else if (item.type === 'badge') {
+                    if (!user.badges.includes(item.badgeName)) {
+                        user.badges.push(item.badgeName);
+                        await user.save();
+                        const memberObj = await interaction.guild?.members.fetch(interaction.user.id).catch(() => null);
+                        await checkAndAwardBadges(user, memberObj || interaction.user, interaction.guild);
+                    }
+                } else if (item.type === 'custom_voice') {
+                    user.customVoiceExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+                    await user.save();
+                } else if (item.type === 'daily_boost') {
+                    user.dailyBoostUntil = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+                    await user.save();
+                }
+
+                await interaction.editReply({ content: `🎉 Dziękuję za zakup przedmiotu **${item.name}**! Pomyślnie pobrano **${item.price} PJN-Coins** z Twojego portfela.` });
+                return;
+            }
+
+            if (interaction.customId === 'create_ticket') {
+                await interaction.deferReply({ ephemeral: true });
+                const guild = interaction.guild;
+                if (!guild) return;
+
+                const existingChannel = guild.channels.cache.find(
+                    ch => ch.name === `ticket-${interaction.user.username.toLowerCase().replace(/[^a-z0-9]/g, '')}`
+                );
+
+                if (existingChannel) {
+                    return interaction.editReply({ content: `❌ Masz już otwarty ticket: <#${existingChannel.id}>!` });
+                }
+
+                try {
+                    const ticketChannel = await guild.channels.create({
+                        name: `ticket-${interaction.user.username}`,
+                        type: ChannelType.GuildText,
+                        permissionOverwrites: [
+                            { id: guild.id, deny: [PermissionFlagsBits.ViewChannel] },
+                            { id: interaction.user.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] },
+                            { id: ID_RANGI_DUSZKOWIEC, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] },
+                            { id: ID_RANGI_MODERATOR, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] },
+                            { id: ID_RANGI_ADMIN, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] }
+                        ],
+                    });
+
+                    const welcomeEmbed = new EmbedBuilder()
+                        .setColor(0x2ECC71)
+                        .setTitle(`🎫 Ticket od: ${interaction.user.tag}`)
+                        .setDescription(`Witaj <@${interaction.user.id}>!\n\nNapisz jakiego duszka potrzebujesz, ktoś z ekipy wejdzie i od razu zobaczy Twoją wiadomość.\n\nKliknij przycisk **Zamknij Ticket**, gdy już otrzymasz duszka.`)
+                        .setTimestamp();
+
+                    const closeRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+                        new ButtonBuilder().setCustomId('close_ticket').setLabel('Zamknij Ticket').setStyle(ButtonStyle.Danger).setEmoji('🔒')
+                    );
+
+                    await ticketChannel.send({
+                        content: `<@${interaction.user.id}> | <@&${ID_RANGI_DUSZKOWIEC}> <@&${ID_RANGI_MODERATOR}> <@&${ID_RANGI_ADMIN}>`,
+                        embeds: [welcomeEmbed],
+                        components: [closeRow]
+                    });
+
+                    await interaction.editReply({ content: `✅ Stworzono dla Ciebie prywatny ticket: <#${ticketChannel.id}>!` });
+                } catch (err) {
+                    await interaction.editReply({ content: '❌ Wystąpił błąd podczas tworzenia ticketu.' });
+                }
+                return;
+            }
+
+            if (interaction.customId === 'close_ticket') {
+                await interaction.deferReply({ ephemeral: true });
+                const channel = interaction.channel as TextChannel;
+                if (!channel) return;
+
+                try {
+                    const overwrites = channel.permissionOverwrites.cache;
+                    let ticketCreatorId: string | null = null;
+                    for (const [id, overwrite] of overwrites) {
+                        if (id !== interaction.guild?.id && (overwrite.allow.has(PermissionFlagsBits.SendMessages))) {
+                            const role = interaction.guild?.roles.cache.get(id);
+                            if (!role) {
+                                ticketCreatorId = id;
+                                break;
+                            }
+                        }
+                    }
+
+                    if (ticketCreatorId) {
+                        await channel.permissionOverwrites.edit(ticketCreatorId, {
+                            SendMessages: false,
+                            ViewChannel: true
+                        }).catch(() => {});
+                    }
+
+                    const currentName = channel.name;
+                    if (!currentName.startsWith('zamkniety-')) {
+                        await channel.setName(`zamkniety-${currentName.replace('ticket-', '')}`).catch(() => {});
+                    }
+
+                    const closedEmbed = new EmbedBuilder()
+                        .setColor(0xE74C3C)
+                        .setTitle('🔒 Ticket Został Zamknięty')
+                        .setDescription(`Ten ticket został zamknięty przez <@${interaction.user.id}>.\nKanał został zarchiwizowany.`)
+                        .setTimestamp();
+
+                    await channel.send({ embeds: [closedEmbed] });
+                    await interaction.editReply({ content: `✅ Pomyślnie zamknięto i zarchiwizowano ten ticket.` });
+                } catch (e) {
+                    await interaction.editReply({ content: `❌ Wystąpił błąd podczas zamykania ticketu.` });
+                }
+                return;
+            }
+
+            if (['lfg_join', 'lfg_leave', 'lfg_create_voice', 'lfg_close'].includes(interaction.customId)) {
+                await interaction.deferReply({ ephemeral: true });
+                const lfgDoc = await LFGModel.findOne({ messageId: interaction.message.id });
+
+                if (!lfgDoc) {
+                    return interaction.editReply({ content: '❌ To ogłoszenie LFG jest już nieaktualne.' });
+                }
+
+                if (lfgDoc.status === 'closed') {
+                    return interaction.editReply({ content: '❌ Ta ekipa została już zamknięta.' });
+                }
+
+                const userId = interaction.user.id;
+                const gameInfo = LFG_CONFIG.GAMES[lfgDoc.game as keyof typeof LFG_CONFIG.GAMES];
+
+                if (interaction.customId === 'lfg_close') {
+                    if (lfgDoc.authorId !== userId) {
+                        return interaction.editReply({ content: '❌ Tylko autor ogłoszenia może je zamknąć!' });
+                    }
+
+                    lfgDoc.status = 'closed';
+                    await lfgDoc.save();
+
+                    if (lfgDoc.voiceChannelId) {
+                        try {
+                            const guild = interaction.guild;
+                            if (guild) {
+                                const voiceChannel = await guild.channels.fetch(lfgDoc.voiceChannelId).catch(() => null);
+                                if (voiceChannel) await voiceChannel.delete('Autor zamknął ogłoszenie LFG');
+                            }
+                        } catch (err) {}
+                    }
+
+                    await updateLFGMessage(interaction.message, lfgDoc);
+                    return interaction.editReply({ content: '✅ Pomyślnie zamknąłeś ogłoszenie LFG.' });
+                }
+
+                if (interaction.customId === 'lfg_join') {
+                    if (lfgDoc.currentPlayers.includes(userId)) {
+                        return interaction.editReply({ content: '⚠️ Jesteś już na liście tej ekipy!' });
+                    }
+                    if (lfgDoc.currentPlayers.length >= lfgDoc.maxPlayers) {
+                        return interaction.editReply({ content: '❌ Ta ekipa jest już w pełni zapełniona!' });
+                    }
+
+                    lfgDoc.currentPlayers.push(userId);
+                    if (lfgDoc.currentPlayers.length >= lfgDoc.maxPlayers) lfgDoc.status = 'full';
+                    await lfgDoc.save();
+
+                    if (lfgDoc.status === 'full' && !lfgDoc.voiceChannelId) {
+                        try {
+                            const guild = interaction.guild;
+                            if (guild) {
+                                const permissionOverwrites: any[] = [{ id: guild.id, deny: [PermissionFlagsBits.ViewChannel] }];
+                                for (const pId of lfgDoc.currentPlayers) {
+                                    permissionOverwrites.push({ id: pId, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.Connect, PermissionFlagsBits.Speak] });
+                                }
+                                const voiceChan = await guild.channels.create({
+                                    name: `🎮-${gameInfo?.name || 'Ekipa'}-${interaction.user.username}`,
+                                    type: ChannelType.GuildVoice,
+                                    parent: LFG_CONFIG.CATEGORY_VOICE,
+                                    permissionOverwrites: permissionOverwrites
+                                });
+                                lfgDoc.voiceChannelId = voiceChan.id;
+                                await lfgDoc.save();
+                            }
+                        } catch (err) {}
+                    }
+
+                    await updateLFGMessage(interaction.message, lfgDoc);
+                    return interaction.editReply({ content: '✅ Pomyślnie dołączyłeś do ekipy!' });
+                }
+
+                if (interaction.customId === 'lfg_leave') {
+                    if (!lfgDoc.currentPlayers.includes(userId)) {
+                        return interaction.editReply({ content: '⚠️ Nie jesteś na liście tej ekipy.' });
+                    }
+                    if (lfgDoc.authorId === userId) {
+                        return interaction.editReply({ content: '❌ Autor ogłoszenia nie może opuścić własnej ekipy.' });
+                    }
+
+                    lfgDoc.currentPlayers = lfgDoc.currentPlayers.filter(id => id !== userId);
+                    if (lfgDoc.status === 'full') lfgDoc.status = 'active';
+                    await lfgDoc.save();
+
+                    await updateLFGMessage(interaction.message, lfgDoc);
+                    return interaction.editReply({ content: '✅ Pomyślnie opuściłeś ekipę.' });
+                }
+
+                if (interaction.customId === 'lfg_create_voice') {
+                    if (lfgDoc.authorId !== userId) {
+                        return interaction.editReply({ content: '❌ Tylko autor ogłoszenia może wymusić utworzenie pokoju głosowego!' });
+                    }
+                    if (lfgDoc.voiceChannelId) {
+                        return interaction.editReply({ content: `⚠️ Kanał głosowy został już utworzony: <#${lfgDoc.voiceChannelId}>!` });
+                    }
+
                     try {
                         const guild = interaction.guild;
                         if (guild) {
@@ -2829,96 +2709,48 @@ client.on('interactionCreate', async interaction => {
                             });
                             lfgDoc.voiceChannelId = voiceChan.id;
                             await lfgDoc.save();
+                            await updateLFGMessage(interaction.message, lfgDoc);
+                            return interaction.editReply({ content: `✅ Pomyślnie utworzono prywatny kanał głosowy: <#${voiceChan.id}>!` });
                         }
                     } catch (err) {}
                 }
-
-                await updateLFGMessage(interaction.message, lfgDoc);
-                return interaction.editReply({ content: '✅ Pomyślnie dołączyłeś do ekipy!' });
+                return;
             }
-
-            if (interaction.customId === 'lfg_leave') {
-                if (!lfgDoc.currentPlayers.includes(userId)) {
-                    return interaction.editReply({ content: '⚠️ Nie jesteś na liście tej ekipy.' });
-                }
-                if (lfgDoc.authorId === userId) {
-                    return interaction.editReply({ content: '❌ Autor ogłoszenia nie może opuścić własnej ekipy.' });
-                }
-
-                lfgDoc.currentPlayers = lfgDoc.currentPlayers.filter(id => id !== userId);
-                if (lfgDoc.status === 'full') lfgDoc.status = 'active';
-                await lfgDoc.save();
-
-                await updateLFGMessage(interaction.message, lfgDoc);
-                return interaction.editReply({ content: '✅ Pomyślnie opuściłeś ekipę.' });
-            }
-
-            if (interaction.customId === 'lfg_create_voice') {
-                if (lfgDoc.authorId !== userId) {
-                    return interaction.editReply({ content: '❌ Tylko autor ogłoszenia może wymusić utworzenie pokoju głosowego!' });
-                }
-                if (lfgDoc.voiceChannelId) {
-                    return interaction.editReply({ content: `⚠️ Kanał głosowy został już utworzony: <#${lfgDoc.voiceChannelId}>!` });
-                }
-
-                try {
-                    const guild = interaction.guild;
-                    if (guild) {
-                        const permissionOverwrites: any[] = [{ id: guild.id, deny: [PermissionFlagsBits.ViewChannel] }];
-                        for (const pId of lfgDoc.currentPlayers) {
-                            permissionOverwrites.push({ id: pId, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.Connect, PermissionFlagsBits.Speak] });
-                        }
-                        const voiceChan = await guild.channels.create({
-                            name: `🎮-${gameInfo?.name || 'Ekipa'}-${interaction.user.username}`,
-                            type: ChannelType.GuildVoice,
-                            parent: LFG_CONFIG.CATEGORY_VOICE,
-                            permissionOverwrites: permissionOverwrites
-                        });
-                        lfgDoc.voiceChannelId = voiceChan.id;
-                        await lfgDoc.save();
-                        await updateLFGMessage(interaction.message, lfgDoc);
-                        return interaction.editReply({ content: `✅ Pomyślnie utworzono prywatny kanał głosowy: <#${voiceChan.id}>!` });
-                    }
-                } catch (err) {}
-            }
-            return;
         }
-    }
 
-    if (interaction.isAutocomplete()) {
-        const focusedValue = interaction.options.getFocused();
+        if (interaction.isAutocomplete()) {
+            const focusedValue = interaction.options.getFocused();
 
-        if (interaction.commandName === 'mem') {
-            try {
-                const response = await fetch('https://api.imgflip.com/get_memes');
-                const data = await response.json() as any;
-                if (data && data.success && data.data && data.data.memes) {
-                    const filtered = data.data.memes.filter((m: any) => m.name.toLowerCase().includes(focusedValue.toLowerCase())).slice(0, 25);
-                    await interaction.respond(filtered.map((m: any) => ({ name: m.name, value: m.id })));
-                } else {
+            if (interaction.commandName === 'mem') {
+                try {
+                    const response = await fetch('https://api.imgflip.com/get_memes');
+                    const data = await response.json() as any;
+                    if (data && data.success && data.data && data.data.memes) {
+                        const filtered = data.data.memes.filter((m: any) => m.name.toLowerCase().includes(focusedValue.toLowerCase())).slice(0, 25);
+                        await interaction.respond(filtered.map((m: any) => ({ name: m.name, value: m.id })));
+                    } else {
+                        await interaction.respond([]);
+                    }
+                } catch (err) {
                     await interaction.respond([]);
                 }
-            } catch (err) {
-                await interaction.respond([]);
+                return;
             }
+
+            if (interaction.commandName === 'daj-odznake' || interaction.commandName === 'zabierz-odznake') {
+                const filtered = AVAILABLE_BADGES
+                    .filter(badge => badge.toLowerCase().includes(focusedValue.toLowerCase()))
+                    .slice(0, 25);
+                await interaction.respond(filtered.map(badge => ({ name: badge.replace(/[*_]/g, ''), value: badge })));
+                return;
+            }
+
             return;
         }
 
-        if (interaction.commandName === 'daj-odznake' || interaction.commandName === 'zabierz-odznake') {
-            const filtered = AVAILABLE_BADGES
-                .filter(badge => badge.toLowerCase().includes(focusedValue.toLowerCase()))
-                .slice(0, 25);
-            await interaction.respond(filtered.map(badge => ({ name: badge.replace(/[*_]/g, ''), value: badge })));
-            return;
-        }
+        if (!interaction.isChatInputCommand()) return;
+        const { commandName } = interaction;
 
-        return;
-    }
-
-    if (!interaction.isChatInputCommand()) return;
-    const { commandName } = interaction;
-
-    try {
         if (commandName === 'ai') {
             await interaction.deferReply();
             const question = interaction.options.getString('pytanie', true);
@@ -4253,7 +4085,19 @@ client.on('interactionCreate', async interaction => {
             return;
         }
 
-    } catch (error) {}
+    } catch (error) {
+        console.error('Błąd podczas obsługi interakcji:', error);
+        try {
+            const errorPayload = { content: '❌ Wystąpił nieoczekiwany błąd podczas wykonywania tej akcji.', ephemeral: true };
+            if (interaction.isRepliable()) {
+                if (interaction.deferred || interaction.replied) {
+                    await interaction.editReply(errorPayload).catch(() => {});
+                } else {
+                    await interaction.reply(errorPayload).catch(() => {});
+                }
+            }
+        } catch (e) {}
+    }
 });
 
 async function updateLFGMessage(message: any, lfgDoc: any) {
