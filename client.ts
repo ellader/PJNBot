@@ -404,7 +404,7 @@ async function setupCasinoHubChannel() {
                 '✂️ **2. Kamień, Papier, Nożyce**\n> Komenda: `/kpn [wybór] [stawka]` — Klasyczny pojedynek z botem 1v1.\n\n' +
                 '🎲 **3. Rzut Kością**\n> Komenda: `/kostka [stawka]` — Sprawdź swój los w rzucie kostką.\n\n' +
                 '🪙 **4. Orzeł czy Reszka**\n> Komenda: `/moneta [wybór] [stawka]` — Obstaw stronę monety.\n\n' +
-                '🎰 **5. Maszyna Slotowa (Jednoręki Bandyta)**\n> Kanał dedykowany: <#1534066347452141639> (Komenda: `/slot [stawka]`)\n\n' +
+                '🎰 **5. Maszyna Slotová (Jednoręki Bandyta)**\n> Kanał dedykowany: <#1534066347452141639> (Komenda: `/slot [stawka]`)\n\n' +
                 '🃏 **6. Poker**\n> Kanał dedykowany: <#1534060082084577350> (Komenda: `/poker [tryb] [stawka]`)\n\n' +
                 '🎯 **7. Rosyjska Ruletka**\n> Kanał specjalny: <#1549791536336732240> — Ryzykuj stawkę w rewolwerze (większe ryzyko przy dużych stawkach)!\n\n' +
                 '🎡 **8. Koło Fortuny**\n> Kanał specjalny: <#1549791621942485120> — Kręć kołem co 2 godziny i wygrywaj darmowe nagrody!'
@@ -2018,6 +2018,45 @@ const commands = [
 client.once('ready', async () => {
     console.log(`Zalogowano jako ${client.user?.tag}!`);
     await seedQuotesIfNeeded();
+    
+    // Czyszczenie starej wiadomości i tworzenie nowej w rankingu PJN-Coins (oparte na konfiguracji 'topka_msg')
+    try {
+        const topConfig = await ConfigModel.findOne({ key: 'topka_msg' });
+        if (topConfig) {
+            const channel = await client.channels.fetch(topConfig.channelId).catch(() => null) as TextChannel;
+            if (channel) {
+                const oldMessage = await channel.messages.fetch(topConfig.messageId).catch(() => null);
+                if (oldMessage) await oldMessage.delete().catch(() => {});
+                
+                const embedData = await getTopEmbedData(channel.guild);
+                const newMessage = await channel.send({ embeds: [embedData] });
+                topConfig.messageId = newMessage.id;
+                await topConfig.save();
+            }
+        }
+    } catch (e) {
+        console.error('Błąd podczas odświeżania wiadomości rankingu coins przy starcie:', e);
+    }
+
+    // Czyszczenie starej wiadomości i tworzenie nowej w centrum odznak (oparte na konfiguracji 'odznaki_info_msg')
+    try {
+        const badgesConfig = await ConfigModel.findOne({ key: 'odznaki_info_msg' });
+        if (badgesConfig) {
+            const channel = await client.channels.fetch(badgesConfig.channelId).catch(() => null) as TextChannel;
+            if (channel) {
+                const oldMessage = await channel.messages.fetch(badgesConfig.messageId).catch(() => null);
+                if (oldMessage) await oldMessage.delete().catch(() => {});
+                
+                const embedsList = createBadgesInfoEmbeds();
+                const newMessage = await channel.send({ embeds: embedsList });
+                badgesConfig.messageId = newMessage.id;
+                await badgesConfig.save();
+            }
+        }
+    } catch (e) {
+        console.error('Błąd podczas odświeżania wiadomości odznak przy starcie:', e);
+    }
+
     await setupVerificationChannel(); 
     await setupMemeChannelInstruction();
     await setupLfgChannelInstruction(); 
