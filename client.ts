@@ -21,12 +21,7 @@ import {
 } from 'discord.js';
 import mongoose from 'mongoose';
 import cron from 'node-cron';
-import Parser from 'rss-parser';
-import { GoogleGenAI } from '@google/genai';
 import http from 'http';
-
-// === INICJALIZACJA GEMINI AI ===
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 // === KONFIGURACJA BAZY DANYCH MONGOOSE ===
 const MONGO_URI = process.env.MONGODB_URI;
@@ -224,16 +219,13 @@ const LFG_CONFIG = {
 
 const NOTIF_CONFIG = {
     languspjn: {
-        channelId: '1542101793171972146',
-        rssUrl: 'https://www.youtube.com/feeds/videos.xml?channel_id=TUTAJ_WKLEJ_ID_LANGUSPJN'
+        channelId: '1542101793171972146'
     },
     elladermusic: {
-        channelId: '1542101962185646111',
-        rssUrl: 'https://www.youtube.com/feeds/videos.xml?channel_id=TUTAJ_WKLEJ_ID_ELLADER'
+        channelId: '1542101962185646111'
     },
     leaveLogChannelId: '1542102521814712371'
 };
-const parser = new Parser();
 
 const ANNOUNCE_CHANNEL_ID = '1532399010785263799';
 const ID_KANALU_CYTATY = '1534780578912665653'; 
@@ -241,7 +233,6 @@ const ID_KANALU_ZLOTE_MYSLI = '1549709251365183558';
 const ID_KANALU_MEMOW = '1534833819599769640'; 
 const ID_KANALU_SZUKAM_DO_GRY = '1532449084559069214'; 
 const ID_KANALU_POKAZ_SIEBIE = '1536365057997283469'; 
-const ID_KANAL_AI_GEMINI = '1550780827259113515'; 
 const CHANNEL_POWITANIA = "witamy";
 const ID_KANALU_DUSZKI = "1532977723843285112"; 
 const ID_RANGI_DUSZKOWIEC = "1532978703842283551";
@@ -309,36 +300,6 @@ const LIVE_IMAGE_URL = "https://cdn.discordapp.com/attachments/15323210677317836
 function isAuthorized(userId: string): boolean {
     const adminIds = ['1175798371995361343', '1493928957408448563'];
     return adminIds.includes(userId);
-}
-
-// === BEZPIECZNA FUNKCJA ASK GEMINI Z AUTOMATYCZNYM PONAWIANIEM (RETRY) ===
-async function askGemini(promptText: string): Promise<string> {
-    const maxRetries = 3;
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
-        try {
-            console.log(`[AI] Wysyłanie zapytania do Gemini (próba ${attempt}): "${promptText}"`);
-            
-            const response = await ai.models.generateContent({
-                model: 'gemini-3.8-flash',
-                contents: promptText,
-                config: {
-                    systemInstruction: "Jesteś pomocnym, inteligentnym i lekko dowcipnym asystentem AI na serwerze Discord społeczności PJN. Odpowiadaj w języku polskim w sposób zwięzły, konkretny i czytelny dla graczy.",
-                }
-            });
-
-            console.log('[AI] Otrzymano odpowiedź od Google API.');
-            return response.text || "Otrzymałem pustą odpowiedź od modelu AI.";
-        } catch (error: any) {
-            console.error(`❌ Próba ${attempt} nie powiodła się:`, error?.message || error);
-            
-            if (attempt === maxRetries) {
-                return `⚠️ Przepraszam, serwery AI są obecnie mocno obciążone. Spróbuj ponownie za chwilę!`;
-            }
-            
-            await new Promise(resolve => setTimeout(resolve, 2000));
-        }
-    }
-    return `Przepraszam, moduł AI napotkał błąd techniczny.`;
 }
 
 // === PULA PYTAŃ DLA QUIZU ===
@@ -1863,33 +1824,6 @@ async function sendNotification(targetKey: 'languspjn' | 'elladermusic', platfor
     });
 }
 
-const lastVideoIds: { [key: string]: string } = {};
-
-async function checkYouTubeRssFeeds() {
-    for (const key of ['languspjn', 'elladermusic'] as const) {
-        try {
-            const feed = await parser.parseURL(NOTIF_CONFIG[key].rssUrl);
-            if (feed && feed.items && feed.items.length > 0) {
-                const latestItem = feed.items[0];
-                const videoUrl = latestItem.link;
-                const videoTitle = latestItem.title || 'Nowy film na YouTube';
-
-                if (videoUrl && lastVideoIds[key] !== videoUrl) {
-                    if (lastVideoIds[key] !== undefined) {
-                        await sendNotification(key, 'youtube', videoTitle, videoUrl);
-                    }
-                    lastVideoIds[key] = videoUrl;
-                }
-            }
-        } catch (e) {}
-    }
-}
-
-function startYouTubeRssChecker() {
-    checkYouTubeRssFeeds();
-    setInterval(checkYouTubeRssFeeds, 5 * 60 * 1000);
-}
-
 const commands = [
     new SlashCommandBuilder().setName('portfel').setDescription('Sprawdź stan swoich PJN-Coins w portfelu'),
     new SlashCommandBuilder().setName('sklep').setDescription('Otwórz podgląd sklepu i sprawdź swoje środki'),
@@ -1932,10 +1866,6 @@ const commands = [
         .setName('profil')
         .setDescription('Kompleksowa karta profilu gracza z poziomem, odznakami i statystykami')
         .addUserOption(o => o.setName('uzytkownik').setDescription('Użytkownik').setRequired(false)),
-    new SlashCommandBuilder()
-        .setName('ai')
-        .setDescription('Zadaj pytanie sztucznej inteligencji PJN AI')
-        .addStringOption(o => o.setName('pytanie').setDescription('Twoje pytanie do sztucznej inteligencji').setRequired(true)),
     new SlashCommandBuilder()
         .setName('ankieta')
         .setDescription('Stwórz interaktywną ankietę na żywo ze statusem głosowania i licznikiem')
@@ -2123,7 +2053,6 @@ client.once('ready', async () => {
     startHourlyAnnouncements();
     startDailyQuotes();
     startReputationTopUpdater();
-    startYouTubeRssChecker();
     startLfgAutoCloser();
     startExpirationChecker();
     startDailyShopAutoPoster(); 
@@ -2960,22 +2889,6 @@ client.on('interactionCreate', async interaction => {
     const { commandName } = interaction;
 
     try {
-        if (commandName === 'ai') {
-            await interaction.deferReply();
-            const question = interaction.options.getString('pytanie', true);
-            const aiResponseText = await askGemini(question);
-
-            const embed = new EmbedBuilder()
-                .setColor(0x00D9FF)
-                .setTitle('🤖 Odpowiedź PJN AI')
-                .setDescription(`> **Pytanie:** *${question}*\n\n${aiResponseText}`)
-                .setTimestamp()
-                .setFooter({ text: `Zapytanie od: ${interaction.user.tag}` });
-
-            await interaction.editReply({ embeds: [embed] });
-            return;
-        }
-
         if (commandName === 'kpn') {
             if (interaction.channelId !== '1534060126980411423') {
                 return interaction.reply({ content: '❌ Tę komendę można wykonać tylko na kanale salonu gier (<#1534060126980411423>)!', ephemeral: true });
@@ -4410,27 +4323,6 @@ async function updateLFGMessage(message: any, lfgDoc: any) {
 
 client.on('messageCreate', async message => {
     if (message.author.bot || !message.guild) return;
-
-    if (message.channel.id === ID_KANAL_AI_GEMINI) {
-        try {
-            await message.channel.sendTyping();
-            
-            const promptText = message.content;
-            const aiReplyText = await askGemini(promptText);
-
-            const aiEmbed = new EmbedBuilder()
-                .setColor(0x00D9FF)
-                .setTitle('🤖 Odpowiedź PJN AI')
-                .setDescription(aiReplyText)
-                .setTimestamp()
-                .setFooter({ text: `Zapytanie od: ${message.author.tag}` });
-
-            await message.reply({ embeds: [aiEmbed] });
-        } catch (err) {
-            console.error('Błąd podczas obsługi wiadomości AI:', err);
-        }
-        return; 
-    }
 
     const targetMediaChannels = [ID_KANALU_POKAZ_SIEBIE, ID_KANALU_MEMOW];
     if (targetMediaChannels.includes(message.channel.id)) {
