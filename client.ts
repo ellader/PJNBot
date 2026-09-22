@@ -41,7 +41,7 @@ const userSchema = new mongoose.Schema({
     balance: { type: Number, default: 0 },
     lastDaily: { type: Date, default: null },
     lastWheelSpin: { type: Date, default: null },
-    guaranteedWinUntil: { type: Date, default: null }, // <-- DODANE: 100% wygranych (Admin)
+    guaranteedWinUntil: { type: Date, default: null }, 
     messageCount: { type: Number, default: 0 },
     emojiCount: { type: Number, default: 0 },
     voiceMinutes: { type: Number, default: 0 },
@@ -221,7 +221,7 @@ const NOTIF_CONFIG = {
         rssUrl: 'https://www.youtube.com/feeds/videos.xml?channel_id=TUTAJ_WKLEJ_ID_ELLADER'
     },
     leaveLogChannelId: '1542102521814712371',
-    freeGamesChannelId: '1551606555533910189' // Kanał na darmowe gry Epic i Steam
+    freeGamesChannelId: '1551606555533910189'
 };
 const parser = new Parser();
 
@@ -301,13 +301,12 @@ function isAuthorized(userId: string): boolean {
     return adminIds.includes(userId);
 }
 
-// === FUNKCJA POBIERANIA I PUBLIKOWANIA DARMOWYCH GIER (EPIC GAMES & STEAM) ===
+// === FUNKCJA POBIERANIA I PUBLIKOWANIA DARMOWYCH GIER ===
 async function postFreeGamesToChannel() {
     try {
         const channel = await client.channels.fetch(NOTIF_CONFIG.freeGamesChannelId).catch(() => null) as TextChannel;
         if (!channel) return;
 
-        // Czyszczenie poprzednich wiadomości bota na kanale
         const messages = await channel.messages.fetch({ limit: 20 }).catch(() => null);
         if (messages) {
             for (const [_, msg] of messages) {
@@ -317,7 +316,6 @@ async function postFreeGamesToChannel() {
             }
         }
 
-        // 1. POBIERANIE Z EPIC GAMES STORE
         let epicDesc = 'Aktualnie darmowe gry w Epic Games Store:\n\n';
         let epicCount = 0;
         try {
@@ -366,7 +364,6 @@ async function postFreeGamesToChannel() {
             .setTimestamp()
             .setFooter({ text: 'PJN Darmowe Gry • Epic Games' });
 
-        // 2. POBIERANIE ZE STEAM
         let steamDesc = 'Aktualne promocje i darmowe gry na platformie Steam:\n\n';
         try {
             const steamRes = await fetch('https://store.steampowered.com/search/results/?query&specials=1&maxprice=free&cc=PL&json=1');
@@ -392,7 +389,6 @@ async function postFreeGamesToChannel() {
             .setTimestamp()
             .setFooter({ text: 'PJN Darmowe Gry • Steam Store' });
 
-        // Wysłanie wiadomości bez pingu everyone i bez @everyone w tekście
         await channel.send({ 
             content: 'Świeże zestawienie darmowych gier z platform Epic Games oraz Steam!', 
             embeds: [epicEmbed, steamEmbed]
@@ -404,7 +400,6 @@ async function postFreeGamesToChannel() {
 }
 
 function startFreeGamesCron() {
-    // Codziennie o godzinie 12:00 automatycznie odświeża i wysyła darmowe gry
     cron.schedule('0 12 * * *', async () => {
         await postFreeGamesToChannel();
     });
@@ -415,7 +410,19 @@ async function askGemini(promptText: string): Promise<string> {
     const maxRetries = 3;
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
         try {
-            console.log(`[AI] Wysyłanie zapytania do Gemini (próba ${attempt}): "${promptText}"`);                          const response = await ai.models.generateContent({                 model: 'gemini-3.8-flash',                 contents: promptText,                 config: {                     systemInstruction: "Jesteś pomocnym, inteligentnym i lekko dowcipnym asystentem AI na serwerze Discord społeczności PJN. Odpowiadaj w języku polskim w sposób zwięzły, konkretny i czytelny dla graczy.",                 }             });              console.log('[AI] Otrzymano odpowiedź od Google API.');             return response.text \vert{}\vert{} "Otrzymałem pustą odpowiedź od modelu AI.";         } catch (error: any) {             console.error(`❌ Próba ${attempt} nie powiodła się:`, error?.message || error);
+            console.log(`[AI] Wysyłanie zapytania do Gemini (próba ${attempt}): "${promptText}"`);
+            const response = await ai.models.generateContent({
+                model: 'gemini-2.5-flash',
+                contents: promptText,
+                config: {
+                    systemInstruction: "Jesteś pomocnym, inteligentnym i lekko dowcipnym asystentem AI na serwerze Discord społeczności PJN. Odpowiadaj w języku polskim w sposób zwięzły, konkretny i czytelny dla graczy.",
+                }
+            });
+
+            console.log('[AI] Otrzymano odpowiedź od Google API.');
+            return response.text || "Otrzymałem pustą odpowiedź od modelu AI.";
+        } catch (error: any) {
+            console.error(`❌ Próba ${attempt} nie powiodła się:`, error?.message || error);
             
             if (attempt === maxRetries) {
                 return `⚠️ Przepraszam, serwery AI są obecnie mocno obciążone. Spróbuj ponownie za chwilę!`;
@@ -610,7 +617,13 @@ async function updateServerStats(guild: any) {
         }).size;
         const fnChannel = guild.channels.cache.get(STATS_CHANNELS.FORTNITE);
         if (fnChannel && fnChannel.isVoiceBased()) {
-            await fnChannel.setName(`🎮 Gracze Fortnite: ${fnCount}`).catch(() => {});         }          const totalUsers = guild.memberCount;         const usersChannel = guild.channels.cache.get(STATS_CHANNELS.USERS);         if (usersChannel && usersChannel.isVoiceBased()) {             await usersChannel.setName(`👥 PJN Users: ${totalUsers}`).catch(() => {});
+            await fnChannel.setName(`🎮 Gracze Fortnite: ${fnCount}`).catch(() => {});
+        }
+        
+        const totalUsers = guild.memberCount;
+        const usersChannel = guild.channels.cache.get(STATS_CHANNELS.USERS);
+        if (usersChannel && usersChannel.isVoiceBased()) {
+            await usersChannel.setName(`👥 PJN Users: ${totalUsers}`).catch(() => {});
         }
     } catch (err) {
         console.error('Błąd podczas aktualizacji dynamicznych statystyk:', err);
@@ -653,7 +666,6 @@ async function sendQuoteToChannel(channelId: string) {
 }
 
 function startDailyQuotes() {
-    // 05:30 czasu polskiego (Europe/Warsaw)
     cron.schedule('30 5 * * *', async () => {
         try {
             await sendQuoteToChannel(ID_KANALU_CYTATY);
@@ -780,9 +792,18 @@ async function checkFortniteServerStatus() {
         const channel = await client.channels.fetch(ID_KANAL_AKTUALIZACJI_FORTNITE).catch(() => null) as TextChannel;
         if (!channel) return;
 
-        const rolePing = `<@&${ID_RANGI_AKTUALIZACJE_FORTNITE}>`;          if (activeIncident && activeIncident.id !== lastFortniteIncidentId && activeIncident.status === 'scheduled') {             lastFortniteIncidentId = activeIncident.id;             const embed = new EmbedBuilder()                 .setColor(0xF1C40F)                 .setTitle('📢 Zapowiedziano nową aktualizację / przerwę techniczną Fortnite!')                 .setDescription(                     `**Nazwa wydarzenia:** ${activeIncident.name}\n` +
+        const rolePing = `<@&${ID_RANGI_AKTUALIZACJE_FORTNITE}>`;
+        
+        if (activeIncident && activeIncident.id !== lastFortniteIncidentId && activeIncident.status === 'scheduled') {
+            lastFortniteIncidentId = activeIncident.id;
+            const embed = new EmbedBuilder()
+                .setColor(0xF1C40F)
+                .setTitle('📢 Zapowiedziano nową aktualizację / przerwę techniczną Fortnite!')
+                .setDescription(
+                    `**Nazwa wydarzenia:** ${activeIncident.name}\n` +
                     `📌 **Status:** Zaplanowana konserwacja\n` +
-                    `🕒 **Zaplanowany start:** ${new Date(activeIncident.scheduled_for).toLocaleString('pl-PL')}\n` +                     `🕒 **Planowany koniec:** ${new Date(activeIncident.scheduled_until).toLocaleString('pl-PL')}\n\n` +
+                    `🕒 **Zaplanowany start:** ${new Date(activeIncident.scheduled_for).toLocaleString('pl-PL')}\n` +
+                    `🕒 **Planowany koniec:** ${new Date(activeIncident.scheduled_until).toLocaleString('pl-PL')}\n\n` +
                     `*Wkrótce serwery zostaną wyłączone. Przygotujcie się do zejścia z gry!*`
                 )
                 .setTimestamp()
@@ -847,7 +868,38 @@ async function updateAllFortniteStats() {
     const users = await UserModel.find({ epicNick: { $ne: null } });
     for (const u of users) {
         try {
-            const res = await fetch(`https://fortnite-api.com/v2/stats/br/v2?name=${encodeURIComponent(u.epicNick!)}`, {                 headers: { 'Authorization': process.env.FORTNITE_API_KEY \vert{}\vert{} '' }             });             const data = await res.json() as any;             if (data && data.status === 200 && data.data && data.data.stats) {                 const overall = data.data.stats.all?.overall \vert{}\vert{} {};                 u.fortniteKills = overall.kills \vert{}\vert{} 0;                 u.matchesPlayed = overall.matches \vert{}\vert{} 0;                 u.estimatedPlaytimeHours = Math.round(u.matchesPlayed * 0.25);                 await u.save();             }         } catch (e) {}     } }  async function generateFortniteRankingEmbeds(guild: any, topUsers: any[], categoryTitle: string, categoryColor: number, page: number = 0) {     const pageSize = 10;     const totalPages = Math.ceil(topUsers.length / pageSize) \vert{}\vert{} 1;     const currentPage = Math.max(0, Math.min(page, totalPages - 1));     const slice = topUsers.slice(currentPage * pageSize, (currentPage + 1) * pageSize);      let desc = `Zabójstwa graczy z naszego serwera (analiza na podstawie meczów).\nAktualizowane automatycznie co 24h.\n\n`;          if (slice.length === 0) {         desc += `Brak zarejestrowanych graczy w tej kategorii.`;     } else {         for (let idx = 0; idx < slice.length; idx++) {             const u = slice[idx];             const globalIdx = currentPage * pageSize + idx;             const medal = globalIdx === 0 ? '🥇' : globalIdx === 1 ? '🥈' : globalIdx === 2 ? '🥉' : `**${globalIdx + 1}.**`;                          let displayName = `<@${u.userId}>`;
+            const res = await fetch(`https://fortnite-api.com/v2/stats/br/v2?name=${encodeURIComponent(u.epicNick!)}`, {
+                headers: { 'Authorization': process.env.FORTNITE_API_KEY || '' }
+            });
+            const data = await res.json() as any;
+            if (data && data.status === 200 && data.data && data.data.stats) {
+                const overall = data.data.stats.all?.overall || {};
+                u.fortniteKills = overall.kills || 0;
+                u.matchesPlayed = overall.matches || 0;
+                u.estimatedPlaytimeHours = Math.round(u.matchesPlayed * 0.25);
+                await u.save();
+            }
+        } catch (e) {}
+    }
+}
+
+async function generateFortniteRankingEmbeds(guild: any, topUsers: any[], categoryTitle: string, categoryColor: number, page: number = 0) {
+    const pageSize = 10;
+    const totalPages = Math.ceil(topUsers.length / pageSize) || 1;
+    const currentPage = Math.max(0, Math.min(page, totalPages - 1));
+    const slice = topUsers.slice(currentPage * pageSize, (currentPage + 1) * pageSize);
+
+    let desc = `Zabójstwa graczy z naszego serwera (analiza na podstawie meczów).\nAktualizowane automatycznie co 24h.\n\n`;
+    
+    if (slice.length === 0) {
+        desc += `Brak zarejestrowanych graczy w tej kategorii.`;
+    } else {
+        for (let idx = 0; idx < slice.length; idx++) {
+            const u = slice[idx];
+            const globalIdx = currentPage * pageSize + idx;
+            const medal = globalIdx === 0 ? '🥇' : globalIdx === 1 ? '🥈' : globalIdx === 2 ? '🥉' : `**${globalIdx + 1}.**`;
+            
+            let displayName = `<@${u.userId}>`;
             if (guild) {
                 try {
                     const member = await guild.members.fetch(u.userId).catch(() => null);
@@ -857,7 +909,13 @@ async function updateAllFortniteStats() {
                 } catch (e) {}
             }
 
-            desc += `${medal} — **${displayName}** (${u.epicNick}) — **${u.fortniteKills || 0} zabójstw** | Meczów: \`${u.matchesPlayed || 0}\` *(Szac. czasu: ~${u.estimatedPlaytimeHours \vert{}\vert{} 0}h)*\n`;         }     }      const embed = new EmbedBuilder()         .setColor(categoryColor)         .setTitle(`${categoryTitle} (Strona ${currentPage + 1}/${totalPages})`)
+            desc += `${medal} — **${displayName}** (${u.epicNick}) — **${u.fortniteKills || 0} zabójstw** | Meczów: \`${u.matchesPlayed || 0}\` *(Szac. czasu: ~${u.estimatedPlaytimeHours || 0}h)*\n`;
+        }
+    }
+
+    const embed = new EmbedBuilder()
+        .setColor(categoryColor)
+        .setTitle(`${categoryTitle} (Strona ${currentPage + 1}/${totalPages})`)
         .setDescription(desc)
         .setImage(LIVE_IMAGE_URL)
         .setTimestamp()
@@ -928,7 +986,7 @@ function startExpirationChecker() {
                     { dailyBoostUntil: { $ne: null, $lte: now } },
                     { customRoleExpiresAt: { $ne: null, $lte: now } },
                     { customVoiceExpiresAt: { $ne: null, $lte: now } },
-                    { guaranteedWinUntil: { $ne: null, $lte: now } } // <-- Wygaśnięcie bonusu 100% wygranych
+                    { guaranteedWinUntil: { $ne: null, $lte: now } }
                 ]
             });
 
@@ -997,7 +1055,12 @@ function startPollChecker() {
                             for (let i = 0; i < poll.options.length; i++) {
                                 const count = poll.votes[i].length;
                                 const percent = totalVotes > 0 ? Math.round((count / totalVotes) * 100) : 0;
-                                desc += `**${i + 1}. ${poll.options[i]}** — **${percent}%** (${count} głosów)\n`;                             }                              const embed = new EmbedBuilder()                                 .setColor(0xE74C3C)                                 .setTitle(`🗳️ ${poll.question} (Wyniki końcowe)`)
+                                desc += `**${i + 1}. ${poll.options[i]}** — **${percent}%** (${count} głosów)\n`;
+                            }
+
+                            const embed = new EmbedBuilder()
+                                .setColor(0xE74C3C)
+                                .setTitle(`🗳️ ${poll.question} (Wyniki końcowe)`)
                                 .setDescription(desc)
                                 .setTimestamp();
 
@@ -1248,7 +1311,24 @@ async function setupShopChannel() {
 
         let desc = 'Witaj w oficjalnym sklepie serwera PJN! Wydawaj swoje PJN-Coins na unikalne przedmioty, role i usługi.\n\n*Wszystkie rangi czasowe (w tym VIP) są ważne przez 30 dni, po czym automatycznie wygasają.*\n\n**📋 Dostępny asortyment:**\n\n';
         SHOP_ITEMS.forEach((item, index) => {
-            desc += `**${index + 1}.${item.name}** — 💰 **${item.price} PJN-Coins**\n> *${item.description}*\n\n`;         });          const embed = new EmbedBuilder()             .setColor(0xF1C40F)             .setTitle('🛒 Oficjalny Sklep Serwera PJN')             .setDescription(desc)             .setImage(LIVE_IMAGE_URL)             .setTimestamp()             .setFooter({ text: 'PJN System Ekonomii • Wybierz przedmiot poniżej' });          const selectMenu = new StringSelectMenuBuilder()             .setCustomId('shop_select')             .setPlaceholder('Wybierz przedmiot, który chcesz kupić...')             .addOptions(                 SHOP_ITEMS.map(item => ({                     label: item.name.substring(0, 25),                     description: `Cena: ${item.price} PJN-Coins`,
+            desc += `**${index + 1}.${item.name}** — 💰 **${item.price} PJN-Coins**\n> *${item.description}*\n\n`;
+        });
+
+        const embed = new EmbedBuilder()
+            .setColor(0xF1C40F)
+            .setTitle('🛒 Oficjalny Sklep Serwera PJN')
+            .setDescription(desc)
+            .setImage(LIVE_IMAGE_URL)
+            .setTimestamp()
+            .setFooter({ text: 'PJN System Ekonomii • Wybierz przedmiot poniżej' });
+
+        const selectMenu = new StringSelectMenuBuilder()
+            .setCustomId('shop_select')
+            .setPlaceholder('Wybierz przedmiot, który chcesz kupić...')
+            .addOptions(
+                SHOP_ITEMS.map(item => ({
+                    label: item.name.substring(0, 25),
+                    description: `Cena: ${item.price} PJN-Coins`,
                     value: item.id
                 }))
             );
@@ -1482,7 +1562,25 @@ async function checkAndAwardBadges(user: any, memberOrUser: any, guild?: any) {
                     new EmbedBuilder()
                         .setColor(0xFFD700)
                         .setTitle('🎉 Nowa odznaka odblokowana!')
-                        .setDescription(`Gratulacje! Otrzymałeś nowe odznaki:\n\n` + newBadges.map(b => `• ✨ ${b}`).join('\n'))                         .setTimestamp()                 ]             });         } catch (e) {}          const rareBadgesToAnnounce = newBadges.filter(b => RARE_ANNOUNCE_BADGES.includes(b));          if (rareBadgesToAnnounce.length > 0 && targetGuild) {             try {                 const announceChannel = await targetGuild.channels.fetch(ANNOUNCE_CHANNEL_ID).catch(() => null) as TextChannel;                 if (announceChannel) {                     const consoleEmbed = new EmbedBuilder()                         .setColor(0x107C10)                         .setTitle('🏆 RZADKA ODZNAKA ODBLOKOWANA!')                         .setThumbnail(targetUserObj.displayAvatarURL ? targetUserObj.displayAvatarURL() : client.user?.displayAvatarURL())                         .setDescription(                             `🎮 **SPECJALNE OSIĄGNIĘCIE**\n\n` +                             `Gracz <@${user.userId}> właśnie zdobył unikalne, rzadkie wyróżnienie na serwerze:\n\n` +
+                        .setDescription(`Gratulacje! Otrzymałeś nowe odznaki:\n\n` + newBadges.map(b => `• ✨ ${b}`).join('\n'))
+                        .setTimestamp()
+                ]
+            });
+        } catch (e) {}
+
+        const rareBadgesToAnnounce = newBadges.filter(b => RARE_ANNOUNCE_BADGES.includes(b));
+
+        if (rareBadgesToAnnounce.length > 0 && targetGuild) {
+            try {
+                const announceChannel = await targetGuild.channels.fetch(ANNOUNCE_CHANNEL_ID).catch(() => null) as TextChannel;
+                if (announceChannel) {
+                    const consoleEmbed = new EmbedBuilder()
+                        .setColor(0x107C10)
+                        .setTitle('🏆 RZADKA ODZNAKA ODBLOKOWANA!')
+                        .setThumbnail(targetUserObj.displayAvatarURL ? targetUserObj.displayAvatarURL() : client.user?.displayAvatarURL())
+                        .setDescription(
+                            `🎮 **SPECJALNE OSIĄGNIĘCIE**\n\n` +
+                            `Gracz <@${user.userId}> właśnie zdobył unikalne, rzadkie wyróżnienie na serwerze:\n\n` +
                             rareBadgesToAnnounce.map(b => `> ✨ **${b}**`).join('\n') + `\n\n` +
                             `*Zdobądź swój własny tytuł, budując aktywność i walcząc o odznaki w grach!*`
                         )
@@ -1491,7 +1589,73 @@ async function checkAndAwardBadges(user: any, memberOrUser: any, guild?: any) {
                         .setFooter({ text: 'PJN Achievement System • Xbox / PlayStation Style' });
 
                     await announceChannel.send({
-                        content: `<@${user.userId}>`,                         embeds: [consoleEmbed],                         allowedMentions: { users: [user.userId] }                     });                 }             } catch (err) {}         }     } }  async function getUserLevelRankDetails(userId: string): Promise<{ rank: number, total: number }> {     const targetUser = await UserModel.findOne({ userId });     if (!targetUser) return { rank: 1, total: 1 };      const total = await UserModel.countDocuments({});     const higherCount = await UserModel.countDocuments({         $or: [             { level: { $gt: targetUser.level \vert{}\vert{} 1 } },             { level: targetUser.level \vert{}\vert{} 1, exp: { $gt: targetUser.exp \vert{}\vert{} 0 } }         ]     });      return { rank: higherCount + 1, total: Math.max(1, total) }; }  async function addExp(userId: string, amount: number, guild: any) {     let user = await UserModel.findOne({ userId });     if (!user) user = await UserModel.create({ userId });      user.exp = (user.exp \vert{}\vert{} 0) + amount;          let requiredExpForNextLevel = user.level * 150;     let leveledUp = false;      while (user.exp >= requiredExpForNextLevel) {         user.exp -= requiredExpForNextLevel;         user.level = (user.level \vert{}\vert{} 1) + 1;         leveledUp = true;         requiredExpForNextLevel = user.level * 150;     }      if (leveledUp && user.level \% 10 === 0) {         user.balance += 1500;     }      await user.save();      if (leveledUp) {         try {             const channelToSend = await guild.channels.fetch(ID_KANAL_AWANSOW).catch(() => null) as TextChannel;             if (!channelToSend) return;              const member = await guild.members.fetch(userId).catch(() => null);             const avatarUrl = member ? member.user.displayAvatarURL() : client.user?.displayAvatarURL();             const rankDetails = await getUserLevelRankDetails(userId);              let rewardText = '';             if (user.level \% 10 === 0) {                 rewardText = `\n\n🎁 **Nagroda za awans na ${user.level} lvl:** Otrzymałeś **1500 PJN-Coins** do portfela! 💰`;             }              const embed = new EmbedBuilder()                 .setColor(0x9B59B6)                 .setTitle('🚀 AWANS NA WYŻSZY POZIOM!')                 .setThumbnail(avatarUrl)                 .setDescription(                     `Gratulacje <@${userId}>! Właśnie wskoczyłeś na wyższy poziom na serwerze! 🌟\n\n` +
+                        content: `<@${user.userId}>`,
+                        embeds: [consoleEmbed],
+                        allowedMentions: { users: [user.userId] }
+                    });
+                }
+            } catch (err) {}
+        }
+    }
+}
+
+async function getUserLevelRankDetails(userId: string): Promise<{ rank: number, total: number }> {
+    const targetUser = await UserModel.findOne({ userId });
+    if (!targetUser) return { rank: 1, total: 1 };
+
+    const total = await UserModel.countDocuments({});
+    const higherCount = await UserModel.countDocuments({
+        $or: [
+            { level: { $gt: targetUser.level || 1 } },
+            { level: targetUser.level || 1, exp: { $gt: targetUser.exp || 0 } }
+        ]
+    });
+
+    return { rank: higherCount + 1, total: Math.max(1, total) };
+}
+
+async function addExp(userId: string, amount: number, guild: any) {
+    let user = await UserModel.findOne({ userId });
+    if (!user) user = await UserModel.create({ userId });
+
+    user.exp = (user.exp || 0) + amount;
+    
+    let requiredExpForNextLevel = user.level * 150;
+    let leveledUp = false;
+
+    while (user.exp >= requiredExpForNextLevel) {
+        user.exp -= requiredExpForNextLevel;
+        user.level = (user.level || 1) + 1;
+        leveledUp = true;
+        requiredExpForNextLevel = user.level * 150;
+    }
+
+    if (leveledUp && user.level % 10 === 0) {
+        user.balance += 1500;
+    }
+
+    await user.save();
+
+    if (leveledUp) {
+        try {
+            const channelToSend = await guild.channels.fetch(ID_KANAL_AWANSOW).catch(() => null) as TextChannel;
+            if (!channelToSend) return;
+
+            const member = await guild.members.fetch(userId).catch(() => null);
+            const avatarUrl = member ? member.user.displayAvatarURL() : client.user?.displayAvatarURL();
+            const rankDetails = await getUserLevelRankDetails(userId);
+
+            let rewardText = '';
+            if (user.level % 10 === 0) {
+                rewardText = `\n\n🎁 **Nagroda za awans na ${user.level} lvl:** Otrzymałeś **1500 PJN-Coins** do portfela! 💰`;
+            }
+
+            const embed = new EmbedBuilder()
+                .setColor(0x9B59B6)
+                .setTitle('🚀 AWANS NA WYŻSZY POZIOM!')
+                .setThumbnail(avatarUrl)
+                .setDescription(
+                    `Gratulacje <@${userId}>! Właśnie wskoczyłeś na wyższy poziom na serwerze! 🌟\n\n` +
                     `⭐ **Nowy Poziom:** \`${user.level}\`\n` +
                     `🏆 **Miejsce w rankingu XP:** \`#${rankDetails.rank} z ${rankDetails.total}\`\n` +
                     `🎯 **Twój Postęp:** \`${user.exp} / ${user.level * 150} XP\`` +
@@ -2767,7 +2931,6 @@ client.on('interactionCreate', async interaction => {
             return;
         }
 
-        // === KOMENDA RĘCZNEGO POBIERANIA DARMOWYCH GIER ===
         if (commandName === 'darmowe-gry') {
             if (!isAuthorized(interaction.user.id)) return interaction.reply({ content: '❌ Brak uprawnień!', ephemeral: true });
             await interaction.deferReply({ ephemeral: true });
