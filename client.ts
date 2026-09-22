@@ -4564,9 +4564,15 @@ server.listen(PORT, () => {
   console.log(`Serwer HTTP nasłuchuje na porcie ${PORT}`);
 });
 
-// === BEZPIECZNE LOGOWANIE BOTA ===
-client.login(token).then(() => {
-    console.log('✅ client.login() zakończone pomyślnie.');
-}).catch((err) => {
-    console.error('❌ KRYTYCZNY BŁĄD PODCZAS LOGOWANIA BOTA DO DISCORDA:', err);
-});
+// === BEZPIECZNE LOGOWANIE BOTA Z WYMUSZENIEM CATCH ===
+async function runBot() {
+    try {
+        console.log('Próbuję wywołać client.login()...');
+        await client.login(token);
+        console.log('✅ Zalogowano pomyślnie do Discorda!');
+    } catch (error) {
+        console.error('❌ BŁĄD PODCZAS client.login():', error);
+    }
+}
+
+runBot();
