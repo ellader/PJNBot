@@ -41,7 +41,7 @@ const userSchema = new mongoose.Schema({
     balance: { type: Number, default: 0 },
     lastDaily: { type: Date, default: null },
     lastWheelSpin: { type: Date, default: null },
-    guaranteedWinUntil: { type: Date, default: null }, // <-- DODANE: 100% wygranych (Admin)
+    guaranteedWinUntil: { type: Date, default: null }, 
     messageCount: { type: Number, default: 0 },
     emojiCount: { type: Number, default: 0 },
     voiceMinutes: { type: Number, default: 0 },
@@ -300,7 +300,6 @@ function isAuthorized(userId: string): boolean {
     return adminIds.includes(userId);
 }
 
-// === BEZPIECZNA FUNKCJA ASK GEMINI Z AUTOMATYCZNYM PONAWIANIEM (RETRY) ===
 async function askGemini(promptText: string): Promise<string> {
     const maxRetries = 3;
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
@@ -330,7 +329,6 @@ async function askGemini(promptText: string): Promise<string> {
     return `Przepraszam, moduł AI napotkał błąd techniczny.`;
 }
 
-// === PULA PYTAŃ DLA QUIZU ===
 const QUIZ_POOL = [
     { q: 'Jakie miasto jest stolicą Polski?', correct: 'Warszawa', wrong1: 'Kraków', wrong2: 'Gdańsk' },
     { q: 'Która gra posiada tryb Battle Royale z budowaniem?', correct: 'Fortnite', wrong1: 'CS2', wrong2: 'Minecraft' },
@@ -880,7 +878,7 @@ function startExpirationChecker() {
                     { dailyBoostUntil: { $ne: null, $lte: now } },
                     { customRoleExpiresAt: { $ne: null, $lte: now } },
                     { customVoiceExpiresAt: { $ne: null, $lte: now } },
-                    { guaranteedWinUntil: { $ne: null, $lte: now } } // <-- Wygaśnięcie bonusu 100% wygranych
+                    { guaranteedWinUntil: { $ne: null, $lte: now } } 
                 ]
             });
 
@@ -2037,30 +2035,34 @@ const commands = [
 
 client.once('ready', async () => {
     console.log(`Zalogowano jako ${client.user?.tag}!`);
-    await seedQuotesIfNeeded();
-    await setupVerificationChannel(); 
-    await setupMemeChannelInstruction();
-    await setupLfgChannelInstruction(); 
-    await setupTicketChannel(); 
-    await setupRolesChannel(); 
-    await setupShowcaseChannelInstruction();
-    await setupReputationChannelInstruction();
-    await setupShopChannel();
-    await setupFortniteUpdateChannel(); 
-    await setupRussianRouletteChannel();
-    await setupWheelOfFortuneChannel();
-    await setupCasinoHubChannel();
-    await cleanupOrphanedLfgVoices();
 
-    const rest = new REST({ version: '10' }).setToken(token);
-    try {
-        for (const [_, guild] of client.guilds.cache) {
-            await rest.put(Routes.applicationGuildCommands(client.user!.id, guild.id), { body: commands });
-            await updateServerStats(guild);
+    // Uruchamiamy zadania asynchronicznie, żeby nie blokować startu bota
+    (async () => {
+        try {
+            await seedQuotesIfNeeded();
+            await setupVerificationChannel(); 
+            await setupMemeChannelInstruction();
+            await setupLfgChannelInstruction(); 
+            await setupTicketChannel(); 
+            await setupRolesChannel(); 
+            await setupShowcaseChannelInstruction();
+            await setupReputationChannelInstruction();
+            await setupShopChannel();
+            await setupFortniteUpdateChannel(); 
+            await setupRussianRouletteChannel();
+            await setupWheelOfFortuneChannel();
+            await setupCasinoHubChannel();
+            await cleanupOrphanedLfgVoices();
+
+            const rest = new REST({ version: '10' }).setToken(token);
+            for (const [_, guild] of client.guilds.cache) {
+                await rest.put(Routes.applicationGuildCommands(client.user!.id, guild.id), { body: commands });
+                await updateServerStats(guild);
+            }
+        } catch (initErr) {
+            console.error('Błąd podczas inicjalizacji funkcji startowych:', initErr);
         }
-    } catch (error) {
-        console.error('Błąd rejestracji:', error);
-    }
+    })();
 
     startTopUpdater();
     startBadgesInfoUpdater();
@@ -4542,6 +4544,7 @@ server.listen(PORT, () => {
   console.log(`Serwer HTTP nasłuchuje na porcie ${PORT}`);
 });
 
+console.log('🔄 Wywołuję client.login()...');
 client.login(token).catch(err => {
     console.error('❌ BŁĄD PODCZAS LOGOWANIA BOTA DO DISCORDA:', err);
 });
