@@ -37,6 +37,17 @@ if (!token) {
     process.exit(1);
 }
 
+// === INICJALIZACJA SERWERA HTTP (Wymóg dla Render / Darmowych Hostingów) ===
+const PORT = process.env.PORT || 10000;
+const server = http.createServer((req, res) => {
+  res.writeHead(200, { 'Content-Type': 'text/plain' });
+  res.end('Bot is running 24/7!\n');
+});
+
+server.listen(Number(PORT), '0.0.0.0', () => {
+  console.log(`Serwer HTTP nasłuchuje na porcie ${PORT}`);
+});
+
 // === INICJALIZACJA GEMINI AI ===
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
@@ -211,6 +222,7 @@ const client = new Client({
 // === NASŁUCHIWANIE ZDARZEŃ DIAGNOSTYCZNYCH DJS ===
 client.on('debug', (info) => console.log('[DISCORD DEBUG]', info));
 client.on('warn', (info) => console.warn('[DISCORD WARN]', info));
+client.on('error', (err) => console.error('[DISCORD ERROR]', err));
 
 const LFG_CONFIG = {
     CATEGORY_VOICE: '1545289592901468170', 
@@ -4074,24 +4086,13 @@ client.on('guildMemberRemove', async member => {
     } catch (error) {}
 });
 
-const server = http.createServer((req, res) => {
-  res.writeHead(200, { 'Content-Type': 'text/plain' });
-  res.end('Bot is running 24/7!\n');
-});
-
-const PORT = process.env.PORT || 10000;
-server.listen(PORT, () => {
-  console.log(`Serwer HTTP nasłuchuje na porcie ${PORT}`);
-});
-
 // === BEZPIECZNE LOGOWANIE BOTA Z WYMUSZENIEM CATCH ===
 async function runBot() {
     try {
         console.log('Próbuję wywołać client.login()...');
         await client.login(token);
-        console.log('✅ Zalogowano pomyślnie do Discorda!');
     } catch (error) {
-        console.error('❌ BŁĄD PODCZAS client.login():', error);
+        console.error('❌ KRYTYCZNY BŁĄD PODCZAS client.login():', error);
     }
 }
 
