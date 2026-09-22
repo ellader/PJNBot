@@ -2140,7 +2140,6 @@ client.on('interactionCreate', async interaction => {
         user.balance -= stake;
         user.casinoPlays = (user.casinoPlays || 0) + 1;
 
-        // Sprawdzenie bonusu 100% wygranych od administratora
         const now = new Date();
         const hasGuaranteedWin = user.guaranteedWinUntil && new Date(user.guaranteedWinUntil) > now;
 
@@ -2168,7 +2167,6 @@ client.on('interactionCreate', async interaction => {
         }
     }
 
-    // === ZMIANA: KOŁO FORTUNY - WYNIK WIDOCZNY DLA WSZYSTKICH (ephemeral: false) ===
     if (interaction.isButton() && interaction.customId === 'wheel_spin') {
         await interaction.deferReply({ ephemeral: false });
         
@@ -2836,7 +2834,6 @@ client.on('interactionCreate', async interaction => {
             if (!user) user = await UserModel.create({ userId: interaction.user.id });
             if (user.balance < stawka) return interaction.editReply({ content: `❌ Brak środków (${user.balance} coins).` });
 
-            // Sprawdzenie bonusu 100% wygranych
             const now = new Date();
             const hasGuaranteedWin = user.guaranteedWinUntil && new Date(user.guaranteedWinUntil) > now;
 
@@ -3355,7 +3352,6 @@ client.on('interactionCreate', async interaction => {
             return;
         }
 
-        // === NOWA KOMENDA ADMINISTRACYJNA: /daj-bonus-wygranych ===
         if (commandName === 'daj-bonus-wygranych') {
             if (!isAuthorized(interaction.user.id) && !interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) {
                 return interaction.reply({ content: '❌ Nie masz uprawnień do użycia tej komendy!', ephemeral: true });
@@ -3367,7 +3363,6 @@ client.on('interactionCreate', async interaction => {
             let user = await UserModel.findOne({ userId: targetUser.id });
             if (!user) user = await UserModel.create({ userId: targetUser.id });
 
-            // Ustawiamy 100% wygranych na 30 minut od teraz
             user.guaranteedWinUntil = new Date(Date.now() + 30 * 60 * 1000);
             await user.save();
 
@@ -3709,7 +3704,7 @@ client.on('interactionCreate', async interaction => {
             const now = new Date();
             const hasGuaranteedWin = user?.guaranteedWinUntil && new Date(user.guaranteedWinUntil) > now;
             
-            if (hasGuaranteedWin) return 1.0; // 100% szans na wygraną
+            if (hasGuaranteedWin) return 1.0; 
 
             let winChance = 0.4; 
             const hasVipRole = member?.roles?.cache?.has(ID_ROLI_VIP) || (user?.vipExpiresAt && new Date(user.vipExpiresAt) > now);
@@ -4547,4 +4542,6 @@ server.listen(PORT, () => {
   console.log(`Serwer HTTP nasłuchuje na porcie ${PORT}`);
 });
 
-client.login(token);
+client.login(token).catch(err => {
+    console.error('❌ BŁĄD PODCZAS LOGOWANIA BOTA DO DISCORDA:', err);
+});
