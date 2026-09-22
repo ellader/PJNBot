@@ -25,29 +25,6 @@ import Parser from 'rss-parser';
 import { GoogleGenAI } from '@google/genai';
 import http from 'http';
 
-// === DIAGNOSTYKA STARTOWA TOKENU ===
-console.log('--- START DIAGNOSTYKI TOKENU ---');
-console.log('Czy DISCORD_BOT_TOKEN istnieje:', !!process.env.DISCORD_BOT_TOKEN);
-console.log('Długość tokenu:', process.env.DISCORD_BOT_TOKEN ? process.env.DISCORD_BOT_TOKEN.length : 0);
-console.log('--------------------------------');
-
-const token = process.env.DISCORD_BOT_TOKEN;
-if (!token) {
-    console.error("❌ KRYTYCZNY BŁĄD: Brak zmiennej środowiskowej DISCORD_BOT_TOKEN!");
-    process.exit(1);
-}
-
-// === INICJALIZACJA SERWERA HTTP (Wymóg dla Render / Darmowych Hostingów) ===
-const PORT = process.env.PORT || 10000;
-const server = http.createServer((req, res) => {
-  res.writeHead(200, { 'Content-Type': 'text/plain' });
-  res.end('Bot is running 24/7!\n');
-});
-
-server.listen(Number(PORT), '0.0.0.0', () => {
-  console.log(`Serwer HTTP nasłuchuje na porcie ${PORT}`);
-});
-
 // === INICJALIZACJA GEMINI AI ===
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
@@ -207,6 +184,9 @@ const pollSchema = new mongoose.Schema({
 });
 const PollModel = mongoose.model('Poll', pollSchema);
 
+const token = process.env.DISCORD_BOT_TOKEN;
+if (!token) throw new Error("Brak tokena Discord bota!");
+
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
@@ -218,11 +198,6 @@ const client = new Client({
         GatewayIntentBits.GuildPresences
     ]
 });
-
-// === NASŁUCHIWANIE ZDARZEŃ DIAGNOSTYCZNYCH DJS ===
-client.on('debug', (info) => console.log('[DISCORD DEBUG]', info));
-client.on('warn', (info) => console.warn('[DISCORD WARN]', info));
-client.on('error', (err) => console.error('[DISCORD ERROR]', err));
 
 const LFG_CONFIG = {
     CATEGORY_VOICE: '1545289592901468170', 
@@ -333,7 +308,7 @@ async function askGemini(promptText: string): Promise<string> {
             console.log(`[AI] Wysyłanie zapytania do Gemini (próba ${attempt}): "${promptText}"`);
             
             const response = await ai.models.generateContent({
-                model: 'gemini-2.5-flash',
+                model: 'gemini-3.8-flash',
                 contents: promptText,
                 config: {
                     systemInstruction: "Jesteś pomocnym, inteligentnym i lekko dowcipnym asystentem AI na serwerze Discord społeczności PJN. Odpowiadaj w języku polskim w sposób zwięzły, konkretny i czytelny dla graczy.",
@@ -381,6 +356,144 @@ async function seedQuotesIfNeeded() {
         }
     } catch (e) {
         console.error('Błąd inicjalizacji cytatów:', e);
+    }
+}
+
+async function setupRussianRouletteChannel() {
+    try {
+        const channel = await client.channels.fetch('1549791536336732240').catch(() => null) as TextChannel;
+        if (!channel) return;
+        const messages = await channel.messages.fetch({ limit: 50 }).catch(() => null);
+        if (messages) for (const [_, msg] of messages) { if (msg.author.id === client.user?.id) await msg.delete().catch(() => {}); }
+
+        const embed = new EmbedBuilder()
+            .setColor(0xE74C3C)
+            .setTitle('🎯 Rosyjska Ruletka • Strefa Ryzyka PJN')
+            .setDescription(
+                'Masz odwagę zaryzykować swoje PJN-Coins?\n\n' +
+                '🔫 **Zasady:**\n' +
+                '• W bębnie rewolweru jest 1 kula na 6 komór.\n' +
+                '• Kliknij przycisk poniżej, podaj stawkę i pociągnij za spust!\n' +
+                '• Im wyższa stawka, tym większe ryzyko trafienia na kulę!\n' +
+                '• Jeśli przeżyjesz, podwajasz swoją stawkę (**x2**). Jeśli trafiłeś na kulę – tracisz postawione monety!'
+            )
+            .setImage(LIVE_IMAGE_URL)
+            .setTimestamp();
+
+        const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+            new ButtonBuilder().setCustomId('rr_start_modal').setLabel('Zagraj w Rosyjską Ruletkę').setStyle(ButtonStyle.Danger).setEmoji('🎯')
+        );
+
+        await channel.send({ embeds: [embed], components: [row] });
+    } catch (e) {}
+}
+
+async function setupWheelOfFortuneChannel() {
+    try {
+        const channel = await client.channels.fetch('1549791621942485120').catch(() => null) as TextChannel;
+        if (!channel) return;
+        const messages = await channel.messages.fetch({ limit: 50 }).catch(() => null);
+        if (messages) for (const [_, msg] of messages) { if (msg.author.id === client.user?.id) await msg.delete().catch(() => {}); }
+
+        const embed = new EmbedBuilder()
+            .setColor(0xF1C40F)
+            .setTitle('🎡 Koło Fortuny • Strefa Nagród PJN')
+            .setDescription(
+                'Zakręć wirtualnym Kołem Fortuny i wygrywaj cenne nagrody w PJN-Coins lub trafiaj na bonusy!\n\n' +
+                '✨ **Zasady:**\n' +
+                '• Kliknij przycisk poniżej, aby zakręcić kołem.\n' +
+                '• Możesz kręcić **raz na 2 godziny**!\n' +
+                '• Do wygrania: darmowe monety, mnożniki, a czasem... bankrut! Powodzenia!'
+            )
+            .setImage(LIVE_IMAGE_URL)
+            .setTimestamp();
+
+        const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+            new ButtonBuilder().setCustomId('wheel_spin').setLabel('Zakręć Kołem Fortuny!').setStyle(ButtonStyle.Success).setEmoji('🎡')
+        );
+
+        await channel.send({ embeds: [embed], components: [row] });
+    } catch (e) {}
+}
+
+async function setupCasinoHubChannel() {
+    try {
+        const channel = await client.channels.fetch('1534060126980411423').catch(() => null) as TextChannel;
+        if (!channel) return;
+        const messages = await channel.messages.fetch({ limit: 50 }).catch(() => null);
+        if (messages) for (const [_, msg] of messages) { if (msg.author.id === client.user?.id) await msg.delete().catch(() => {}); }
+
+        const embed = new EmbedBuilder()
+            .setColor(0x9B59B6)
+            .setTitle('🕹️ Salon Gier i Kasyno PJN — Dostępne Gry')
+            .setDescription(
+                'Witaj w oficjalnym salonie gier! Poniżej znajdziesz pełną listę wszystkich dostępnych gier i komend, w których możesz pomnożyć swoje PJN-Coins:\n\n' +
+                '🎰 **1. Quiz z nagrodami**\n> Komenda: `/quiz-gra` — Odpowiadaj na losowe pytania i zdobywaj monety!\n\n' +
+                '✂️ **2. Kamień, Papier, Nożyce**\n> Komenda: `/kpn [wybór] [stawka]` — Klasyczny pojedynek z botem 1v1.\n\n' +
+                '🎲 **3. Rzut Kością**\n> Komenda: `/kostka [stawka]` — Sprawdź swój los w rzucie kostką.\n\n' +
+                '🪙 **4. Orzeł czy Reszka**\n> Komenda: `/moneta [wybór] [stawka]` — Obstaw stronę monety.\n\n' +
+                '🎰 **5. Maszyna Slotowa (Jednoręki Bandyta)**\n> Kanał dedykowany: <#1534066347452141639> (Komenda: `/slot [stawka]`)\n\n' +
+                '🃏 **6. Poker**\n> Kanał dedykowany: <#1534060082084577350> (Komenda: `/poker [tryb] [stawka]`)\n\n' +
+                '🎯 **7. Rosyjska Ruletka**\n> Kanał specjalny: <#1549791536336732240> — Ryzykuj stawkę w rewolwerze (większe ryzyko przy dużych stawkach)!\n\n' +
+                '🎡 **8. Koło Fortuny**\n> Kanał specjalny: <#1549791621942485120> — Kręć kołem co 2 godziny i wygrywaj darmowe nagrody!'
+            )
+            .setImage(LIVE_IMAGE_URL)
+            .setTimestamp()
+            .setFooter({ text: 'PJN Kasyno & Arcade • Powodzenia w grach!' });
+
+        await channel.send({ embeds: [embed] });
+    } catch (e) {}
+}
+
+async function setupVerificationChannel() {
+    try {
+        const channel = await client.channels.fetch(ID_KANAL_WERYFIKACJI).catch(() => null) as TextChannel;
+        if (!channel) return;
+
+        const messages = await channel.messages.fetch({ limit: 50 }).catch(() => null);
+        if (messages) {
+            for (const [_, msg] of messages) {
+                if (msg.author.id === client.user?.id) {
+                    await msg.delete().catch(() => {});
+                }
+            }
+        }
+
+        const embed = new EmbedBuilder()
+            .setColor(0x2ECC71)
+            .setTitle('🛡️ Weryfikacja i Wybór Płci • PJN Community')
+            .setDescription(
+                'Witaj na serwerze! Aby uzyskać dostęp do całej społeczności, musisz przejść prostą i obowiązkową weryfikację.\n\n' +
+                '👇 **Wybierz swoją płeć w menu rozwijanym poniżej:**\n' +
+                '• Wybór odpowiedniej opcji automatycznie nada Ci rangę członkowską oraz odblokuje kanały na serwerze.'
+            )
+            .setImage(LIVE_IMAGE_URL)
+            .setTimestamp()
+            .setFooter({ text: 'PJN System Weryfikacji' });
+
+        const selectMenu = new StringSelectMenuBuilder()
+            .setCustomId('verification_gender_select')
+            .setPlaceholder('Wybierz swoją płeć, aby się zweryfikować...')
+            .addOptions([
+                {
+                    label: 'Mężczyzna',
+                    description: 'Wybierz, aby otrzymać rangę męską i zweryfikować konto',
+                    value: 'verify_male',
+                    emoji: '👦'
+                },
+                {
+                    label: 'Kobieta',
+                    description: 'Wybierz, aby otrzymać rangę damską i zweryfikować konto',
+                    value: 'verify_female',
+                    emoji: '👧'
+                }
+            ]);
+
+        const row = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(selectMenu);
+        const sentMsg = await channel.send({ embeds: [embed], components: [row] });
+        await sentMsg.pin().catch(() => {});
+    } catch (e) {
+        console.error('Błąd inicjalizacji kanału weryfikacji:', e);
     }
 }
 
@@ -509,6 +622,50 @@ function startDailyShopAutoPoster() {
 
 let lastFortniteIncidentId: string | null = null;
 let lastFortniteStatusState: string | null = null;
+
+async function setupFortniteUpdateChannel() {
+    try {
+        const channel = await client.channels.fetch(ID_KANAL_AKTUALIZACJI_FORTNITE).catch(() => null) as TextChannel;
+        if (!channel) return;
+
+        const messages = await channel.messages.fetch({ limit: 50 }).catch(() => null);
+        if (messages) {
+            for (const [_, msg] of messages) {
+                if (msg.author.id === client.user?.id) {
+                    await msg.delete().catch(() => {});
+                }
+            }
+        }
+
+        const embed = new EmbedBuilder()
+            .setColor(0x00D9FF)
+            .setTitle('🚀 Centrum Powiadomień o Aktualizacjach Fortnite')
+            .setDescription(
+                'Ten kanał służy jako oficjalna tablica informacyjna dla graczy Fortnite.\n\n' +
+                '🤖 **Co tutaj znajdziesz?**\n' +
+                '• 📢 **Informacje o nadchodzących aktualizacjach** z wyprzedzeniem.\n' +
+                '• 🛑 **Ostrzeżenia o zamknięciu serwerów** (przerwy techniczne / downtime).\n' +
+                '• ✅ **Informację o ponownym otwarciu serwerów**, gdy gra znów będzie dostępna!\n\n' +
+                '🔔 *Kliknij poniższy przycisk, aby włączyć lub wyłączyć powiadomienia (rangę <@&' + ID_RANGI_AKTUALIZACJE_FORTNITE + '>) i otrzymywać powiadomienia dźwiękowe o przerwach w grze!*'
+            )
+            .setImage(LIVE_IMAGE_URL)
+            .setTimestamp()
+            .setFooter({ text: 'PJN System Monitorowania Fortnite' });
+
+        const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+            new ButtonBuilder()
+                .setCustomId('role_fn_updates_toggle')
+                .setLabel('Przełącz rangę powiadomień Fortnite')
+                .setStyle(ButtonStyle.Primary)
+                .setEmoji('🔔')
+        );
+
+        const sentMsg = await channel.send({ embeds: [embed], components: [row] });
+        await sentMsg.pin().catch(() => {});
+    } catch (e) {
+        console.error('Błąd inicjalizacji panelu aktualizacji Fortnite:', e);
+    }
+}
 
 async function checkFortniteServerStatus() {
     try {
@@ -898,6 +1055,296 @@ function createBadgesInfoEmbeds() {
         .setFooter({ text: 'PJN System Odznak • Automatycznie aktualizowany' });
 
     return [embed1, embed2];
+}
+
+function createTicketPanelEmbed() {
+    return new EmbedBuilder()
+        .setColor(0x2ECC71)
+        .setTitle('🎫 Centrum Pomocy i Zgłoszeń PJN')
+        .setDescription(
+            'Potrzebujesz pomocy z duszkiem? Dobrze trafiłeś!\n\n' +
+            'Kliknij poniższy przycisk **"Stwórz Ticket"**, aby otworzyć prywatny kanał. Nasza ekipa pomoże Ci tak szybko, jak to możliwe!\n\n' +
+            '⚠️ *Prosimy nie tworzyć zgłoszeń bez potrzeby – szanujmy swój czas.*'
+        )
+        .setTimestamp()
+        .setFooter({ text: 'PJN System Ticketów • Bezpieczna pomoc' });
+}
+
+async function setupTicketChannel() {
+    try {
+        const channel = await client.channels.fetch(ID_KANALU_DUSZKI).catch(() => null) as TextChannel;
+        if (!channel) return;
+
+        const messages = await channel.messages.fetch({ limit: 100 }).catch(() => null);
+        if (messages) {
+            for (const [_, msg] of messages) {
+                if (msg.author.id === client.user?.id) {
+                    await msg.delete().catch(() => {});
+                }
+            }
+        }
+
+        const embed = createTicketPanelEmbed();
+        const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+            new ButtonBuilder()
+                .setCustomId('create_ticket')
+                .setLabel('Stwórz Ticket')
+                .setStyle(ButtonStyle.Success)
+                .setEmoji('🎫')
+        );
+
+        await channel.send({ embeds: [embed], components: [row] });
+    } catch (e) {
+        console.error('Błąd podczas inicjalizacji panelu ticketów:', e);
+    }
+}
+
+async function setupRolesChannel() {
+    try {
+        const channel = await client.channels.fetch(ID_KANAL_RANG).catch(() => null) as TextChannel;
+        if (!channel) return;
+
+        const messages = await channel.messages.fetch({ limit: 100 }).catch(() => null);
+        if (messages) {
+            for (const [_, msg] of messages) {
+                if (msg.author.id === client.user?.id) {
+                    await msg.delete().catch(() => {});
+                }
+            }
+        }
+
+        const embed = new EmbedBuilder()
+            .setColor(0x5865F2)
+            .setTitle('⚡ Dostosuj swoje role na serwerze PJN!')
+            .setDescription('Kliknij odpowiedni przycisk poniżej, aby otrzymać lub zdjąć wybraną rangę. Bądź na bieżąco i spersonalizuj swój profil!')
+            .setTimestamp();
+
+        const row1 = new ActionRowBuilder<ButtonBuilder>().addComponents(
+            new ButtonBuilder().setCustomId('role_bezrobotny').setLabel('Bezrobotny').setStyle(ButtonStyle.Primary).setEmoji('😜'),
+            new ButtonBuilder().setCustomId('role_kolekcjoner').setLabel('Kolekcjoner Duszków').setStyle(ButtonStyle.Primary).setEmoji('👻')
+        );
+
+        const row2 = new ActionRowBuilder<ButtonBuilder>().addComponents(
+            new ButtonBuilder().setCustomId('role_fortnite').setLabel('Fortnite').setStyle(ButtonStyle.Secondary).setEmoji('🗺️'),
+            new ButtonBuilder().setCustomId('role_cs2').setLabel('CS2').setStyle(ButtonStyle.Secondary).setEmoji('🔪'),
+            new ButtonBuilder().setCustomId('role_minecraft').setLabel('Minecraft').setStyle(ButtonStyle.Secondary).setEmoji('📦')
+        );
+
+        const row3 = new ActionRowBuilder<ButtonBuilder>().addComponents(
+            new ButtonBuilder().setCustomId('role_gta').setLabel('GTA V').setStyle(ButtonStyle.Secondary).setEmoji('🚗'),
+            new ButtonBuilder().setCustomId('role_valorant').setLabel('Valorant').setStyle(ButtonStyle.Secondary).setEmoji('⚡'),
+            new ButtonBuilder().setCustomId('role_lol').setLabel('LoL').setStyle(ButtonStyle.Secondary).setEmoji('⚔️')
+        );
+
+        const row4 = new ActionRowBuilder<ButtonBuilder>().addComponents(
+            new ButtonBuilder().setCustomId('role_zerobuild').setLabel('BR Zero Budowania').setStyle(ButtonStyle.Success).setEmoji('🔥'),
+            new ButtonBuilder().setCustomId('role_reaktywacja').setLabel('Reaktywacja').setStyle(ButtonStyle.Danger).setEmoji('🚨'),
+            new ButtonBuilder().setCustomId('role_budowanie').setLabel('BR Budowanie').setStyle(ButtonStyle.Success).setEmoji('🪵')
+        );
+
+        const row5 = new ActionRowBuilder<ButtonBuilder>().addComponents(
+            new ButtonBuilder().setCustomId('role_forfun').setLabel('ForFun').setStyle(ButtonStyle.Primary).setEmoji('🤖'),
+            new ButtonBuilder().setCustomId('role_najlepszy').setLabel('Najlepszy gracz').setStyle(ButtonStyle.Success).setEmoji('💪')
+        );
+
+        await channel.send({ embeds: [embed], components: [row1, row2, row3, row4, row5] });
+    } catch (e) {
+        console.error('Błąd podczas ustawiania kanału ról:', e);
+    }
+}
+
+async function setupMemeChannelInstruction() {
+    try {
+        const channel = await client.channels.fetch(ID_KANALU_MEMOW).catch(() => null) as TextChannel;
+        if (!channel) return;
+
+        const messages = await channel.messages.fetch({ limit: 100 }).catch(() => null);
+        if (messages) {
+            for (const [_, msg] of messages) {
+                if (msg.author.id === client.user?.id) {
+                    await msg.delete().catch(() => {});
+                }
+            }
+        }
+
+        const embed = new EmbedBuilder()
+            .setColor(0xE74C3C)
+            .setTitle('🖼️ Jak korzystać z Generatora Memów PJN?')
+            .setDescription(
+                'W tym kanale możesz w pełni bezpiecznie i bez spamowania tworzyć własne memy za pomocą bota!\n\n' +
+                '🛠️ **Jak wygenerować mema?**\n' +
+                '1. Wpisz w oknie wiadomości komendę: `/mem`\n' +
+                '2. Wpisz nazwę w polu **szablon** – bot podpowie Ci setki dziesiątek szablonów z całego świata!\n' +
+                '3. Wpisz tekst górny i dolny (opcjonalnie).\n' +
+                '4. Naciśnij **Enter**, a bot w kilka sekund wygeneruje gotowy obrazek na czacie!\n\n' +
+                '⚠️ *Na tym kanale wysyłanie zwykłego tekstu jest zablokowane – korzystaj wyłącznie z komendy `/mem`!*'
+            )
+            .setImage('https://imgflip.com/s/meme/Drake-Hotline-Bling.jpg')
+            .setFooter({ text: 'PJN Generator Memów • Miłej zabawy!' });
+
+        const sentMsg = await channel.send({ embeds: [embed] });
+        await sentMsg.pin().catch(() => {});
+    } catch (e) {
+        console.error('Błąd podczas ustawiania instrukcji memów:', e);
+    }
+}
+
+async function setupShopChannel() {
+    try {
+        const channel = await client.channels.fetch(ID_KANAL_SKLEPU).catch(() => null) as TextChannel;
+        if (!channel) return;
+
+        const messages = await channel.messages.fetch({ limit: 100 }).catch(() => null);
+        if (messages) {
+            for (const [_, msg] of messages) {
+                if (msg.author.id === client.user?.id) {
+                    await msg.delete().catch(() => {});
+                }
+            }
+        }
+
+        let desc = 'Witaj w oficjalnym sklepie serwera PJN! Wydawaj swoje PJN-Coins na unikalne przedmioty, role i usługi.\n\n*Wszystkie rangi czasowe (w tym VIP) są ważne przez 30 dni, po czym automatycznie wygasają.*\n\n**📋 Dostępny asortyment:**\n\n';
+        SHOP_ITEMS.forEach((item, index) => {
+            desc += `**${index + 1}. ${item.name}** — 💰 **${item.price} PJN-Coins**\n> *${item.description}*\n\n`;
+        });
+
+        const embed = new EmbedBuilder()
+            .setColor(0xF1C40F)
+            .setTitle('🛒 Oficjalny Sklep Serwera PJN')
+            .setDescription(desc)
+            .setImage(LIVE_IMAGE_URL)
+            .setTimestamp()
+            .setFooter({ text: 'PJN System Ekonomii • Wybierz przedmiot poniżej' });
+
+        const selectMenu = new StringSelectMenuBuilder()
+            .setCustomId('shop_select')
+            .setPlaceholder('Wybierz przedmiot, który chcesz kupić...')
+            .addOptions(
+                SHOP_ITEMS.map(item => ({
+                    label: item.name.substring(0, 25),
+                    description: `Cena: ${item.price} PJN-Coins`,
+                    value: item.id
+                }))
+            );
+
+        const row = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(selectMenu);
+        const sentMsg = await channel.send({ embeds: [embed], components: [row] });
+        await sentMsg.pin().catch(() => {});
+    } catch (e) {
+        console.error('Błąd inicjalizacji kanału sklepu:', e);
+    }
+}
+
+async function setupLfgChannelInstruction() {
+    try {
+        const channel = await client.channels.fetch(ID_KANALU_SZUKAM_DO_GRY).catch(() => null) as TextChannel;
+        if (!channel) return;
+
+        const messages = await channel.messages.fetch({ limit: 50 }).catch(() => null);
+        if (messages) {
+            for (const [_, msg] of messages) {
+                if (msg.author.id === client.user?.id && msg.embeds.length > 0 && msg.embeds[0].title?.includes('Centrum LFG')) {
+                    await msg.delete().catch(() => {});
+                }
+            }
+        }
+
+        const embed = new EmbedBuilder()
+            .setColor(0x5865F2)
+            .setTitle('🎮 Centrum LFG (Looking For Group) — Jak szukać ekipy do gry?')
+            .setDescription(
+                'Masz dosyć grania w pojedynkę? Chcesz znaleźć zgrany skład do ulubionej gry? Skorzystaj z naszego automatycznego systemu LFG!\n\n' +
+                '🛠️ **Jak stworzyć ogłoszenie o grze?**\n' +
+                `1. Wpisz na tym kanale (<#${ID_KANALU_SZUKAM_DO_GRY}>) komendę: \`/szukam\`\n` +
+                '2. Wybierz grę z listy (Fortnite, CS2, Minecraft, GTA V, Valorant lub League of Legends).\n' +
+                '3. Podaj maksymalną liczbę osób w drużynie oraz dodaj opcjonalny opis (np. ranga, mikrofon, styl gry).\n' +
+                '4. Bot wygeneruje interaktywne ogłoszenie wraz z pingiem odpowiedniej roli!\n\n' +
+                '👥 **Jak dołączyć do ekipy?**\n' +
+                '• Kliknij zielony przycisk **"Dołącz do ekipy"** pod wybranym ogłoszeniem.\n' +
+                '• Gdy skład się zapełni (lub autor kliknie utworzenie pokoju), bot **automatycznie utworzy dla Was prywatny kanał głosowy** z odpowiednimi uprawnieniami!\n' +
+                '• W każdej chwili możesz opuścić ekipę, klikając czerwony przycisk **"Opuść"**, a jako autor możesz zamknąć ogłoszenie, jeśli się rozmyślisz.'
+            )
+            .setImage(LIVE_IMAGE_URL)
+            .setTimestamp()
+            .setFooter({ text: 'PJN System LFG • Znajdź swoją ekipę!' });
+
+        const sentMsg = await channel.send({ embeds: [embed] });
+        await sentMsg.pin().catch(() => {});
+    } catch (e) {
+        console.error('Błąd podczas ustawiania instrukcji LFG:', e);
+    }
+}
+
+async function setupShowcaseChannelInstruction() {
+    try {
+        const channel = await client.channels.fetch(ID_KANALU_POKAZ_SIEBIE).catch(() => null) as TextChannel;
+        if (!channel) return;
+
+        const messages = await channel.messages.fetch({ limit: 100 }).catch(() => null);
+        if (messages) {
+            for (const [_, msg] of messages) {
+                if (msg.author.id === client.user?.id) {
+                    await msg.delete().catch(() => {});
+                }
+            }
+        }
+
+        const embed = new EmbedBuilder()
+            .setColor(0xE91E63)
+            .setTitle('📸 Przedstaw się społeczności PJN!')
+            .setDescription(
+                'Witaj na kanale dedykowanym naszym członkom! Chcesz, aby inni Cię poznali? To idealne miejsce, aby pokazać siebie światu.\n\n' +
+                '✨ **Co możesz tutaj wrzucić?**\n' +
+                '• Swoje zdjęcie (lub zdjęcie pasji/zwierzaka, jeśli wolisz zachować prywatność) 📷\n' +
+                '• Kilka słów o sobie: czym się interesujesz, jakiej słuchasz muzyki, w co grasz? 🎧🎮\n' +
+                '• Pozdrowienia dla całej ekipy PJN! 👋\n\n' +
+                '💬 **Wątki dyskusyjne:**\n' +
+                'Pod każdym Twoim zdjęciem bot **automatycznie utworzy osobny wątek do dyskusji**, dzięki czemu rozmowy nie zaspamują głównej tablicy!'
+            )
+            .setImage(LIVE_IMAGE_URL)
+            .setTimestamp()
+            .setFooter({ text: 'PJN Strefa Społeczności • Pokaż się nam!' });
+
+        const sentMsg = await channel.send({ embeds: [embed] });
+        await sentMsg.pin().catch(() => {});
+    } catch (e) {
+        console.error('Błąd podczas ustawiania instrukcji kanału przedstawiania się:', e);
+    }
+}
+
+async function setupReputationChannelInstruction() {
+    try {
+        const channel = await client.channels.fetch(ID_KANAL_REPUTACJI).catch(() => null) as TextChannel;
+        if (!channel) return;
+
+        const messages = await channel.messages.fetch({ limit: 100 }).catch(() => null);
+        if (messages) {
+            for (const [_, msg] of messages) {
+                if (msg.author.id === client.user?.id) {
+                    await msg.delete().catch(() => {});
+                }
+            }
+        }
+
+        const embed = new EmbedBuilder()
+            .setColor(0xF1C40F)
+            .setTitle('⭐ System Reputacji i Bezpiecznych Wymian Duszków Fortnite')
+            .setDescription(
+                'Witaj w oficjalnym centrum reputacji handlowej serwera PJN! Ten kanał służy do oceniania rzetelności innych traderów po zakończonej wymianie.\n\n' +
+                '📜 **Zasady nadawania reputacji:**\n' +
+                '• Oceniaj wyłącznie osoby, z którymi faktycznie dokonałeś wymiany duszków w Fortnite.\n' +
+                '• Możesz ocenić tego samego użytkownika **maksymalnie raz na 24 godziny**.\n' +
+                '• Komendy: `+rep @użytkownik`, `-rep @użytkownik`, `/reputacja`.'
+            )
+            .setImage(LIVE_IMAGE_URL)
+            .setTimestamp()
+            .setFooter({ text: 'PJN System Reputacji • Handluj bezpiecznie' });
+
+        const sentMsg = await channel.send({ embeds: [embed] });
+        await sentMsg.pin().catch(() => {});
+    } catch (e) {
+        console.error('Błąd podczas ustawiania instrukcji kanału reputacji:', e);
+    }
 }
 
 async function updateTraderRoles(member: any, reputation: number) {
@@ -1589,11 +2036,23 @@ const commands = [
 ].map(c => c.toJSON());
 
 client.once('ready', async () => {
-    console.log(`✅ Zalogowano pomyślnie jako ${client.user?.tag}!`);
+    console.log(`Zalogowano jako ${client.user?.tag}!`);
     await seedQuotesIfNeeded();
+    await setupVerificationChannel(); 
+    await setupMemeChannelInstruction();
+    await setupLfgChannelInstruction(); 
+    await setupTicketChannel(); 
+    await setupRolesChannel(); 
+    await setupShowcaseChannelInstruction();
+    await setupReputationChannelInstruction();
+    await setupShopChannel();
+    await setupFortniteUpdateChannel(); 
+    await setupRussianRouletteChannel();
+    await setupWheelOfFortuneChannel();
+    await setupCasinoHubChannel();
     await cleanupOrphanedLfgVoices();
 
-    const rest = new REST({ version: '10' }).setToken(token!);
+    const rest = new REST({ version: '10' }).setToken(token);
     try {
         console.log('Rozpoczęto rejestrację komend globalnych...');
         await rest.put(
@@ -4086,14 +4545,14 @@ client.on('guildMemberRemove', async member => {
     } catch (error) {}
 });
 
-// === BEZPIECZNE LOGOWANIE BOTA Z WYMUSZENIEM CATCH ===
-async function runBot() {
-    try {
-        console.log('Próbuję wywołać client.login()...');
-        await client.login(token);
-    } catch (error) {
-        console.error('❌ KRYTYCZNY BŁĄD PODCZAS client.login():', error);
-    }
-}
+const server = http.createServer((req, res) => {
+  res.writeHead(200, { 'Content-Type': 'text/plain' });
+  res.end('Bot is running 24/7!\n');
+});
 
-runBot();
+const PORT = process.env.PORT || 10000;
+server.listen(PORT, () => {
+  console.log(`Serwer HTTP nasłuchuje na porcie ${PORT}`);
+});
+
+client.login(token);
