@@ -16,10 +16,7 @@
     "node-fetch": "^2.7.0",
     "play-dl": "^1.9.7",
     "rss-parser": "^3.13.0",
-    "tiktok-live-connector": "^1.1.5"
-  },
-  "devDependencies": {
-    "tsx": "^4.7.1",
-    "typescript": "^5.3.3"
+    "tiktok-live-connector": "^1.1.5",
+    "tsx": "^4.7.1"
   }
 }
