@@ -220,8 +220,7 @@ const NOTIF_CONFIG = {
         channelId: '1542101962185646111',
         rssUrl: 'https://www.youtube.com/feeds/videos.xml?channel_id=TUTAJ_WKLEJ_ID_ELLADER'
     },
-    leaveLogChannelId: '1542102521814712371',
-    freeGamesChannelId: '1551606555533910189' // Kanał na darmowe gry Epic i Steam
+    leaveLogChannelId: '1542102521814712371'
 };
 const parser = new Parser();
 
@@ -299,115 +298,6 @@ const LIVE_IMAGE_URL = "https://cdn.discordapp.com/attachments/15323210677317836
 function isAuthorized(userId: string): boolean {
     const adminIds = ['1175798371995361343', '1493928957408448563'];
     return adminIds.includes(userId);
-}
-
-// === FUNKCJA POBIERANIA I PUBLIKOWANIA DARMOWYCH GIER (EPIC GAMES & STEAM) ===
-async function postFreeGamesToChannel() {
-    try {
-        const channel = await client.channels.fetch(NOTIF_CONFIG.freeGamesChannelId).catch(() => null) as TextChannel;
-        if (!channel) return;
-
-        // Czyszczenie poprzednich wiadomości bota na kanale
-        const messages = await channel.messages.fetch({ limit: 20 }).catch(() => null);
-        if (messages) {
-            for (const [_, msg] of messages) {
-                if (msg.author.id === client.user?.id) {
-                    await msg.delete().catch(() => {});
-                }
-            }
-        }
-
-        // 1. POBIERANIE Z EPIC GAMES STORE
-        let epicDesc = 'Aktualnie darmowe gry w Epic Games Store:\n\n';
-        let epicCount = 0;
-        try {
-            const epicRes = await fetch('https://store-site-backend-static-ipv4.ak.epicgames.com/freeGamesPromotions?locale=pl&country=PL&allowCountries=PL');
-            const epicData = await epicRes.json() as any;
-            const epicElements = epicData?.data?.Catalog?.searchStore?.elements || [];
-
-            for (const element of epicElements) {
-                const promotions = element.promotions?.promotionalOffers;
-                let isFreeNow = false;
-                if (promotions && promotions.length > 0) {
-                    for (const promoGroup of promotions) {
-                        for (const offer of promoGroup.promotionalOffers || []) {
-                            const start = new Date(offer.startDate).getTime();
-                            const end = new Date(offer.endDate).getTime();
-                            const now = Date.now();
-                            if (now >= start && now <= end && (offer.discountSetting?.discountPercentage === 0)) {
-                                isFreeNow = true;
-                            }
-                        }
-                    }
-                }
-
-                if (isFreeNow) {
-                    const title = element.title || 'Darmowa gra';
-                    const desc = element.description || 'Brak opisu.';
-                    const slug = element.productSlug || element.urlSlug || '';
-                    const link = `https://store.epicgames.com/pl/p/${slug}`;
-                    epicDesc += `🎮 **[${title}](${link})**\n> *${desc}*\n\n`;
-                    epicCount++;
-                }
-            }
-        } catch (e) {
-            epicDesc += '• Nie udało się pobrać danych z Epic Games Store.';
-        }
-
-        if (epicCount === 0) {
-            epicDesc += '• W tej chwili brak nowych darmowych gier lub trwa zmiana oferty w Epic Games Store.';
-        }
-
-        const epicEmbed = new EmbedBuilder()
-            .setColor(0x0078F2)
-            .setTitle('🎁 Darmowe Gry w Epic Games Store')
-            .setDescription(epicDesc)
-            .setImage(LIVE_IMAGE_URL)
-            .setTimestamp()
-            .setFooter({ text: 'PJN Darmowe Gry • Epic Games' });
-
-        // 2. POBIERANIE ZE STEAM
-        let steamDesc = 'Aktualne promocje i darmowe gry na platformie Steam:\n\n';
-        try {
-            const steamRes = await fetch('https://store.steampowered.com/search/results/?query&specials=1&maxprice=free&cc=PL&json=1');
-            const steamData = await steamRes.json() as any;
-            
-            if (steamData && steamData.items && steamData.items.length > 0) {
-                const freeItems = steamData.items.slice(0, 5);
-                for (const item of freeItems) {
-                    steamDesc += `🎮 **[${item.name}](${item.url})**\n> 💰 Cena: ~~${item.original_price || 'Płatna'}~~ ➔ **DARMOWA / PROMOCJA**\n\n`;
-                }
-            } else {
-                steamDesc += '• Sprawdź aktualne darmowe pakiety bezpośrednio na Steam:\n[Otwórz Steam - Darmowe gry](https://store.steampowered.com/search/?maxprice=free&specials=1)';
-            }
-        } catch (e) {
-            steamDesc += '• [Otwórz Steam - Darmowe gry](https://store.steampowered.com/search/?maxprice=free&specials=1)';
-        }
-
-        const steamEmbed = new EmbedBuilder()
-            .setColor(0x1B2838)
-            .setTitle('🎁 Darmowe Gry i Promocje na Steam')
-            .setDescription(steamDesc)
-            .setImage(LIVE_IMAGE_URL)
-            .setTimestamp()
-            .setFooter({ text: 'PJN Darmowe Gry • Steam Store' });
-
-        // Wysłanie wiadomości bez pingu everyone i bez @everyone w tekście
-        await channel.send({ 
-            content: 'Świeże zestawienie darmowych gier z platform Epic Games oraz Steam!', 
-            embeds: [epicEmbed, steamEmbed]
-        });
-
-    } catch (e) {
-        console.error('Błąd podczas pobierania darmowych gier:', e);
-    }
-}
-
-function startFreeGamesCron() {
-    // Codziennie o godzinie 12:00 automatycznie odświeża i wysyła darmowe gry
-    cron.schedule('0 12 * * *', async () => {
-        await postFreeGamesToChannel();
-    });
 }
 
 // === BEZPIECZNA FUNKCJA ASK GEMINI Z AUTOMATYCZNYM PONAWIANIEM (RETRY) ===
@@ -2003,10 +1893,6 @@ const commands = [
         .setDescription('Zadaj pytanie sztucznej inteligencji PJN AI')
         .addStringOption(o => o.setName('pytanie').setDescription('Twoje pytanie do sztucznej inteligencji').setRequired(true)),
     new SlashCommandBuilder()
-        .setName('darmowe-gry')
-        .setDescription('Ręcznie pobierz i wyświetl aktualne darmowe gry z Epic Games i Steam (Admin)')
-        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
-    new SlashCommandBuilder()
         .setName('ankieta')
         .setDescription('Stwórz interaktywną ankietę na żywo ze statusem głosowania i licznikiem')
         .addStringOption(o => o.setName('pytanie').setDescription('Treść pytania ankiety').setRequired(true))
@@ -2189,7 +2075,6 @@ client.once('ready', async () => {
     startFortniteStatusCron(); 
     startServerStatsCron();
     startPollChecker();
-    startFreeGamesCron();
 });
 
 client.on('interactionCreate', async interaction => {
@@ -2255,6 +2140,7 @@ client.on('interactionCreate', async interaction => {
         user.balance -= stake;
         user.casinoPlays = (user.casinoPlays || 0) + 1;
 
+        // Sprawdzenie bonusu 100% wygranych od administratora
         const now = new Date();
         const hasGuaranteedWin = user.guaranteedWinUntil && new Date(user.guaranteedWinUntil) > now;
 
@@ -2282,6 +2168,7 @@ client.on('interactionCreate', async interaction => {
         }
     }
 
+    // === ZMIANA: KOŁO FORTUNY - WYNIK WIDOCZNY DLA WSZYSTKICH (ephemeral: false) ===
     if (interaction.isButton() && interaction.customId === 'wheel_spin') {
         await interaction.deferReply({ ephemeral: false });
         
@@ -2935,14 +2822,6 @@ client.on('interactionCreate', async interaction => {
             return;
         }
 
-        // === KOMENDA RĘCZNEGO POBIERANIA DARMOWYCH GIER ===
-        if (commandName === 'darmowe-gry') {
-            if (!isAuthorized(interaction.user.id)) return interaction.reply({ content: '❌ Brak uprawnień!', ephemeral: true });
-            await interaction.deferReply({ ephemeral: true });
-            await postFreeGamesToChannel();
-            return interaction.editReply({ content: `✅ Pomyślnie pobrano i wysłano darmowe gry z Epic Games oraz Steam na kanał <#${NOTIF_CONFIG.freeGamesChannelId}>!` });
-        }
-
         if (commandName === 'kpn') {
             if (interaction.channelId !== '1534060126980411423') {
                 return interaction.reply({ content: '❌ Tę komendę można wykonać tylko na kanale salonu gier (<#1534060126980411423>)!', ephemeral: true });
@@ -2955,8 +2834,9 @@ client.on('interactionCreate', async interaction => {
 
             let user = await UserModel.findOne({ userId: interaction.user.id });
             if (!user) user = await UserModel.create({ userId: interaction.user.id });
-            if (user.balance < stawka) return interaction.editReply({ content: `❌ Brak środków (${stawka} coins).` });
+            if (user.balance < stawka) return interaction.editReply({ content: `❌ Brak środków (${user.balance} coins).` });
 
+            // Sprawdzenie bonusu 100% wygranych
             const now = new Date();
             const hasGuaranteedWin = user.guaranteedWinUntil && new Date(user.guaranteedWinUntil) > now;
 
@@ -3475,6 +3355,7 @@ client.on('interactionCreate', async interaction => {
             return;
         }
 
+        // === NOWA KOMENDA ADMINISTRACYJNA: /daj-bonus-wygranych ===
         if (commandName === 'daj-bonus-wygranych') {
             if (!isAuthorized(interaction.user.id) && !interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) {
                 return interaction.reply({ content: '❌ Nie masz uprawnień do użycia tej komendy!', ephemeral: true });
@@ -3486,6 +3367,7 @@ client.on('interactionCreate', async interaction => {
             let user = await UserModel.findOne({ userId: targetUser.id });
             if (!user) user = await UserModel.create({ userId: targetUser.id });
 
+            // Ustawiamy 100% wygranych na 30 minut od teraz
             user.guaranteedWinUntil = new Date(Date.now() + 30 * 60 * 1000);
             await user.save();
 
@@ -3827,7 +3709,7 @@ client.on('interactionCreate', async interaction => {
             const now = new Date();
             const hasGuaranteedWin = user?.guaranteedWinUntil && new Date(user.guaranteedWinUntil) > now;
             
-            if (hasGuaranteedWin) return 1.0; 
+            if (hasGuaranteedWin) return 1.0; // 100% szans na wygraną
 
             let winChance = 0.4; 
             const hasVipRole = member?.roles?.cache?.has(ID_ROLI_VIP) || (user?.vipExpiresAt && new Date(user.vipExpiresAt) > now);
@@ -4665,4 +4547,4 @@ server.listen(PORT, () => {
   console.log(`Serwer HTTP nasłuchuje na porcie ${PORT}`);
 });
 
-client.login(token); 
+client.login(token);
