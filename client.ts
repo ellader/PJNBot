@@ -4555,4 +4555,6 @@ server.listen(PORT, () => {
   console.log(`Serwer HTTP nasłuchuje na porcie ${PORT}`);
 });
 
-client.login(token);
+client.login(token).catch((err) => {
+    console.error('❌ BŁĄD PODCZAS LOGOWANIA BOTA DO DISCORDA:', err);
+});
