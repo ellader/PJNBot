@@ -208,6 +208,10 @@ const client = new Client({
     ]
 });
 
+// === NASŁUCHIWANIE ZDARZEŃ DIAGNOSTYCZNYCH DJS ===
+client.on('debug', (info) => console.log('[DISCORD DEBUG]', info));
+client.on('warn', (info) => console.warn('[DISCORD WARN]', info));
+
 const LFG_CONFIG = {
     CATEGORY_VOICE: '1545289592901468170', 
     GAMES: {
