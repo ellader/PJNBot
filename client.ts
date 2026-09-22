@@ -2168,12 +2168,14 @@ client.once('ready', async () => {
 
     const rest = new REST({ version: '10' }).setToken(token);
     try {
-        for (const [_, guild] of client.guilds.cache) {
-            await rest.put(Routes.applicationGuildCommands(client.user!.id, guild.id), { body: commands });
+        console.log('Rozpoczęto odświeżanie komend aplikacji (slash commands)...');
+        for (const [guildId, guild] of client.guilds.cache) {
+            await rest.put(Routes.applicationGuildCommands(client.user!.id, guildId), { body: commands });
             await updateServerStats(guild);
         }
+        console.log('Pomyślnie zarejestrowano komendy dla wszystkich gildii!');
     } catch (error) {
-        console.error('Błąd rejestracji:', error);
+        console.error('Błąd rejestracji komend:', error);
     }
 
     startTopUpdater();
