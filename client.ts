@@ -534,7 +534,7 @@ async function sendQuoteToChannel(channelId: string) {
 }
 
 function startDailyQuotes() {
-    cron.schedule('30 3 * * *', async () => {
+    cron.schedule('30 5 * * *', async () => {
         try {
             await sendQuoteToChannel(ID_KANALU_CYTATY);
         } catch (err) {
@@ -548,6 +548,15 @@ function startDailyShopAutoPoster() {
         try {
             const channel = await client.channels.fetch(ID_KANAL_FORTNITE).catch(() => null) as TextChannel;
             if (!channel) return;
+
+            const messages = await channel.messages.fetch({ limit: 50 }).catch(() => null);
+            if (messages) {
+                for (const [_, msg] of messages) {
+                    if (msg.author.id === client.user?.id) {
+                        await msg.delete().catch(() => {});
+                    }
+                }
+            }
 
             const res = await fetch('https://fortnite-api.com/v2/shop', {
                 headers: {
@@ -592,8 +601,9 @@ function startDailyShopAutoPoster() {
     });
 }
 
-let lastFortniteIncidentId: string | null = null;
-let lastFortniteStatusState: string | null = null;
+let lastFortniteEventId: string | null = null;
+let lastFortniteServerStatus: boolean | null = null;
+let lastFortniteVersion: string | null = null;
 
 async function setupFortniteUpdateChannel() {
     try {
@@ -611,14 +621,14 @@ async function setupFortniteUpdateChannel() {
 
         const embed = new EmbedBuilder()
             .setColor(0x00D9FF)
-            .setTitle('🚀 Centrum Powiadomień o Aktualizacjach Fortnite')
+            .setTitle('🚀 Centrum Powiadomień o Aktualizacjach i Eventach Fortnite')
             .setDescription(
                 'Ten kanał służy jako oficjalna tablica informacyjna dla graczy Fortnite.\n\n' +
                 '🤖 **Co tutaj znajdziesz?**\n' +
-                '• 📢 **Informacje o nadchodzących aktualizacjach** z wyprzedzeniem.\n' +
-                '• 🛑 **Ostrzeżenia o zamknięciu serwerów** (przerwy techniczne / downtime).\n' +
-                '• ✅ **Informację o ponownym otwarciu serwerów**, gdy gra znów będzie dostępna!\n\n' +
-                '🔔 *Kliknij poniższy przycisk, aby włączyć lub wyłączyć powiadomienia (rangę <@&' + ID_RANGI_AKTUALIZACJE_FORTNITE + '>) i otrzymywać powiadomienia dźwiękowe o przerwach w grze!*'
+                '• 📢 **Informacje o nadchodzących aktualizacjach i wersjach gry**.\n' +
+                '• 🟢/🔴 **Powiadomienia o statusie serwerów (przerwy techniczne)**.\n' +
+                '• ✨ **Informacje o nowych eventach w Fortnite** z oznaczeniem odpowiedniej rangi!\n\n' +
+                '🔔 *Kliknij poniższy przycisk, aby włączyć lub wyłączyć powiadomienia (rangę <@&' + ID_RANGI_AKTUALIZACJE_FORTNITE + '>)!*'
             )
             .setImage(LIVE_IMAGE_URL)
             .setTimestamp()
@@ -639,93 +649,107 @@ async function setupFortniteUpdateChannel() {
     }
 }
 
+// Zaktualizowana funkcja sprawdzająca status serwerów, wersję gry oraz eventy Fortnite
 async function checkFortniteServerStatus() {
     try {
-        const res = await fetch('https://status.epicgames.com/api/v2/summary.json');
-        if (!res.ok) return;
-        const data = await res.json() as any;
-
-        if (!data || !data.components) return;
-
-        const fortniteComponent = data.components.find((comp: any) => 
-            comp.name.toLowerCase().includes('fortnite') && (comp.group === true || comp.name.toLowerCase() === 'fortnite')
-        );
-
-        const currentStatusState = fortniteComponent ? fortniteComponent.status : (data.status?.indicator || 'none');
-        const activeIncidents = data.scheduled_maintenances || [];
-        const activeIncident = activeIncidents.length > 0 ? activeIncidents[0] : null;
-
         const channel = await client.channels.fetch(ID_KANAL_AKTUALIZACJI_FORTNITE).catch(() => null) as TextChannel;
         if (!channel) return;
 
         const rolePing = `<@&${ID_RANGI_AKTUALIZACJE_FORTNITE}>`;
 
-        if (activeIncident && activeIncident.id !== lastFortniteIncidentId && activeIncident.status === 'scheduled') {
-            lastFortniteIncidentId = activeIncident.id;
+        // 1. Sprawdzenie statusu serwerów oraz wersji z Fortnite Status API
+        const statusRes = await fetch('https://fortnite-api.com/v1/status');
+        if (statusRes.ok) {
+            const statusData = await statusRes.json() as any;
+            if (statusData && statusData.status === 200) {
+                const isOnline = statusData.data.seasons?.[0]?.enabled ?? true;
+                const currentVersion = statusData.data.version;
+
+                // Sprawdzenie zmiany wersji gry (nowy patch / aktualizacja)
+                if (currentVersion && currentVersion !== lastFortniteVersion) {
+                    if (lastFortniteVersion !== null) {
+                        const updateEmbed = new EmbedBuilder()
+                            .setColor(0x00D9FF)
+                            .setTitle('🚀 Nowa Aktualizacja Fortnite!')
+                            .setDescription(
+                                `Wprowadzono nową wersję gry: **v${currentVersion}**!\n\n` +
+                                `*Wskocz do gry, sprawdź nowości, zmiany na mapie oraz nową zawartość!*`
+                            )
+                            .setTimestamp()
+                            .setFooter({ text: 'PJN Fortnite Updates' });
+
+                        await channel.send({
+                            content: `${rolePing} 📢 Pojawiła się **nowa aktualizacja** w Fortnite!`,
+                            embeds: [updateEmbed],
+                            allowedMentions: { roles: [ID_RANGI_AKTUALIZACJE_FORTNITE] }
+                        });
+                    }
+                    lastFortniteVersion = currentVersion;
+                }
+
+                // Sprawdzenie czy serwery zmieniły stan (otwarte / zamknięte / przerwa techniczna)
+                if (lastFortniteServerStatus !== null && lastFortniteServerStatus !== isOnline) {
+                    const serverEmbed = new EmbedBuilder()
+                        .setColor(isOnline ? 0x2ECC71 : 0xE74C3C)
+                        .setTitle(isOnline ? '🟢 Serwery Fortnite zostały OTWARTE!' : '🔴 Serwery Fortnite zostały ZAMKNIĘTE!')
+                        .setDescription(
+                            isOnline 
+                                ? 'Przerwa techniczna dobiegła końca. Serwery są ponownie dostępne, możesz dołączać do gier!' 
+                                : 'Rozpoczęła się przerwa techniczna lub aktualizacja serwerów. Trwa wyłączanie usług gry.'
+                        )
+                        .setTimestamp()
+                        .setFooter({ text: 'PJN Fortnite Server Status' });
+
+                    await channel.send({
+                        content: `${rolePing} 🔔 Status serwerów Fortnite uległ zmianie!`,
+                        embeds: [serverEmbed],
+                        allowedMentions: { roles: [ID_RANGI_AKTUALIZACJE_FORTNITE] }
+                    });
+                }
+                lastFortniteServerStatus = isOnline;
+            }
+        }
+
+        // 2. Sprawdzanie eventów/turniejów Fortnite
+        const res = await fetch('https://fortnite-api.com/v2/events', {
+            headers: { 'Authorization': process.env.FORTNITE_API_KEY || '' }
+        });
+        if (!res.ok) return;
+        const data = await res.json() as any;
+
+        if (!data || !data.data || !data.data.events) return;
+
+        const events = data.data.events;
+        if (events.length === 0) return;
+
+        const latestEvent = events[0];
+        const eventId = latestEvent.id || latestEvent.name;
+
+        if (eventId !== lastFortniteEventId) {
+            lastFortniteEventId = eventId;
+            const eventName = latestEvent.name || 'Nowy Event w Fortnite';
+            const eventDesc = latestEvent.shortDescription || latestEvent.description || 'Sprawdź szczegóły w grze!';
+
             const embed = new EmbedBuilder()
-                .setColor(0xF1C40F)
-                .setTitle('📢 Zapowiedziano nową aktualizację / przerwę techniczną Fortnite!')
-                .setDescription(
-                    `**Nazwa wydarzenia:** ${activeIncident.name}\n` +
-                    `📌 **Status:** Zaplanowana konserwacja\n` +
-                    `🕒 **Zaplanowany start:** ${new Date(activeIncident.scheduled_for).toLocaleString('pl-PL')}\n` +
-                    `🕒 **Planowany koniec:** ${new Date(activeIncident.scheduled_until).toLocaleString('pl-PL')}\n\n` +
-                    `*Wkrótce serwery zostaną wyłączone. Przygotujcie się do zejścia z gry!*`
-                )
+                .setColor(0x9B59B6)
+                .setTitle(`🎉 Nowy Event w Fortnite: ${eventName}`)
+                .setDescription(`${eventDesc}\n\n*Wskocz do gry i sprawdź najnowszą zawartość oraz wyzwania!*`)
                 .setTimestamp()
-                .setFooter({ text: 'Epic Games Status • Fortnite' });
+                .setFooter({ text: 'Fortnite Events • API' });
 
             await channel.send({
-                content: `${rolePing} 🚨 Zapowiedziano nową przerwę techniczną w Fortnite!`,
+                content: `${rolePing} 📢 Pojawił się nowy event w Fortnite!`,
                 embeds: [embed],
                 allowedMentions: { roles: [ID_RANGI_AKTUALIZACJE_FORTNITE] }
             });
         }
-
-        if (currentStatusState !== 'operational' && currentStatusState !== 'none' && lastFortniteStatusState === 'operational') {
-            const embed = new EmbedBuilder()
-                .setColor(0xE74C3C)
-                .setTitle('🛑 Serwery Fortnite zostały ZAMKNIĘTE (Przerwa techniczna)!')
-                .setDescription(
-                    `Serwery gry przestały odpowiadać lub rozpoczęła się właściwa aktualizacja. Matchmaking został wyłączony.\n\n` +
-                    `⚙️ Trwa wdrażanie nowej łatki/aktualizacji. Prosimy cierpliwie czekać na powrót serwerów!`
-                )
-                .setTimestamp()
-                .setFooter({ text: 'Epic Games Status • Serwery Offline' });
-
-            await channel.send({
-                content: `${rolePing} 🛑 Serwery Fortnite zostały wyłączone do aktualizacji!`,
-                embeds: [embed],
-                allowedMentions: { roles: [ID_RANGI_AKTUALIZACJE_FORTNITE] }
-            });
-        }
-
-        if (currentStatusState === 'operational' && lastFortniteStatusState && lastFortniteStatusState !== 'operational' && lastFortniteStatusState !== 'none') {
-            const embed = new EmbedBuilder()
-                .setColor(0x2ECC71)
-                .setTitle('✅ Serwery Fortnite zostały OTWARTE!')
-                .setDescription(
-                    `Przerwa techniczna / aktualizacja dobiegła końca! Wszystkie systemy gry działają poprawnie.\n\n` +
-                    `🎮 Można już uruchamiać grę, pobierać aktualizację i wracać do walki! Powodzenia w meczach! 🚀`
-                )
-                .setTimestamp()
-                .setFooter({ text: 'Epic Games Status • Serwery Online' });
-
-            await channel.send({
-                content: `${rolePing} 🎉 Serwery Fortnite są już otwarte! Można wracać do gry!`,
-                embeds: [embed],
-                allowedMentions: { roles: [ID_RANGI_AKTUALIZACJE_FORTNITE] }
-            });
-        }
-
-        lastFortniteStatusState = currentStatusState;
     } catch (err) {
-        console.error('Błąd podczas sprawdzania statusu Epic Games:', err);
+        console.error('Błąd podczas sprawdzania statusu i eventów Fortnite:', err);
     }
 }
 
 function startFortniteStatusCron() {
-    cron.schedule('*/2 * * * *', async () => {
+    cron.schedule('*/5 * * * *', async () => {
         await checkFortniteServerStatus();
     });
 }
@@ -2019,7 +2043,6 @@ client.once('ready', async () => {
     console.log(`Zalogowano jako ${client.user?.tag}!`);
     await seedQuotesIfNeeded();
     
-    // Czyszczenie starej wiadomości i tworzenie nowej w rankingu PJN-Coins (oparte na konfiguracji 'topka_msg')
     try {
         const topConfig = await ConfigModel.findOne({ key: 'topka_msg' });
         if (topConfig) {
@@ -2038,7 +2061,6 @@ client.once('ready', async () => {
         console.error('Błąd podczas odświeżania wiadomości rankingu coins przy starcie:', e);
     }
 
-    // Czyszczenie starej wiadomości i tworzenie nowej w centrum odznak (oparte na konfiguracji 'odznaki_info_msg')
     try {
         const badgesConfig = await ConfigModel.findOne({ key: 'odznaki_info_msg' });
         if (badgesConfig) {
@@ -2246,48 +2268,55 @@ client.on('interactionCreate', async interaction => {
     }
 
     if (interaction.isModalSubmit() && interaction.customId === 'rr_modal_submit') {
-        await interaction.deferReply({ ephemeral: false });
-        const stakeStr = interaction.fields.getTextInputValue('rr_stake_input');
-        const stake = parseInt(stakeStr);
+        await interaction.deferReply({ ephemeral: false }).catch(() => {});
+        try {
+            const stakeStr = interaction.fields.getTextInputValue('rr_stake_input');
+            const stake = parseInt(stakeStr);
 
-        if (isNaN(stake) || stake <= 0) {
-            return interaction.editReply({ content: '❌ Podaj prawidłową stawkę większą od zera.' });
-        }
+            if (isNaN(stake) || stake <= 0) {
+                return interaction.editReply({ content: '❌ Podaj prawidłową stawkę większą od zera.' }).catch(() => {});
+            }
 
-        let user = await UserModel.findOne({ userId: interaction.user.id });
-        if (!user) user = await UserModel.create({ userId: interaction.user.id });
+            let user = await UserModel.findOne({ userId: interaction.user.id });
+            if (!user) user = await UserModel.create({ userId: interaction.user.id });
 
-        if (user.balance < stake) {
-            return interaction.editReply({ content: `❌ Nie masz tylu środków! Posiadasz **${user.balance} PJN-Coins**.` });
-        }
+            if (user.balance < stake) {
+                return interaction.editReply({ content: `❌ Nie masz tylu środków! Posiadasz **${user.balance} PJN-Coins**.` }).catch(() => {});
+            }
 
-        user.balance -= stake;
-        user.casinoPlays = (user.casinoPlays || 0) + 1;
+            user.balance -= stake;
+            user.casinoPlays = (user.casinoPlays || 0) + 1;
 
-        const now = new Date();
-        const hasGuaranteedWin = user.guaranteedWinUntil && new Date(user.guaranteedWinUntil) > now;
+            const now = new Date();
+            const hasGuaranteedWin = user.guaranteedWinUntil && new Date(user.guaranteedWinUntil) > now;
 
-        let bulletChance = 1 / 6; 
-        if (stake >= 10000) bulletChance = 0.65;
-        else if (stake >= 5000) bulletChance = 0.50;
-        else if (stake >= 1000) bulletChance = 0.35;
+            let bulletChance = 1 / 6; 
+            if (stake >= 10000) bulletChance = 0.65;
+            else if (stake >= 5000) bulletChance = 0.50;
+            else if (stake >= 1000) bulletChance = 0.35;
 
-        const isDead = hasGuaranteedWin ? false : (Math.random() < bulletChance);
+            const isDead = hasGuaranteedWin ? false : (Math.random() < bulletChance);
 
-        if (isDead) {
-            user.consecutiveLosses = (user.consecutiveLosses || 0) + 1;
-            user.consecutiveWins = 0;
-            await user.save();
-            await TransactionHistoryModel.create({ userId: interaction.user.id, type: 'casino_roulette', amount: -stake, details: `Przegrana (Wysoka stawka: ${stake})` });
-            return interaction.editReply({ content: `🎯 **Rosyjska Ruletka:** <@${interaction.user.id}> zaryzykował ogromną stawkę **${stake} PJN-Coins** i pociągnął za spust...\n💥 **BAM!** Przy tak dużej stawce ryzyko dopadło go od razu – trafił na kulę! Straciłeś monety! (Stan portfela: **${user.balance}**)` });
-        } else {
-            const winAmount = stake * 2;
-            user.balance += winAmount;
-            user.consecutiveWins = (user.consecutiveWins || 0) + 1;
-            user.consecutiveLosses = 0;
-            await user.save();
-            await TransactionHistoryModel.create({ userId: interaction.user.id, type: 'casino_roulette', amount: stake, details: `Wygrana (Stawka: ${stake})` });
-            return interaction.editReply({ content: `🎯 **Rosyjska Ruletka:** <@${interaction.user.id}> zaryzykował **${stake} PJN-Coins** i pociągnął za spust...\n✨ **Klik!** Cud! Przeżył ryzykowny strzał i wygrywa **${winAmount} PJN-Coins**! (Stan portfela: **${user.balance}**)` });
+            if (isDead) {
+                user.consecutiveLosses = (user.consecutiveLosses || 0) + 1;
+                user.consecutiveWins = 0;
+                await user.save();
+                await TransactionHistoryModel.create({ userId: interaction.user.id, type: 'casino_roulette', amount: -stake, details: `Przegrana (Wysoka stawka: ${stake})` });
+                return interaction.editReply({ content: `🎯 **Rosyjska Ruletka:** <@${interaction.user.id}> zaryzykował ogromną stawkę **${stake} PJN-Coins** i pociągnął za spust...\n💥 **BAM!** Przy tak dużej stawce ryzyko dopadło go od razu – trafił na kulę! Straciłeś monety! (Stan portfela: **${user.balance}**)` }).catch(() => {});
+            } else {
+                const winAmount = stake * 2;
+                user.balance += winAmount;
+                user.consecutiveWins = (user.consecutiveWins || 0) + 1;
+                user.consecutiveLosses = 0;
+                await user.save();
+                await TransactionHistoryModel.create({ userId: interaction.user.id, type: 'casino_roulette', amount: stake, details: `Wygrana (Stawka: ${stake})` });
+                return interaction.editReply({ content: `🎯 **Rosyjska Ruletka:** <@${interaction.user.id}> zaryzykował **${stake} PJN-Coins** i pociągnął za spust...\n✨ **Klik!** Cud! Przeżył ryzykowny strzał i wygrywa **${winAmount} PJN-Coins**! (Stan portfela: **${user.balance}**)` }).catch(() => {});
+            }
+        } catch (err) {
+            console.error('Błąd w obsłudze rosyjskiej ruletki:', err);
+            if (!interaction.replied && !interaction.deferred) {
+                await interaction.reply({ content: '❌ Wystąpił błąd podczas przetwarzania rosyjskiej ruletki.', ephemeral: true }).catch(() => {});
+            }
         }
     }
 
