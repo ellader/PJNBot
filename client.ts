@@ -51,9 +51,9 @@ const userSchema = new mongoose.Schema({
     badges: { type: [String], default: [] },
     reputation: { type: Number, default: 0 },
     exp: { type: Number, default: 0 },
-    level: { type: Number, default: 1 },                  
+    level: { type: Number, default: 1 },                 
     vipExpiresAt: { type: Date, default: null },        
-    doubleChanceUntil: { type: Date, default: null }, 
+    doubleChanceUntil: { type: Date, default: null },  
     dailyBoostUntil: { type: Date, default: null },     
     customRoleExpiresAt: { type: Date, default: null }, 
     customVoiceExpiresAt: { type: Date, default: null },
@@ -247,7 +247,7 @@ const ID_KANAL_TWORZENIA_POKOJU = '1532302511459926069';
 
 const ID_KANAL_REPUTACJI = "1540233764477730908";
 const ID_ALEJA_SLAW_REPUTACJI = "1540238376278687754";
-const ID_RANGI_WZOROWY_TRADER = "1540235169653592084";   
+const ID_RANGI_WZOROWY_TRADER = "1540235169653592084";    
 const ID_RANGI_POZYTYWNY_TRADER = "1540251183892008970"; 
 const ID_RANGI_NEGATYWNY_TRADER = "1540235296665239624"; 
 
@@ -4505,240 +4505,44 @@ client.on('messageCreate', async message => {
 
         await user.save();
         await checkAndAwardBadges(user, message.member, message.guild);
-
-        const isPlayingGame = message.member?.presence?.activities?.some(
-            act => act.type === 0 
-        );
-
-        if (!isPlayingGame) {
-            await addExp(message.author.id, 75, message.guild);
-        }
-
-    } catch (error) {}
+    } catch (e) {
+        console.error('Błąd podczas obsługi wiadomości (messageCreate):', e);
+    }
 });
 
-const voiceTimestamps = new Map<string, number>();
-
+// Obsługa czasu spędzonego na kanałach głosowych
 client.on('voiceStateUpdate', async (oldState, newState) => {
-    const userId = newState.id || oldState.id;
-    const guild = newState.guild || oldState.guild;
-    const member = newState.member || oldState.member;
-
-    if (member?.user.bot) return;
-    const now = Date.now();
-
-    if (newState.channelId === ID_KANAL_TWORZENIA_POKOJU) {
-        try {
-            const category = newState.channel?.parent;
-            const channelName = `🔊 Pokój - ${member.user.username}`;
-            
-            const privateVoice = await guild.channels.create({
-                name: channelName,
-                type: ChannelType.GuildVoice,
-                parent: category ? category.id : null,
-                permissionOverwrites: [
-                    {
-                        id: guild.id,
-                        deny: [PermissionFlagsBits.Connect]
-                    },
-                    {
-                        id: member.id,
-                        allow: [
-                            PermissionFlagsBits.Connect,
-                            PermissionFlagsBits.Speak,
-                            PermissionFlagsBits.ManageChannels,
-                            PermissionFlagsBits.MoveMembers
-                        ]
-                    }
-                ]
-            });
-
-            await member.voice.setChannel(privateVoice);
-
-            const controlEmbed = new EmbedBuilder()
-                .setColor(0x5865F2)
-                .setTitle('🎛️ Panel Zarządzania Twoim Prywatnym Pokojem')
-                .setDescription(
-                    `Witaj <@${member.id}>! To jest Twój prywatny kanał głosowy.\n\n` +
-                    `🛠️ **Jak możesz nim zarządzać?**\n` +
-                    `• **Nazwa i limit:** Jako właściciel masz pełne uprawnienia (możesz edytować kanał, zmieniać nazwę oraz limit osób w ustawieniach kanału).\n` +
-                    `• **Wyrzucanie / Wyciszanie:** Możesz kliknąć prawym przyciskiem myszy na użytkownika w pokoju, aby go rozłączyć lub wyciszyć.\n` +
-                    `• **Prywatność:** W każdej chwili możesz zablokować lub odblokować dostęp dla innych za pomocą przycisków poniżej!`
-                )
-                .setTimestamp()
-                .setFooter({ text: 'PJN System Dynamicznych Pokoi' });
-
-            const controlRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
-                new ButtonBuilder()
-                    .setCustomId('temp_voice_lock')
-                    .setLabel('Zablokuj pokój')
-                    .setStyle(ButtonStyle.Danger)
-                    .setEmoji('🔒'),
-                new ButtonBuilder()
-                    .setCustomId('temp_voice_unlock')
-                    .setLabel('Odblokuj pokój')
-                    .setStyle(ButtonStyle.Success)
-                    .setEmoji('🔓')
-            );
-
-            await privateVoice.send({
-                content: `<@${member.id}>`,
-                embeds: [controlEmbed],
-                components: [controlRow]
-            }).catch(() => {});
-
-        } catch (err) {}
-    }
-
-    if (oldState.channel && oldState.channelId !== ID_KANAL_TWORZENIA_POKOJU) {
-        const leftChannel = oldState.channel;
-        if (leftChannel.name.startsWith('🔊 Pokój -') && leftChannel.members.size === 0) {
-            await leftChannel.delete('Pusty kanał prywatny').catch(() => {});
-        }
-    }
-
-    if (!oldState.channelId && newState.channelId) {
-        voiceTimestamps.set(userId, now);
-    } else if (oldState.channelId && !newState.channelId) {
-        const joinTime = voiceTimestamps.get(userId);
+    if (oldState.channelId === null && newState.channelId !== null) {
+        // Użytkownik dołączył do kanału głosowego
+        (newState.member as any)?._voiceJoinTime = Date.now();
+    } else if (oldState.channelId !== null && newState.channelId === null) {
+        // Użytkownik opuścił kanał głosowy
+        const joinTime = (oldState.member as any)?._voiceJoinTime;
         if (joinTime) {
-            const minutesSpent = Math.floor((now - joinTime) / (1000 * 60));
+            const minutesSpent = Math.floor((Date.now() - joinTime) / (1000 * 60));
             if (minutesSpent > 0) {
                 try {
-                    let user = await UserModel.findOne({ userId });
-                    if (!user) user = await UserModel.create({ userId });
-                    
-                    const nowDate = new Date();
-                    const hasVipRole = member?.roles?.cache?.has(ID_ROLI_VIP) || (user.vipExpiresAt && new Date(user.vipExpiresAt) > nowDate);
-                    const earnedCoins = hasVipRole ? minutesSpent * 2 : minutesSpent;
+                    let user = await UserModel.findOne({ userId: oldState.id });
+                    if (!user) user = await UserModel.create({ userId: oldState.id });
 
                     user.voiceMinutes = (user.voiceMinutes || 0) + minutesSpent;
-                    user.balance += earnedCoins;
                     await user.save();
-                    if (member) await checkAndAwardBadges(user, member, guild);
-
-                    await addExp(userId, minutesSpent * 5, guild);
-
+                    await checkAndAwardBadges(user, oldState.member, oldState.guild);
                 } catch (e) {}
             }
-            voiceTimestamps.delete(userId);
         }
     }
 });
 
-client.on('guildMemberAdd', async member => {
-    try {
-        let user = await UserModel.findOne({ userId: member.id });
-        if (!user) user = await UserModel.create({ userId: member.id });
-        user.balance += 200;
-        await user.save();
-        await checkAndAwardBadges(user, member, member.guild);
-
-        const channel = member.guild.channels.cache.find(ch => ch.isTextBased() && 'name' in ch && ch.name === CHANNEL_POWITANIA) as TextChannel;
-        if (channel) {
-            const embed = new EmbedBuilder()
-                .setColor(0x2ECC71)
-                .setTitle('🎮 Centrum Dowodzenia • Od tego możesz zacząć ⬇️')
-                .setDescription(
-                    `• Zweryfikuj się i wybierz płeć: <#${ID_KANAL_WERYFIKACJI}>\n` +
-                    `• Dostosuj role: <#1532397673842217010>\n` +
-                    `• Wybierz swój sprzęt: <#1532398069524594708>\n` +
-                    `• Szukaj do gry: <#1532449084559069214>`
-                )
-                .setImage(LIVE_IMAGE_URL)
-                .setTimestamp()
-                .setFooter({ text: 'PJN System Powitań' });
-
-            const textContent = 
-                `🎉 **Witamy na serwerze PJN!**\n` +
-                `Witaj <@${member.id}>! Cieszymy się, że dołączyłeś do naszej społeczności. 🚀\n\n` +
-                `🎁 **Na start otrzymujesz w prezencie 200 PJN-Coins!**`;
-
-            await channel.send({ content: textContent, embeds: [embed] });
-        }
-    } catch (e) {}
-});
-
-client.on('guildMemberRemove', async member => {
-    try {
-        const logChannel = await member.guild.channels.fetch(NOTIF_CONFIG.leaveLogChannelId) as TextChannel;
-        if (!logChannel) return;
-
-        const fetchedKickLogs = await member.guild.fetchAuditLogs({
-            limit: 1,
-            type: AuditLogEvent.MemberKick,
-        }).catch(() => null);
-        
-        const kickLog = fetchedKickLogs?.entries.first();
-        let actionType = 'leave';
-        let executor = null;
-        let reason = 'Brak powód';
-
-        if (kickLog && kickLog.target && kickLog.target.id === member.id && (Date.now() - kickLog.createdTimestamp < 5000)) {
-            actionType = 'kick';
-            executor = kickLog.executor;
-            reason = kickLog.reason || 'Brak powód';
-        } else {
-            const fetchedBanLogs = await member.guild.fetchAuditLogs({
-                limit: 1,
-                type: AuditLogEvent.MemberBanAdd,
-            }).catch(() => null);
-            const banLog = fetchedBanLogs?.entries.first();
-            if (banLog && banLog.target && banLog.target.id === member.id && (Date.now() - banLog.createdTimestamp < 5000)) {
-                actionType = 'ban';
-                executor = banLog.executor;
-                reason = banLog.reason || 'Brak powód';
-            }
-        }
-
-        const joinedAtTimestamp = member.joinedTimestamp ? Math.floor(member.joinedTimestamp / 1000) : null;
-        const joinedAtText = joinedAtTimestamp ? `<t:${joinedAtTimestamp}:R>` : 'Nieznana';
-        const memberCount = member.guild.memberCount;
-
-        const embed = new EmbedBuilder()
-            .setThumbnail(member.user.displayAvatarURL())
-            .setTimestamp();
-
-        if (actionType === 'kick') {
-            embed.setColor(0xE67E22)
-                 .setTitle('🥾 Użytkownik został wyrzucony (Kick)')
-                 .setDescription(
-                     `**${member.user.tag}**\n\`(${member.id})\`\nzostał wyrzucony z serwera przez **${executor ? executor.tag : 'Nieznany'}**.\n` +
-                     `📌 **Powód:** ${reason}\n\n` +
-                     `📅 **Dołączył na serwer**\n${joinedAtText}\n\n` +
-                     `👥 **Liczba członków**\n${memberCount}`
-                 );
-        } else if (actionType === 'ban') {
-            embed.setColor(0xED4245)
-                 .setTitle('🔨 Użytkownik został zbanowany (Ban)')
-                 .setDescription(
-                     `**${member.user.tag}**\n\`(${member.id})\`\nzostał zbanowany na serwerze przez **${executor ? executor.tag : 'Nieznany'}**.\n` +
-                     `📌 **Powód:** ${reason}\n\n` +
-                     `📅 **Dołączył na serwer**\n${joinedAtText}\n\n` +
-                     `👥 **Liczba członków**\n${memberCount}`
-                 );
-        } else {
-            embed.setColor(0xED4245)
-                 .setTitle('📤 Użytkownik opuścił serwer')
-                 .setDescription(
-                     `**${member.user.tag}**\n\`(${member.id})\`\nopuścił naszą społeczność.\n\n` +
-                     `📅 **Dołączył na serwer**\n${joinedAtText}\n\n` +
-                     `👥 **Liczba członków**\n${memberCount}`
-                 );
-        }
-
-        await logChannel.send({ embeds: [embed] });
-    } catch (error) {}
-});
-
+// Minimalny serwer HTTP do utrzymania bota (np. na Render / UptimeRobot)
 const server = http.createServer((req, res) => {
-  res.writeHead(200, { 'Content-Type': 'text/plain' });
-  res.end('Bot is running 24/7!\n');
+    res.writeHead(200, { 'Content-Type': 'text/plain' });
+    res.end('Discord Bot PJN is running!\n');
 });
 
-const PORT = process.env.PORT || 10000;
+const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-  console.log(`Serwer HTTP nasłuchuje na porcie ${PORT}`);
+    console.log(`Serwer HTTP działa na porcie ${PORT}`);
 });
 
 client.login(token);
