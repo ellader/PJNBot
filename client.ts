@@ -4514,7 +4514,7 @@ client.on('messageCreate', async message => {
 client.on('voiceStateUpdate', async (oldState, newState) => {
     if (oldState.channelId === null && newState.channelId !== null) {
         // Użytkownik dołączył do kanału głosowego
-        (newState.member as any)?._voiceJoinTime = Date.now();
+        (newState.member as any)._voiceJoinTime = Date.now();
     } else if (oldState.channelId !== null && newState.channelId === null) {
         // Użytkownik opuścił kanał głosowy
         const joinTime = (oldState.member as any)?._voiceJoinTime;
