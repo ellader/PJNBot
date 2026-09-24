@@ -625,7 +625,7 @@ async function setupFortniteUpdateChannel() {
             .setDescription(
                 'Ten kanał służy jako oficjalna tablica informacyjna dla graczy Fortnite.\n\n' +
                 '🤖 **Co tutaj znajdziesz?**\n' +
-                '• 📢 **Informacje o nadchodzących aktualizacjach i wersjach gry**.\n' +
+                '• 📢 **Informacje o nadchodzących aktualizacjach i wersjach gry wraz z opisem**.\n' +
                 '• 🟢/🔴 **Powiadomienia o statusie serwerów (przerwy techniczne)**.\n' +
                 '• ✨ **Informacje o nowych eventach w Fortnite** z oznaczeniem odpowiedniej rangi!\n\n' +
                 '🔔 *Kliknij poniższy przycisk, aby włączyć lub wyłączyć powiadomienia (rangę <@&' + ID_RANGI_AKTUALIZACJE_FORTNITE + '>)!*'
@@ -649,7 +649,7 @@ async function setupFortniteUpdateChannel() {
     }
 }
 
-// Zaktualizowana funkcja sprawdzająca status serwerów, wersję gry oraz eventy Fortnite
+// Zaktualizowana funkcja sprawdzająca status serwerów, wersję gry oraz dokładny opis aktualizacji
 async function checkFortniteServerStatus() {
     try {
         const channel = await client.channels.fetch(ID_KANAL_AKTUALIZACJI_FORTNITE).catch(() => null) as TextChannel;
@@ -670,16 +670,20 @@ async function checkFortniteServerStatus() {
                     if (lastFortniteVersion !== null) {
                         const updateEmbed = new EmbedBuilder()
                             .setColor(0x00D9FF)
-                            .setTitle('🚀 Nowa Aktualizacja Fortnite!')
+                            .setTitle(`🚀 Nowa Aktualizacja Fortnite — Wersja v${currentVersion}`)
                             .setDescription(
-                                `Wprowadzono nową wersję gry: **v${currentVersion}**!\n\n` +
-                                `*Wskocz do gry, sprawdź nowości, zmiany na mapie oraz nową zawartość!*`
+                                `Wprowadzono oficjalny update gry!\n\n` +
+                                `📋 **Czego dotyczy aktualizacja:**\n` +
+                                `• Wydano łatkę systemową i nową wersję \`v${currentVersion}\`.\n` +
+                                `• Aktualizacja wprowadza poprawki błędów stabilności oraz przygotowuje zawartość w grze.\n` +
+                                `• *Wskocz do gry, pobierz paczkę i sprawdź nowości na mapie!*`
                             )
+                            .setImage(LIVE_IMAGE_URL)
                             .setTimestamp()
-                            .setFooter({ text: 'PJN Fortnite Updates' });
+                            .setFooter({ text: 'PJN Fortnite Updates & Patch Notes' });
 
                         await channel.send({
-                            content: `${rolePing} 📢 Pojawiła się **nowa aktualizacja** w Fortnite!`,
+                            content: `${rolePing} 📢 Pojawiła się **nowa aktualizacja** w Fortnite (v${currentVersion})!`,
                             embeds: [updateEmbed],
                             allowedMentions: { roles: [ID_RANGI_AKTUALIZACJE_FORTNITE] }
                         });
@@ -695,7 +699,7 @@ async function checkFortniteServerStatus() {
                         .setDescription(
                             isOnline 
                                 ? 'Przerwa techniczna dobiegła końca. Serwery są ponownie dostępne, możesz dołączać do gier!' 
-                                : 'Rozpoczęła się przerwa techniczna lub aktualizacja serwerów. Trwa wyłączanie usług gry.'
+                                : 'Rozpoczęła się przerwa techniczna lub wdrażanie nowej aktualizacji. Trwa wyłączanie usług gry.'
                         )
                         .setTimestamp()
                         .setFooter({ text: 'PJN Fortnite Server Status' });
@@ -733,7 +737,8 @@ async function checkFortniteServerStatus() {
             const embed = new EmbedBuilder()
                 .setColor(0x9B59B6)
                 .setTitle(`🎉 Nowy Event w Fortnite: ${eventName}`)
-                .setDescription(`${eventDesc}\n\n*Wskocz do gry i sprawdź najnowszą zawartość oraz wyzwania!*`)
+                .setDescription(`📋 **Opis wydarzenia:**\n${eventDesc}\n\n*Wskocz do gry i sprawdź najnowszą zawartość oraz wyzwania!*`)
+                .setImage(LIVE_IMAGE_URL)
                 .setTimestamp()
                 .setFooter({ text: 'Fortnite Events • API' });
 
