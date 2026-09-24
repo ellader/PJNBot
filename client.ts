@@ -649,7 +649,6 @@ async function setupFortniteUpdateChannel() {
     }
 }
 
-// Zaktualizowana funkcja sprawdzająca status serwerów, wersję gry oraz dokładny opis aktualizacji
 async function checkFortniteServerStatus() {
     try {
         const channel = await client.channels.fetch(ID_KANAL_AKTUALIZACJI_FORTNITE).catch(() => null) as TextChannel;
@@ -657,7 +656,6 @@ async function checkFortniteServerStatus() {
 
         const rolePing = `<@&${ID_RANGI_AKTUALIZACJE_FORTNITE}>`;
 
-        // 1. Sprawdzenie statusu serwerów oraz wersji z Fortnite Status API
         const statusRes = await fetch('https://fortnite-api.com/v1/status');
         if (statusRes.ok) {
             const statusData = await statusRes.json() as any;
@@ -665,7 +663,6 @@ async function checkFortniteServerStatus() {
                 const isOnline = statusData.data.seasons?.[0]?.enabled ?? true;
                 const currentVersion = statusData.data.version;
 
-                // Sprawdzenie zmiany wersji gry (nowy patch / aktualizacja)
                 if (currentVersion && currentVersion !== lastFortniteVersion) {
                     if (lastFortniteVersion !== null) {
                         const updateEmbed = new EmbedBuilder()
@@ -691,7 +688,6 @@ async function checkFortniteServerStatus() {
                     lastFortniteVersion = currentVersion;
                 }
 
-                // Sprawdzenie czy serwery zmieniły stan (otwarte / zamknięte / przerwa techniczna)
                 if (lastFortniteServerStatus !== null && lastFortniteServerStatus !== isOnline) {
                     const serverEmbed = new EmbedBuilder()
                         .setColor(isOnline ? 0x2ECC71 : 0xE74C3C)
@@ -714,7 +710,6 @@ async function checkFortniteServerStatus() {
             }
         }
 
-        // 2. Sprawdzanie eventów/turniejów Fortnite
         const res = await fetch('https://fortnite-api.com/v2/events', {
             headers: { 'Authorization': process.env.FORTNITE_API_KEY || '' }
         });
@@ -1058,15 +1053,17 @@ function createBadgesInfoEmbeds() {
     return [embed1, embed2];
 }
 
+// === ZAKTUALIZOWANA FUNKCJA PANELU ZGŁOSZEŃ Z MENU WYBORU ===
 function createTicketPanelEmbed() {
     return new EmbedBuilder()
         .setColor(0x2ECC71)
-        .setTitle('🎫 Centrum Pomocy i Zgłoszeń PJN')
+        .setTitle('🎫 Centrum Pomocy i Zgłoszeń (Tickety) PJN')
         .setDescription(
-            'Potrzebujesz pomocy z duszkiem? Dobrze trafiłeś!\n\n' +
-            'Kliknij poniższy przycisk **"Stwórz Ticket"**, aby otworzyć prywatny kanał. Nasza ekipa pomoże Ci tak szybko, jak to możliwe!\n\n' +
+            'Potrzebujesz pomocy z duszkiem, masz pytanie administracyjne lub problem handlowy? Dobrze trafiłeś!\n\n' +
+            '👇 **Wybierz odpowiednią kategorię z poniższego menu rozwijanego**, aby natychmiast otworzyć swój prywatny kanał pomocy z naszą ekipa!\n\n' +
             '⚠️ *Prosimy nie tworzyć zgłoszeń bez potrzeby – szanujmy swój czas.*'
         )
+        .setImage(LIVE_IMAGE_URL)
         .setTimestamp()
         .setFooter({ text: 'PJN System Ticketów • Bezpieczna pomoc' });
 }
@@ -1086,17 +1083,77 @@ async function setupTicketChannel() {
         }
 
         const embed = createTicketPanelEmbed();
-        const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
-            new ButtonBuilder()
-                .setCustomId('create_ticket')
-                .setLabel('Stwórz Ticket')
-                .setStyle(ButtonStyle.Success)
-                .setEmoji('🎫')
-        );
+        
+        // Stworzenie menu rozwijanego z kategoriami zgłoszeń
+        const selectMenu = new StringSelectMenuBuilder()
+            .setCustomId('ticket_category_select')
+            .setPlaceholder('Wybierz temat zgłoszenia...')
+            .addOptions([
+                {
+                    label: 'Odbiór / Problem z Duszkiem',
+                    description: 'Wybierz, jeśli potrzebujesz pomocy z duszkiem Fortnite',
+                    value: 'ticket_ghost',
+                    emoji: '👻'
+                },
+                {
+                    label: 'Problem z Handlem / Sklepem',
+                    description: 'Wybierz w sprawach ekonomii, wymian lub problemów ze sklepem',
+                    value: 'ticket_trade',
+                    emoji: '💰'
+                },
+                {
+                    label: 'Sprawy Techniczne / Błędy Bota',
+                    description: 'Zgłoś błąd w działaniu serwera lub komend bota',
+                    value: 'ticket_tech',
+                    emoji: '🛠️'
+                },
+                {
+                    label: 'Inna Pomoc / Pytanie do Administracji',
+                    description: 'Wszystkie pozostałe sprawy wymagające kontaktu z administracją',
+                    value: 'ticket_other',
+                    emoji: '🎫'
+                }
+            ]);
 
-        await channel.send({ embeds: [embed], components: [row] });
+        const row = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(selectMenu);
+
+        const sentMsg = await channel.send({ embeds: [embed], components: [row] });
+        await sentMsg.pin().catch(() => {});
     } catch (e) {
         console.error('Błąd podczas inicjalizacji panelu ticketów:', e);
+    }
+}
+
+// === NOWA FUNKCJA DLA KANAŁU INTERAKTYWNEGO Z BOTEM ===
+async function setupBotInteractiveChannelInstruction() {
+    try {
+        // Przykład dedykowanego kanału bota – możesz podmienić ID na swoje lub zostawić uniwersalne
+        const CHANNEL_ID_BOT = '1534060126980411423'; // Salon gier / kanał interaktywny
+        const channel = await client.channels.fetch(CHANNEL_ID_BOT).catch(() => null) as TextChannel;
+        if (!channel) return;
+
+        const embed = new EmbedBuilder()
+            .setColor(0x5865F2)
+            .setTitle('🤖 Kanał Interaktywny z Botem PJN — Przewodnik')
+            .setDescription(
+                'Witaj w oficjalnej strefie interaktywnej z naszym botem serwerowym!\n\n' +
+                '🎯 **Do czego służy ten kanał?**\n' +
+                'Ten kanał został stworzony po to, abyś mógł bez ograniczeń korzystać z wbudowanych funkcji rozrywkowych, ekonomicznych, gier hazardowych oraz systemów społecznościowych bez spamowania na głównych kanałach czatu.\n\n' +
+                '💡 **Jak bot może Ci pomóc?**\n' +
+                '• 💰 **Zarządzanie finansami:** Sprawdzaj stan portfela (`/portfel`), odbieraj codzienne bonusy (`/daily`) lub przelewaj środki znajomym (`/przelej`).\n' +
+                '• 🎰 **Gry i Kasyno:** Pomnażaj PJN-Coins w grach takich jak Kostka (`/kostka`), Orzeł czy Reszka (`/moneta`), Słoty (`/slot`), Poker (`/poker`), Rosyjska Ruletka czy Koło Fortuny!\n' +
+                '• 📊 **Statystyki i Profil:** Sprawdzaj swoje odznaki (`/odznaki`), poziom doświadczenia (`/exp`) oraz kompleksową kartę gracza (`/profil`).\n' +
+                '• 🎮 **Integracja z Fortnite:** Rejestruj swój nick Epic Games (`/fn-rejestracja`), sprawdzaj statystyki (`/fn-stats`) i przeglądaj sklep w grze (`/fn-sklep`).\n\n' +
+                '🚀 *Wpisz ukośnik `/` w oknie wiadomości, aby zobaczyć pełną listę wszystkich dostępnych komend i zacząć dobrą zabawę!*'
+            )
+            .setImage(LIVE_IMAGE_URL)
+            .setTimestamp()
+            .setFooter({ text: 'PJN Bot Interactive Zone • Miłej zabawy!' });
+
+        const sentMsg = await channel.send({ embeds: [embed] });
+        await sentMsg.pin().catch(() => {});
+    } catch (e) {
+        console.error('Błąd podczas ustawiania instrukcji kanału interaktywnego:', e);
     }
 }
 
@@ -2096,6 +2153,7 @@ client.once('ready', async () => {
     await setupRussianRouletteChannel();
     await setupWheelOfFortuneChannel();
     await setupCasinoHubChannel();
+    await setupBotInteractiveChannelInstruction();
     await cleanupOrphanedLfgVoices();
 
     const rest = new REST({ version: '10' }).setToken(token);
@@ -2459,6 +2517,7 @@ client.on('interactionCreate', async interaction => {
     }
 
     if (interaction.isStringSelectMenu()) {
+        // Obsługa wyboru z menu weryfikacji
         if (interaction.customId === 'verification_gender_select') {
             await interaction.deferReply({ ephemeral: true });
             const guild = interaction.guild;
@@ -2490,6 +2549,75 @@ client.on('interactionCreate', async interaction => {
                 }
             } catch (err) {
                 await interaction.editReply({ content: '❌ Wystąpił błąd podczas nadawania ról weryfikacyjnych. Skontaktuj się z administracją.' });
+            }
+            return;
+        }
+
+        // === OBSŁUGA MENU WYBORU KATEGORII W CENTRUM ZGŁOSZEŃ (TICKETÓW) ===
+        if (interaction.customId === 'ticket_category_select') {
+            await interaction.deferReply({ ephemeral: true });
+            const guild = interaction.guild;
+            if (!guild) return;
+
+            const selectedValue = interaction.values[0];
+            let categoryNamePrefix = 'ticket';
+            let categoryDesc = 'Ogólne zapytanie';
+
+            if (selectedValue === 'ticket_ghost') {
+                categoryNamePrefix = 'duszek';
+                categoryDesc = 'Pomoc z duszkiem / skinami Fortnite';
+            } else if (selectedValue === 'ticket_trade') {
+                categoryNamePrefix = 'trade';
+                categoryDesc = 'Sprawy handlowe i ekonomia';
+            } else if (selectedValue === 'ticket_tech') {
+                categoryNamePrefix = 'tech';
+                categoryDesc = 'Zgłoszenie błędu / problem techniczny';
+            } else {
+                categoryNamePrefix = 'pomoc';
+                categoryDesc = 'Inne pytanie do administracji';
+            }
+
+            const cleanUsername = interaction.user.username.toLowerCase().replace(/[^a-z0-9]/g, '');
+            const existingChannel = guild.channels.cache.find(
+                ch => ch.name === `${categoryNamePrefix}-${cleanUsername}` || ch.name === `ticket-${cleanUsername}`
+            );
+
+            if (existingChannel) {
+                return interaction.editReply({ content: `❌ Masz już otwarty ticket w tej lub innej kategorii: <#${existingChannel.id}>!` });
+            }
+
+            try {
+                const ticketChannel = await guild.channels.create({
+                    name: `${categoryNamePrefix}-${cleanUsername}`,
+                    type: ChannelType.GuildText,
+                    permissionOverwrites: [
+                        { id: guild.id, deny: [PermissionFlagsBits.ViewChannel] },
+                        { id: interaction.user.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] },
+                        { id: ID_RANGI_DUSZKOWIEC, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] },
+                        { id: ID_RANGI_MODERATOR, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] },
+                        { id: ID_RANGI_ADMIN, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] }
+                    ],
+                });
+
+                const welcomeEmbed = new EmbedBuilder()
+                    .setColor(0x2ECC71)
+                    .setTitle(`🎫 Zgłoszenie od: ${interaction.user.tag}`)
+                    .setDescription(`Witaj <@${interaction.user.id}>!\n\n**Kategoria:** ${categoryDesc}\n\nNapisz szczegółowo, w czym możemy Ci pomóc, a ekipa wkrótce odpowie.\n\nKliknij przycisk **Zamknij Ticket**, gdy sprawa zostanie rozwiązana.`)
+                    .setTimestamp();
+
+                const closeRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+                    new ButtonBuilder().setCustomId('close_ticket').setLabel('Zamknij Ticket').setStyle(ButtonStyle.Danger).setEmoji('🔒')
+                );
+
+                await ticketChannel.send({
+                    content: `<@${interaction.user.id}> | <@&${ID_RANGI_DUSZKOWIEC}> <@&${ID_RANGI_MODERATOR}> <@&${ID_RANGI_ADMIN}>`,
+                    embeds: [welcomeEmbed],
+                    components: [closeRow]
+                });
+
+                await interaction.editReply({ content: `✅ Stworzono dla Ciebie prywatny ticket w kategorii **${categoryDesc}**: <#${ticketChannel.id}>!` });
+            } catch (err) {
+                await interaction.editReply({ content: '❌ Wystąpił błąd podczas tworzenia ticketu.' });
             }
             return;
         }
@@ -2714,55 +2842,6 @@ client.on('interactionCreate', async interaction => {
             return;
         }
 
-        if (interaction.customId === 'create_ticket') {
-            await interaction.deferReply({ ephemeral: true });
-            const guild = interaction.guild;
-            if (!guild) return;
-
-            const existingChannel = guild.channels.cache.find(
-                ch => ch.name === `ticket-${interaction.user.username.toLowerCase().replace(/[^a-z0-9]/g, '')}`
-            );
-
-            if (existingChannel) {
-                return interaction.editReply({ content: `❌ Masz już otwarty ticket: <#${existingChannel.id}>!` });
-            }
-
-            try {
-                const ticketChannel = await guild.channels.create({
-                    name: `ticket-${interaction.user.username}`,
-                    type: ChannelType.GuildText,
-                    permissionOverwrites: [
-                        { id: guild.id, deny: [PermissionFlagsBits.ViewChannel] },
-                        { id: interaction.user.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] },
-                        { id: ID_RANGI_DUSZKOWIEC, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] },
-                        { id: ID_RANGI_MODERATOR, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] },
-                        { id: ID_RANGI_ADMIN, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] }
-                    ],
-                });
-
-                const welcomeEmbed = new EmbedBuilder()
-                    .setColor(0x2ECC71)
-                    .setTitle(`🎫 Ticket od: ${interaction.user.tag}`)
-                    .setDescription(`Witaj <@${interaction.user.id}>!\n\nNapisz jakiego duszka potrzebujesz, ktoś z ekipy wejdzie i od razu zobaczy Twoją wiadomość.\n\nKliknij przycisk **Zamknij Ticket**, gdy już otrzymasz duszka.`)
-                    .setTimestamp();
-
-                const closeRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
-                    new ButtonBuilder().setCustomId('close_ticket').setLabel('Zamknij Ticket').setStyle(ButtonStyle.Danger).setEmoji('🔒')
-                );
-
-                await ticketChannel.send({
-                    content: `<@${interaction.user.id}> | <@&${ID_RANGI_DUSZKOWIEC}> <@&${ID_RANGI_MODERATOR}> <@&${ID_RANGI_ADMIN}>`,
-                    embeds: [welcomeEmbed],
-                    components: [closeRow]
-                });
-
-                await interaction.editReply({ content: `✅ Stworzono dla Ciebie prywatny ticket: <#${ticketChannel.id}>!` });
-            } catch (err) {
-                await interaction.editReply({ content: '❌ Wystąpił błąd podczas tworzenia ticketu.' });
-            }
-            return;
-        }
-
         if (interaction.customId === 'close_ticket') {
             await interaction.deferReply({ ephemeral: true });
             const channel = interaction.channel as TextChannel;
@@ -2790,7 +2869,7 @@ client.on('interactionCreate', async interaction => {
 
                 const currentName = channel.name;
                 if (!currentName.startsWith('zamkniety-')) {
-                    await channel.setName(`zamkniety-${currentName.replace('ticket-', '')}`).catch(() => {});
+                    await channel.setName(`zamkniety-${currentName.replace('ticket-', '').replace('duszek-', '').replace('trade-', '').replace('tech-', '').replace('pomoc-', '')}`).catch(() => {});
                 }
 
                 const closedEmbed = new EmbedBuilder()
@@ -4490,59 +4569,121 @@ client.on('messageCreate', async message => {
         let user = await UserModel.findOne({ userId: message.author.id });
         if (!user) user = await UserModel.create({ userId: message.author.id });
 
+        user.messageCount = (user.messageCount || 0) + 1;
+
+        const isNight = new Date().getHours() >= 0 && new Date().getHours() < 6;
+        if (isNight) {
+            user.nightMessageCount = (user.nightMessageCount || 0) + 1;
+        }
+
+        const customEmojis = message.content.match(/<a?:[a-zA-Z0-9_]+:[0-9]+>/g);
+        if (customEmojis) {
+            user.emojiCount = (user.emojiCount || 0) + customEmojis.length;
+        }
+
         const now = new Date();
         const hasVipRole = message.member?.roles?.cache?.has(ID_ROLI_VIP) || (user.vipExpiresAt && new Date(user.vipExpiresAt) > now);
-        const coinsEarned = hasVipRole ? 2 : 1;
+        const expGain = hasVipRole ? 25 : 15;
+        const coinsGain = hasVipRole ? 4 : 2;
 
-        user.messageCount = (user.messageCount || 0) + 1;
-        user.balance += coinsEarned;
-        
-        const currentHour = new Date().getHours();
-        if (currentHour >= 0 && currentHour < 4) user.nightMessageCount = (user.nightMessageCount || 0) + 1;
-
-        const customEmojis = message.content.match(/<a?:\w+:\d+>/g);
-        if (customEmojis) user.emojiCount = (user.emojiCount || 0) + customEmojis.length;
-
+        user.balance = (user.balance || 0) + coinsGain;
         await user.save();
+
+        await addExp(message.author.id, expGain, message.guild);
         await checkAndAwardBadges(user, message.member, message.guild);
-    } catch (e) {
-        console.error('Błąd podczas obsługi wiadomości (messageCreate):', e);
+    } catch (err) {
+        console.error('Błąd podczas obsługi wiadomości (aktywność/statystyki):', err);
     }
 });
 
-// Obsługa czasu spędzonego na kanałach głosowych
 client.on('voiceStateUpdate', async (oldState, newState) => {
-    if (oldState.channelId === null && newState.channelId !== null) {
-        // Użytkownik dołączył do kanału głosowego
-        (newState.member as any)._voiceJoinTime = Date.now();
-    } else if (oldState.channelId !== null && newState.channelId === null) {
-        // Użytkownik opuścił kanał głosowy
-        const joinTime = (oldState.member as any)?._voiceJoinTime;
-        if (joinTime) {
-            const minutesSpent = Math.floor((Date.now() - joinTime) / (1000 * 60));
-            if (minutesSpent > 0) {
-                try {
-                    let user = await UserModel.findOne({ userId: oldState.id });
-                    if (!user) user = await UserModel.create({ userId: oldState.id });
+    if (newState.member?.user.bot) return;
 
-                    user.voiceMinutes = (user.voiceMinutes || 0) + minutesSpent;
-                    await user.save();
-                    await checkAndAwardBadges(user, oldState.member, oldState.guild);
-                } catch (e) {}
+    const userId = newState.member?.id;
+    if (!userId) return;
+
+    if (!oldState.channelId && newState.channelId) {
+        if (newState.channelId === ID_KANAL_TWORZENIA_POKOJU) {
+            try {
+                const guild = newState.guild;
+                const member = newState.member;
+                const channelName = `Pokój • ${member.displayName}`;
+
+                const voiceChannel = await guild.channels.create({
+                    name: channelName,
+                    type: ChannelType.GuildVoice,
+                    parent: newState.channel?.parentId || null,
+                    permissionOverwrites: [
+                        { id: guild.id, allow: [PermissionFlagsBits.Connect, PermissionFlagsBits.Speak] },
+                        { id: member.id, allow: [PermissionFlagsBits.ManageChannels, PermissionFlagsBits.MoveMembers] }
+                    ]
+                });
+
+                await member.voice.setChannel(voiceChannel);
+
+                const embed = new EmbedBuilder()
+                    .setColor(0x5865F2)
+                    .setTitle('🎙️ Zarządzanie Własnym Pokojem Głosowym')
+                    .setDescription('Użyj przycisków poniżej, aby zablokować lub odblokować dostęp do swojego kanału.')
+                    .setTimestamp();
+
+                const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+                    new ButtonBuilder().setCustomId('temp_voice_lock').setLabel('Zablokuj pokój').setStyle(ButtonStyle.Danger).setEmoji('🔒'),
+                    new ButtonBuilder().setCustomId('temp_voice_unlock').setLabel('Odblokuj pokój').setStyle(ButtonStyle.Success).setEmoji('🔓')
+                );
+
+                await voiceChannel.send({ content: `<@${member.id}> Twój panel zarządzania pokojem:`, embeds: [embed], components: [row] });
+            } catch (e) {
+                console.error('Błąd podczas tworzenia prywatnego pokoju głosowego:', e);
             }
         }
     }
+
+    if (oldState.channelId && !newState.channelId) {
+        try {
+            const guild = oldState.guild;
+            const category = guild.channels.cache.get(LFG_CONFIG.CATEGORY_VOICE);
+            if (category && category.type === ChannelType.GuildCategory) {
+                const userChan = oldState.channel;
+                if (userChan && userChan.parentId === category.id && userChan.members.size === 0) {
+                    await userChan.delete('Pusty pokój LFG').catch(() => {});
+                }
+            }
+
+            if (oldState.channel && oldState.channel.name.startsWith('Pokój •') && oldState.channel.members.size === 0) {
+                await oldState.channel.delete('Pusty prywatny pokój').catch(() => {});
+            }
+        } catch (e) {}
+    }
 });
 
-// Minimalny serwer HTTP do utrzymania bota (np. na Render / UptimeRobot)
+setInterval(async () => {
+    try {
+        for (const [_, guild] of client.guilds.cache) {
+            await guild.members.fetch();
+            for (const [_, member] of guild.members.cache) {
+                if (member.voice.channel && !member.user.bot) {
+                    let user = await UserModel.findOne({ userId: member.id });
+                    if (!user) user = await UserModel.create({ userId: member.id });
+
+                    user.voiceMinutes = (user.voiceMinutes || 0) + 1;
+                    await user.save();
+                    await addExp(member.id, 10, guild);
+                    await checkAndAwardBadges(user, member, guild);
+                }
+            }
+        }
+    } catch (e) {}
+}, 60 * 1000);
+
 const server = http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
-    res.end('Discord Bot PJN is running!\n');
+    res.end('PJN Discord Bot jest uruchomiony i działa poprawnie!\n');
 });
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-    console.log(`Serwer HTTP działa na porcie ${PORT}`);
+    console.log(`Serwer HTTP nasłuchuje na porcie ${PORT}`);
 });
 
 client.login(token);
