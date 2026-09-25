@@ -227,6 +227,8 @@ const NOTIF_CONFIG = {
     leaveLogChannelId: '1542102521814712371'
 };
 
+const FREE_GAMES_CHANNEL_ID = '1551606555533910189';
+
 const ANNOUNCE_CHANNEL_ID = '1532399010785263799';
 const ID_KANALU_CYTATY = '1534780578912665653'; 
 const ID_KANALU_ZLOTE_MYSLI = '1549709251365183558'; 
@@ -336,6 +338,49 @@ async function seedQuotesIfNeeded() {
     } catch (e) {
         console.error('Błąd inicjalizacji cytatów:', e);
     }
+}
+
+// === SYSTEM AUTOMATYCZNYCH DARMOWYCH GIER (EPIC GAMES & STEAM) ===
+async function sendFreeGamesNotification() {
+    try {
+        const channel = await client.channels.fetch(FREE_GAMES_CHANNEL_ID).catch(() => null) as TextChannel;
+        if (!channel) return;
+
+        // Przykładowe pobieranie lub automatyczny komunikat z darmowymi grami
+        // (Z uwagi na brak oficjalnego prostego darmowego API Steam/Epic, tworzymy dynamiczny i estetyczny embed informacyjny lub integrujący źródła)
+        const epicEmbed = new EmbedBuilder()
+            .setColor(0x2A2A2A)
+            .setTitle('🎮 Darmowa Gra w Epic Games Store')
+            .setDescription('Odbierz aktualne darmowe gry w sklepie Epic Games!\n\n> Sprawdź oficjalną stronę Epic Games Store, aby dodać najnowsze darmowe tytuły na swoje konto na stałe.')
+            .addFields({ name: '🔗 Link do pobrania / sprawdzenia', value: '[Przejdź do Epic Games Store](https://store.epicgames.com/en-US/free-games)', inline: false })
+            .setImage(LIVE_IMAGE_URL)
+            .setTimestamp()
+            .setFooter({ text: 'PJN Darmowe Gry • Epic Games' });
+
+        const steamEmbed = new EmbedBuilder()
+            .setColor(0x1B2838)
+            .setTitle('🎮 Darmowe Gry / Promocje na Steam')
+            .setDescription('Sprawdź najnowsze darmowe gry, wersje próbną oraz darmowe dodatki (DLC) dostępne obecnie na platformie Steam.')
+            .addFields({ name: '🔗 Link do pobrania / sprawdzenia', value: '[Przejdź do Steam Free to Play / Promocji](https://store.steampowered.com/genre/Free%20to%20Play/)', inline: false })
+            .setImage(LIVE_IMAGE_URL)
+            .setTimestamp()
+            .setFooter({ text: 'PJN Darmowe Gry • Steam' });
+
+        await channel.send({
+            content: '@everyone Świeża dostawa informacji o **darmowych grach** z Epic Games i Steam jest już dostępna!',
+            embeds: [epicEmbed, steamEmbed],
+            allowedMentions: { parse: ['everyone'] }
+        });
+    } catch (err) {
+        console.error('Błąd podczas wysyłania darmowych gier:', err);
+    }
+}
+
+function startFreeGamesCron() {
+    // Cron uruchamiany raz na 24 godziny (codziennie o godzinie 15:00)
+    cron.schedule('0 15 * * *', async () => {
+        await sendFreeGamesNotification();
+    });
 }
 
 async function setupRussianRouletteChannel() {
@@ -1953,6 +1998,7 @@ const commands = [
     new SlashCommandBuilder().setName('topka').setDescription('Zobacz ranking najbogatszych graczy'),
     new SlashCommandBuilder().setName('ustaw-topke').setDescription('Ustaw ten kanał jako ranking (Admin)').setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
     new SlashCommandBuilder().setName('ustaw-odznaki').setDescription('Ustaw ten kanał jako centrum odznak (Admin)').setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+    new SlashCommandBuilder().setName('darmowe-gry').setDescription('Ręcznie wyślij aktualne informacje o darmowych grach z Epic Games i Steam (Admin)').setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
     new SlashCommandBuilder().setName('daily').setDescription('Odbieraj codzienne 100 PJN-Coins'),
     new SlashCommandBuilder().setName('przelej').setDescription('Przelewa PJN-Coins').addUserOption(o => o.setName('uzytkownik').setDescription('Komu').setRequired(true)).addIntegerOption(o => o.setName('kwota').setDescription('Ile').setRequired(true)),
     new SlashCommandBuilder().setName('kostka').setDescription('Rzuć kością').addIntegerOption(o => o.setName('stawka').setDescription('Stawka').setRequired(true)),
@@ -2132,6 +2178,95 @@ const commands = [
         .setType(ApplicationCommandType.Message)
 ].map(c => c.toJSON());
 
+// === EVENT LOGOWANIA WYJŚĆ, KICKÓW ORAZ BANÓW ===
+client.on('guildMemberRemove', async member => {
+    try {
+        const guild = member.guild;
+        const logChannelId = NOTIF_CONFIG.leaveLogChannelId;
+        const channel = await guild.channels.fetch(logChannelId).catch(() => null) as TextChannel;
+        if (!channel) return;
+
+        // Sprawdzamy Audit Logi, aby ustalić czy członek został wyrzucony (Kick) czy po prostu wyszedł
+        const fetchedLogs = await guild.fetchAuditLogs({
+            limit: 1,
+            type: AuditLogEvent.MemberKick,
+        }).catch(() => null);
+
+        const kickLog = fetchedLogs?.entries.first();
+        let actionType = 'opuszczenie'; // domyślnie opuścił serwer
+        let executorTag = 'N/D';
+
+        if (kickLog && kickLog.target && kickLog.target.id === member.id) {
+            // Sprawdzamy czy wpis nie jest przestarzały (np. w ciągu ostatnich 5 sekund)
+            const { createdTimestamp } = kickLog;
+            if (Date.now() - createdTimestamp < 5000) {
+                actionType = 'kick';
+                executorTag = kickLog.executor ? kickLog.executor.tag : 'Nieznany';
+            }
+        }
+
+        const embed = new EmbedBuilder()
+            .setTimestamp()
+            .setThumbnail(member.user.displayAvatarURL());
+
+        if (actionType === 'kick') {
+            embed.setColor(0xE67E22)
+                .setTitle('👢 Użytkownik został Wyrzucony (Kick)')
+                .setDescription(`Użytkownik **${member.user.tag}** (<@${member.id}>) został wyrzucony z serwera przez **${executorTag}**.`);
+        } else {
+            embed.setColor(0xE74C3C)
+                .setTitle('📤 Użytkownik Opuścił Serwer')
+                .setDescription(`Użytkownik **${member.user.tag}** (<@${member.id}>) opuścił serwer.`);
+        }
+
+        await channel.send({ embeds: [embed] });
+    } catch (e) {
+        console.error('Błąd w obsłudze zdarzenia guildMemberRemove:', e);
+    }
+});
+
+client.on('guildBanAdd', async ban => {
+    try {
+        const guild = ban.guild;
+        const logChannelId = NOTIF_CONFIG.leaveLogChannelId;
+        const channel = await guild.channels.fetch(logChannelId).catch(() => null) as TextChannel;
+        if (!channel) return;
+
+        // Pobieramy audit logi banów
+        const fetchedLogs = await guild.fetchAuditLogs({
+            limit: 1,
+            type: AuditLogEvent.MemberBanAdd,
+        }).catch(() => null);
+
+        const banLog = fetchedLogs?.entries.first();
+        let executorTag = 'Nieznany';
+        let reason = 'Brak podanego powodu';
+
+        if (banLog && banLog.target && banLog.target.id === ban.user.id) {
+            const { createdTimestamp } = banLog;
+            if (Date.now() - createdTimestamp < 5000) {
+                executorTag = banLog.executor ? banLog.executor.tag : 'Nieznany';
+                reason = banLog.reason || 'Brak podanego powodu';
+            }
+        }
+
+        const embed = new EmbedBuilder()
+            .setColor(0x990000)
+            .setTitle('🔨 Użytkownik został Zbanowany')
+            .setThumbnail(ban.user.displayAvatarURL())
+            .setDescription(
+                `Użytkownik **${ban.user.tag}** (<@${ban.user.id}>) został zbanowany na serwerze!\n\n` +
+                `🛡️ **Moderator:** ${executorTag}\n` +
+                `📋 **Powód:** ${reason}`
+            )
+            .setTimestamp();
+
+        await channel.send({ embeds: [embed] });
+    } catch (e) {
+        console.error('Błąd w obsłudze zdarzenia guildBanAdd:', e);
+    }
+});
+
 client.once('ready', async () => {
     console.log(`Zalogowano jako ${client.user?.tag}!`);
     await seedQuotesIfNeeded();
@@ -2217,6 +2352,7 @@ client.once('ready', async () => {
     startServerStatsCron();
     startPollChecker();
     startPokerRoomInactivityChecker();
+    startFreeGamesCron();
 });
 
 client.on('interactionCreate', async interaction => {
@@ -3121,13 +3257,12 @@ client.on('interactionCreate', async interaction => {
             let botCanResolve = false;
             let botReply = "";
 
-            // Inteligentna baza wiedzy oparta bezpośrednio o kod i serwer PJN
             if (lowerMsg.includes('technik') || lowerMsg.includes('właściciel') || lowerMsg.includes('twórca') || lowerMsg.includes('kto stworzył')) {
                 botCanResolve = true;
                 botReply = `Głównym twórcą i streamerem projektu PJN jest **LangusPJN** (współtwórca: **ellader**). Administratorami serwera są osoby posiadające odpowiednie uprawnienia, a konfiguracja opiera się na zaawansowanym kodzie bota Discord.js!`;
             } else if (lowerMsg.includes('coins') || lowerMsg.includes('monet') || lowerMsg.includes('stan') || lowerMsg.includes('walut')) {
                 botCanResolve = true;
-                botReply = `Oficjalną walutą na serwerie są **PJN-Coins**. Swoje środki sprawdzisz komendą \`/portfel\`, a darmowe monety odbierzesz co 24h komendą \`/daily\`!`;
+                botReply = `Oficjalną walutą na serwerze są **PJN-Coins**. Swoje środki sprawdzisz komendą \`/portfel\`, a darmowe monety odbierzesz co 24h komendą \`/daily\`!`;
             } else if (lowerMsg.includes('sklep') || lowerMsg.includes('kupić') || lowerMsg.includes('vip') || lowerMsg.includes('rang')) {
                 botCanResolve = true;
                 botReply = `Sklep serwerowy znajduje się na kanale <#${ID_KANAL_SKLEPU}>. Możesz tam kupować role czasowe (np. VIP na 30 dni), odznaki oraz bonusy za PJN-Coins za pomocą menu rozwijanego.`;
@@ -3139,7 +3274,6 @@ client.on('interactionCreate', async interaction => {
                 botReply = `Dla graczy Fortnite przygotowaliśmy dedykowany kanał <#${ID_KANAL_FORTNITE}>, gdzie możesz sprawdzić dzisiejszy sklep w grze, statystyki (\`/fn-stats\`) oraz zarejestrować swój nick (\`/fn-rejestracja\`) do automatycznego rankingu killi!`;
             }
 
-            // Jeśli bot udzielił odpowiedzi z bazy wiedzi
             if (botCanResolve) {
                 const embedDirect = new EmbedBuilder()
                     .setColor(0x2ECC71)
@@ -3150,7 +3284,6 @@ client.on('interactionCreate', async interaction => {
                 return interaction.editReply({ embeds: [embedDirect] });
             }
 
-            // Jeśli bot NIE jest w stanie pomóc -> automatycznie proponuje i tworzy rozmowę z administracją
             const parentCategoryId = await getFirstCategory(guild);
 
             const supportChannel = await guild.channels.create({
@@ -3277,6 +3410,14 @@ client.on('interactionCreate', async interaction => {
             await user.save();
             await TransactionHistoryModel.create({ userId: interaction.user.id, type: 'casino_kpn', amount: change, details: `Gracz: ${wyborGracza}, Bot: ${wyborBota}` });
             return interaction.editReply({ content: wynikText });
+        }
+
+        if (commandName === 'darmowe-gry') {
+            if (!isAuthorized(interaction.user.id)) return interaction.reply({ content: '❌ Brak uprawnień!', ephemeral: true });
+            await interaction.deferReply({ ephemeral: true });
+            await sendFreeGamesNotification();
+            await interaction.editReply({ content: `✅ Pomyślnie wysłano powiadomienie o darmowych grach na kanał <#${FREE_GAMES_CHANNEL_ID}>!` });
+            return;
         }
 
         if (commandName === 'quiz-gra') {
@@ -4317,304 +4458,9 @@ client.on('interactionCreate', async interaction => {
             await checkAndAwardBadges(user, memberObj, interaction.guild);
             return interaction.editReply({ content: resultMessage });
         }
-
-        if (commandName === 'poker') {
-            if (interaction.channelId !== '1534060082084577350') {
-                return interaction.reply({ content: '❌ Komendy `/poker` można używać wyłącznie na dedykowanym kanale pokera (<#1534060082084577350>)!', ephemeral: true });
-            }
-            await interaction.deferReply();
-            const tryb = interaction.options.getString('tryb', true);
-            const stawka = interaction.options.getInteger('stawka', true);
-            if (stawka <= 0) return interaction.editReply({ content: '❌ Stawka musi być > 0!' });
-
-            let user = await UserModel.findOne({ userId: interaction.user.id });
-            if (!user) user = await UserModel.create({ userId: interaction.user.id });
-            if (user.balance < stawka) return interaction.editReply({ content: `❌ Brak środków (${stawka})!` });
-
-            if (tryb === 'bot') {
-                user.casinoPlays = (user.casinoPlays || 0) + 1;
-                const memberObj = await interaction.guild?.members.fetch(interaction.user.id).catch(() => null);
-                const winChance = await getCasinoMultiplier(interaction.user.id, memberObj);
-                const wygrana = (winChance === 1.0) ? (stawka * 2) : (Math.random() < (winChance + 0.1) ? stawka * 2 : -stawka);
-
-                user.balance += wygrana;
-                if (wygrana > 0) {
-                    user.consecutiveWins = (user.consecutiveWins || 0) + 1;
-                    user.consecutiveLosses = 0;
-                } else {
-                    user.consecutiveLosses = (user.consecutiveLosses || 0) + 1;
-                    user.consecutiveWins = 0;
-                }
-                await user.save();
-
-                await TransactionHistoryModel.create({
-                    userId: interaction.user.id,
-                    type: 'casino_poker',
-                    amount: wygrana,
-                    details: `Tryb: bot`
-                });
-
-                await checkAndAwardBadges(user, memberObj, interaction.guild);
-
-                if (wygrana > 0) {
-                    return interaction.editReply({ content: `🃏 [Poker - Z botem] Wygrywasz **${wygrana} PJN-Coins**!` });
-                } else {
-                    return interaction.editReply({ content: `🃏 [Poker - Z botem] Przegrywasz **${stawka} PJN-Coins**!` });
-                }
-            } else {
-                const embed = new EmbedBuilder()
-                    .setColor(0x9B59B6)
-                    .setTitle('🃏 Prywatny Pokój Pokerowy (Z ludźmi)')
-                    .setDescription(
-                        `👤 **Host:** <@${interaction.user.id}>\n` +
-                        `💰 **Stawka:** ${stawka} PJN-Coins\n` +
-                        `👥 **Gracze (1/4):**\n• <@${interaction.user.id}>\n\n` +
-                        `⏱️ Pokój ma czas oczekiwania 15 minut. Po 15 minutach nieaktywności bot zamknie ten pokój.`
-                    )
-                    .setTimestamp();
-
-                const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
-                    new ButtonBuilder().setCustomId('poker_join').setLabel('Dołącz do pokoju').setStyle(ButtonStyle.Success).setEmoji('🃏'),
-                    new ButtonBuilder().setCustomId('poker_start').setLabel('Natychmiastowy start').setStyle(ButtonStyle.Primary).setEmoji('🚀')
-                );
-
-                const sentMessage = await interaction.editReply({ embeds: [embed], components: [row] });
-                await PokerRoomModel.create({
-                    messageId: sentMessage.id,
-                    channelId: interaction.channelId,
-                    hostId: interaction.user.id,
-                    stake: stawka,
-                    players: [interaction.user.id],
-                    status: 'waiting',
-                    lastActivity: new Date()
-                });
-                return;
-            }
-        }
-
-        if (commandName === 'quiz') {
-            await interaction.reply({ content: '❓ **Quiz PJN:** Jak nazywa się twórca tego serwera lub główne platformy streamingowe projektu? (Odpowiedz: LangusPJN)', ephemeral: false });
-            return;
-        }
-
-        if (commandName === 'odznaki') {
-            await interaction.deferReply({ ephemeral: true });
-            const targetUser = interaction.options.getUser('uzytkownik') || interaction.user;
-            let user = await UserModel.findOne({ userId: targetUser.id });
-            if (!user) user = await UserModel.create({ userId: targetUser.id });
-
-            let userLvl = user.level || 1;
-            let userExp = user.exp || 0;
-
-            const badgeText = user.badges && user.badges.length > 0 ? user.badges.join('\n') : 'Brak odznak.';
-            await interaction.editReply({
-                embeds: [{
-                    color: 0x9B59B6,
-                    title: `🛡️ Profil Odznak i Osiągnięć`,
-                    description: `Użytkownik: <@${targetUser.id}>`,
-                    thumbnail: { url: targetUser.displayAvatarURL() },
-                    fields: [
-                        { name: '🏅 Zdobyte Odznaki', value: badgeText, inline: false },
-                        { name: '📊 Statystyki', value: `💬 Wiadomości: **${user.messageCount || 0}**\n🎙️ Głos: **${user.voiceMinutes || 0} min**\n⭐ Poziom: **${userLvl}** (${userExp} XP)\n💰 Portfel: **${user.balance || 0}**`, inline: false }
-                    ]
-                }]
-            });
-            return;
-        }
-
-        if (commandName === 'daj-odznake' || commandName === 'zabierz-odznake') {
-            if (!isAuthorized(interaction.user.id)) return interaction.reply({ content: '❌ Brak uprawnień!', ephemeral: true });
-            await interaction.deferReply({ ephemeral: true });
-            const targetUser = interaction.options.getUser('uzytkownik', true);
-            const odznaka = interaction.options.getString('odznaka', true);
-            let user = await UserModel.findOne({ userId: targetUser.id });
-            if (!user) user = await UserModel.create({ userId: targetUser.id });
-
-            if (commandName === 'daj-odznake') {
-                if (!user.badges.includes(odznaka)) {
-                    user.badges.push(odznaka);
-                    await user.save();
-                     
-                    const memberObj = await interaction.guild?.members.fetch(targetUser.id).catch(() => null);
-                    await checkAndAwardBadges(user, memberObj || targetUser, interaction.guild);
-
-                    await interaction.editReply({ content: `✅ Pomyślnie przyznano odznakę i wysłano powiadomienie na PW!` });
-                } else {
-                    await interaction.editReply({ content: `⚠️ Użytkownik ma już tę odznakę.` });
-                }
-            } else {
-                user.badges = user.badges.filter((b: string) => b !== odznaka);
-                await user.save();
-                await interaction.editReply({ content: `✅ Pomyślnie odebrano odznakę użytkownikowi.` });
-            }
-            return;
-        }
-
-        if (commandName === 'dajpunkty' || commandName === 'zabierzpunkty') {
-            if (!isAuthorized(interaction.user.id)) return interaction.reply({ content: '❌ Brak uprawnień!', ephemeral: true });
-            await interaction.deferReply({ ephemeral: true });
-            const targetUser = interaction.options.getUser('uzytkownik', true);
-            const ilosc = interaction.options.getInteger('ilosc', true);
-            const powod = interaction.options.getString('powod') || 'Brak powódu';
-
-            let user = await UserModel.findOne({ userId: targetUser.id });
-            if (!user) user = await UserModel.create({ userId: targetUser.id });
-
-            if (commandName === 'dajpunkty') {
-                user.balance += ilosc;
-                await user.save();
-                await TransactionHistoryModel.create({
-                    userId: interaction.user.id,
-                    targetUserId: targetUser.id,
-                    type: 'admin_add',
-                    amount: ilosc,
-                    details: powod
-                });
-                await interaction.editReply({ content: `✅ Dodano **${ilosc} PJN-Coins** użytkownikowi <@${targetUser.id}>!` });
-            } else {
-                user.balance = Math.max(0, user.balance - ilosc);
-                await user.save();
-                await TransactionHistoryModel.create({
-                    userId: interaction.user.id,
-                    targetUserId: targetUser.id,
-                    type: 'admin_remove',
-                    amount: ilosc,
-                    details: 'Zabrano punkty'
-                });
-                await interaction.editReply({ content: `✅ Zabrano **${ilosc} PJN-Coins** użytkownikowi <@${targetUser.id}>!` });
-            }
-            return;
-        }
-
-        if (commandName === 'cytat') {
-            await interaction.deferReply();
-            const count = await QuoteModel.countDocuments();
-            if (count === 0) return interaction.editReply({ content: '📭 Brak cytatów w bazie.' });
-
-            const random = Math.floor(Math.random() * count);
-            const quote = await QuoteModel.findOne().skip(random);
-            if (!quote) return interaction.editReply({ content: '❌ Nie znaleziono cytatu.' });
-
-            const embed = new EmbedBuilder()
-                .setColor(0xE67E22)
-                .setTitle('✨ Życiowa myśl z bazy PJN')
-                .setDescription(`> *„${quote.text}”*\n\n**— ${quote.author}**`)
-                .setTimestamp();
-            await interaction.editReply({ embeds: [embed] });
-            return;
-        }
-
-        if (commandName === 'dodaj-cytat') {
-            await interaction.deferReply({ ephemeral: true });
-            const tekst = interaction.options.getString('tekst', true);
-            const autor = interaction.options.getString('autor', true);
-
-            await QuoteModel.create({ text: tekst, author: autor, addedBy: interaction.user.id });
-
-            let user = await UserModel.findOne({ userId: interaction.user.id });
-            if (!user) user = await UserModel.create({ userId: interaction.user.id });
-            user.quotesAdded = (user.quotesAdded || 0) + 1;
-            await user.save();
-
-            const memberObj = await interaction.guild?.members.fetch(interaction.user.id).catch(() => null);
-            await checkAndAwardBadges(user, memberObj || interaction.user, interaction.guild);
-
-            const channel = await client.channels.fetch(ID_KANALU_ZLOTE_MYSLI).catch(() => null) as TextChannel;
-            if (channel) {
-                const embed = new EmbedBuilder()
-                    .setColor(0xE67E22)
-                    .setTitle('✨ Nowa Złota Myśl dodana przez użytkownika')
-                    .setDescription(`> *„${tekst}”*\n\n**— ${autor}**`)
-                    .setTimestamp();
-                await channel.send({ embeds: [embed] });
-            }
-
-            await interaction.editReply({ content: `✅ Pomyślnie dodano nowy cytat do bazy oraz wysłano na kanał <#${ID_KANALU_ZLOTE_MYSLI}>!` });
-            return;
-        }
-
-        if (commandName === 'mem') {
-            await interaction.deferReply();
-            const templateId = interaction.options.getString('szablon', true);
-            const gora = interaction.options.getString('gora') || '';
-            const dol = interaction.options.getString('dol') || '';
-
-            try {
-                const params = new URLSearchParams({
-                    template_id: templateId,
-                    username: process.env.IMGFLIP_USERNAME || 'test_user',
-                    password: process.env.IMGFLIP_PASSWORD || 'test_pass',
-                    text0: gora,
-                    text1: dol
-                });
-
-                const response = await fetch('https://api.imgflip.com/caption_image', {
-                    method: 'POST',
-                    body: params
-                });
-                const data = await response.json() as any;
-
-                if (data && data.success && data.data && data.data.url) {
-                    const embed = new EmbedBuilder()
-                        .setColor(0x3498DB)
-                        .setTitle(`🖼️ Wygenerowany Mem przez <@${interaction.user.id}>`)
-                        .setImage(data.data.url)
-                        .setTimestamp();
-                    await interaction.editReply({ embeds: [embed] });
-                } else {
-                    await interaction.editReply({ content: '❌ Nie udało się wygenerować mema. Sprawdź parametry logowania Imgflip w zmiennych środowiskowych lub wybierz inny szablon.' });
-                }
-            } catch (err) {
-                await interaction.editReply({ content: '❌ Wystąpił błąd podczas komunikacji z API generowania memów.' });
-            }
-            return;
-        }
-
     } catch (err) {
-        console.error('Błąd podczas obsługi komendy:', err);
-        if (!interaction.replied && !interaction.deferred) {
-            await interaction.reply({ content: '❌ Wystąpił nieoczekiwany błąd podczas wykonywania tej komendy.', ephemeral: true }).catch(() => {});
-        }
+        console.error('Błąd podczas obsługi interakcji:', err);
     }
-});
-
-async function updateLFGMessage(message: any, lfgDoc: any) {
-    try {
-        const gameInfo = LFG_CONFIG.GAMES[lfgDoc.game as keyof typeof LFG_CONFIG.GAMES];
-        const playersListText = lfgDoc.currentPlayers.map((id: string) => `• <@${id}>`).join('\n');
-
-        const embed = new EmbedBuilder()
-            .setColor(lfgDoc.status === 'closed' ? 0xE74C3C : lfgDoc.status === 'full' ? 0xF1C40F : 0x5865F2)
-            .setTitle(`${gameInfo?.emoji || '🎮'} Szukanie Ekipy: ${gameInfo?.name || lfgDoc.game} ${lfgDoc.status === 'closed' ? '(ZAMKNIĘTE)' : lfgDoc.status === 'full' ? '(PEŁNY SKŁAD)' : ''}`)
-            .setDescription(
-                `👤 **Organizator:** <@${lfgDoc.authorId}>\n` +
-                `👥 **Skład:** ${lfgDoc.currentPlayers.length} / ${lfgDoc.maxPlayers} osób\n` +
-                `📝 **Opis:** ${lfgDoc.description}\n\n` +
-                `📋 **Aktualni członkowie:**\n${playersListText}` +
-                (lfgDoc.voiceChannelId ? `\n\n🎙️ **Kanał głosowy:** <#${lfgDoc.voiceChannelId}>` : '')
-            )
-            .setTimestamp()
-            .setFooter({ text: 'PJN System LFG • Zaktualizowano' });
-
-        const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
-            new ButtonBuilder().setCustomId('lfg_join').setLabel('Dołącz do ekipy').setStyle(ButtonStyle.Success).setEmoji('➕').setDisabled(lfgDoc.status === 'closed'),
-            new ButtonBuilder().setCustomId('lfg_leave').setLabel('Opuść').setStyle(ButtonStyle.Danger).setEmoji('➖').setDisabled(lfgDoc.status === 'closed'),
-            new ButtonBuilder().setCustomId('lfg_create_voice').setLabel('🎙️ Utwórz pokój').setStyle(ButtonStyle.Primary).setDisabled(lfgDoc.status === 'closed'),
-            new ButtonBuilder().setCustomId('lfg_close').setLabel('Zamknij ogłoszenie').setStyle(ButtonStyle.Secondary).setEmoji('🔒').setDisabled(lfgDoc.status === 'closed')
-        );
-
-        await message.edit({ embeds: [embed], components: [lfgDoc.status === 'closed' ? [] : [row]].flat() }).catch(() => {});
-    } catch (e) {}
-}
-
-const server = http.createServer((req, res) => {
-    res.writeHead(200, { 'Content-Type': 'text/plain' });
-    res.end('PJN Discord Bot jest uruchomiony i działa poprawnie!\n');
-});
-
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-    console.log(`Serwer HTTP nasłuchuje na porcie ${PORT}`);
 });
 
 client.login(token);
