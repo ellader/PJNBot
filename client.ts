@@ -385,7 +385,7 @@ client.on('guildMemberAdd', async member => {
             .setColor(0x2ECC71)
             .setTitle('👋 Nowy użytkownik na pokładzie!')
             .setDescription(
-                `Witaj <@${member.id}> na serwerie **${guild.name}**!\n\n` +
+                `Witaj <@${member.id}> na serwerze **${guild.name}**!\n\n` +
                 `Cieszymy się, że dołączyłeś do naszej społeczności. Pamiętaj, aby zapoznać się z regulaminem, zweryfikować konto i miło spędzić z nami czas! 🚀`
             )
             .setThumbnail(member.user.displayAvatarURL())
@@ -394,7 +394,7 @@ client.on('guildMemberAdd', async member => {
             .setFooter({ text: 'PJN System Powitań' });
 
         await channel.send({
-            content: `<@${member.id}> Witaj na serwerie!`,
+            content: `<@${member.id}> Witaj na serwerze!`,
             embeds: [welcomeEmbed],
             allowedMentions: { users: [member.id] }
         });
@@ -1900,6 +1900,35 @@ function startLfgAutoCloser() {
     }, 60 * 1000);
 }
 
+// Funkcja pomocnicza aktualizująca wiadomość LFG
+async function updateLFGMessage(message: any, lfgDoc: any) {
+    try {
+        const gameInfo = LFG_CONFIG.GAMES[lfgDoc.game as keyof typeof LFG_CONFIG.GAMES];
+        const statusText = lfgDoc.status === 'closed' ? '🔒 [ZAMKNIĘTE]' : lfgDoc.status === 'full' ? '🔴 [PEŁNY SKŁAD]' : '🟢 [AKTYWNE]';
+        const playersListText = lfgDoc.currentPlayers.map((id: string) => `• <@${id}>`).join('\n');
+
+        const embed = new EmbedBuilder()
+            .setColor(lfgDoc.status === 'closed' ? 0xE74C3C : 0x5865F2)
+            .setTitle(`${gameInfo.emoji} Szukanie Ekipy: ${gameInfo.name} ${statusText}`)
+            .setDescription(
+                `👤 **Organizator:** <@${lfgDoc.authorId}>\n` +
+                `👥 **Skład:** ${lfgDoc.currentPlayers.length} / ${lfgDoc.maxPlayers} osób\n` +
+                `📝 **Opis:** ${lfgDoc.description}\n\n` +
+                `📋 **Aktualni członkowie:**\n${playersListText}`
+            )
+            .setTimestamp();
+
+        const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+            new ButtonBuilder().setCustomId('lfg_join').setLabel('Dołącz do ekipy').setStyle(ButtonStyle.Success).setEmoji('➕').setDisabled(lfgDoc.status === 'closed'),
+            new ButtonBuilder().setCustomId('lfg_leave').setLabel('Opuść').setStyle(ButtonStyle.Danger).setEmoji('➖').setDisabled(lfgDoc.status === 'closed'),
+            new ButtonBuilder().setCustomId('lfg_create_voice').setLabel('🎙️ Utwórz pokój').setStyle(ButtonStyle.Primary).setDisabled(lfgDoc.status === 'closed'),
+            new ButtonBuilder().setCustomId('lfg_close').setLabel('Zamknij ogłoszenie').setStyle(ButtonStyle.Secondary).setEmoji('🔒').setDisabled(lfgDoc.status === 'closed')
+        );
+
+        await message.edit({ embeds: [embed], components: lfgDoc.status === 'closed' ? [] : [row] });
+    } catch (e) {}
+}
+
 async function cleanupOrphanedLfgVoices() {
     try {
         const activeLfgWithVoice = await LFGModel.find({ status: { $ne: 'closed' }, voiceChannelId: { $ne: null } });
@@ -2889,7 +2918,7 @@ client.on('interactionCreate', async interaction => {
                 );
 
                 await ticketChannel.send({
-                    content: `<@${interaction.user.id}> \vert{} <@&${ID_RANGI_DUSZKOWIEC}> <@&${ID_RANGI_MODERATOR}> <@&${ID_RANGI_ADMIN}>`,
+                    content: `<@${interaction.user.id}> | <@&${ID_RANGI_DUSZKOWIEC}> <@&${ID_RANGI_MODERATOR}> <@&${ID_RANGI_ADMIN}>`,
                     embeds: [welcomeEmbed],
                     components: [closeRow]
                 });
@@ -3197,7 +3226,7 @@ client.on('interactionCreate', async interaction => {
                                 permissionOverwrites.push({ id: pId, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.Connect, PermissionFlagsBits.Speak] });
                             }
                             const voiceChan = await guild.channels.create({
-                                name: `🎮-${gameInfo?.name \vert{}\vert{} 'Ekipa'}-${interaction.user.username}`,
+                                name: `🎮-${gameInfo?.name || 'Ekipa'}-${interaction.user.username}`,
                                 type: ChannelType.GuildVoice,
                                 parent: LFG_CONFIG.CATEGORY_VOICE,
                                 permissionOverwrites: permissionOverwrites
@@ -3244,7 +3273,7 @@ client.on('interactionCreate', async interaction => {
                             permissionOverwrites.push({ id: pId, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.Connect, PermissionFlagsBits.Speak] });
                         }
                         const voiceChan = await guild.channels.create({
-                            name: `🎮-${gameInfo?.name \vert{}\vert{} 'Ekipa'}-${interaction.user.username}`,
+                            name: `🎮-${gameInfo?.name || 'Ekipa'}-${interaction.user.username}`,
                             type: ChannelType.GuildVoice,
                             parent: LFG_CONFIG.CATEGORY_VOICE,
                             permissionOverwrites: permissionOverwrites
@@ -3541,7 +3570,7 @@ client.on('interactionCreate', async interaction => {
                 .setThumbnail(targetUser.displayAvatarURL())
                 .addFields(
                     { name: '💰 Portfel', value: `**${user.balance || 0} PJN-Coins**`, inline: true },
-                    { name: '⭐ Poziom & XP', value: `Poziom **${user.level \vert{}\vert{} 1}** (${user.exp || 0} XP)\nRanking: **#${rankDetails.rank}**`, inline: true },
+                    { name: '⭐ Poziom & XP', value: `Poziom **${user.level || 1}** (${user.exp || 0} XP)\nRanking: **#${rankDetails.rank}**`, inline: true },
                     { name: '⭐ Reputacja', value: `**${user.reputation || 0} pkt**`, inline: true },
                     { name: '🎮 Fortnite Stats', value: `Nick: **${user.epicNick || 'Brak'}**\nZabójstwa: **${user.fortniteKills || 0}**`, inline: false },
                     { name: '💬 Aktywność i Głos', value: formatCatVertical(catChat), inline: false },
@@ -3977,7 +4006,7 @@ client.on('interactionCreate', async interaction => {
 
             const embed = new EmbedBuilder()
                 .setColor(0x5865F2)
-                .setTitle(`${gameInfo.emoji} Szukanie Ekipy:${gameInfo.name}`)
+                .setTitle(`${gameInfo.emoji} Szukanie Ekipy: ${gameInfo.name}`)
                 .setDescription(
                     `👤 **Organizator:** <@${authorId}>\n` +
                     `👥 **Skład:** 1 / ${maxPlayers} osób\n` +
@@ -4093,8 +4122,8 @@ client.on('interactionCreate', async interaction => {
                 .setThumbnail(targetUser.displayAvatarURL())
                 .addFields(
                     { name: '📊 Aktualny Poziom', value: `**Poziom ${currentLevel}**`, inline: true },
-                    { name: '🏆 Miejsce w rankingu', value: `**#${rankDetails.rank} z${rankDetails.total}**`, inline: true },
-                    { name: '✨ Zebrane XP', value: `**${currentExp} /${requiredExp} XP**`, inline: true },
+                    { name: '🏆 Miejsce w rankingu', value: `**#${rankDetails.rank} z ${rankDetails.total}**`, inline: true },
+                    { name: '✨ Zebrane XP', value: `**${currentExp} / ${requiredExp} XP**`, inline: true },
                     { name: '🎯 Brakuje do awansu', value: `**${missingExp} XP**`, inline: true },
                     { name: '📈 Postęp', value: `\`[${progressBar}]\` **${progressPercent}%**`, inline: false }
                 )
@@ -4186,7 +4215,7 @@ client.on('interactionCreate', async interaction => {
                 details: powod
             });
 
-            await interaction.editReply({ content: `✅ Przyznano masowy bonus ${ilosc} PJN-Coins dla${successCount} użytkowników wraz z powiadomieniem na PW!` });
+            await interaction.editReply({ content: `✅ Przyznano masowy bonus ${ilosc} PJN-Coins dla ${successCount} użytkowników wraz z powiadomieniem na PW!` });
             return;
         }
 
@@ -4375,7 +4404,7 @@ client.on('interactionCreate', async interaction => {
             await user.save();
             await TransactionHistoryModel.create({ userId: interaction.user.id, type: 'casino_kostka', amount: win > 0 ? (win - stawka) : -stawka, details: `Wyrzucono: ${roll}` });
 
-            return interaction.editReply({ content: `🎲 Wyrzucono **${roll}**.${win > 0 ? `Wygrana **${win} PJN-Coins**!` : `Przegrana! Tracisz ${stawka} coins.`}` });
+            return interaction.editReply({ content: `🎲 Wyrzucono **${roll}**. ${win > 0 ? `Wygrana **${win} PJN-Coins**!` : `Przegrana! Tracisz ${stawka} coins.`}` });
         }
 
         if (commandName === 'moneta') {
@@ -4410,7 +4439,7 @@ client.on('interactionCreate', async interaction => {
             await user.save();
             await TransactionHistoryModel.create({ userId: interaction.user.id, type: 'casino_moneta', amount: win > 0 ? (win - stawka) : -stawka, details: `Wypadło: ${coin}` });
 
-            return interaction.editReply({ content: `🪙 Wypadło: **${coin}**.${win > 0 ? `Wygrana **${win} PJN-Coins**!` : `Przegrana!`}` });
+            return interaction.editReply({ content: `🪙 Wypadło: **${coin}**. ${win > 0 ? `Wygrana **${win} PJN-Coins**!` : `Przegrana!`}` });
         }
 
         if (commandName === 'slot') {
@@ -4456,9 +4485,9 @@ client.on('interactionCreate', async interaction => {
             }
 
             await user.save();
-            await TransactionHistoryModel.create({ userId: interaction.user.id, type: 'casino_slot', amount: win > 0 ? (win - stawka) : -stawka, details: `${s1}|${s2}\vert{}${s3}` });
+            await TransactionHistoryModel.create({ userId: interaction.user.id, type: 'casino_slot', amount: win > 0 ? (win - stawka) : -stawka, details: `${s1}|${s2}|${s3}` });
 
-            return interaction.editReply({ content: `🎰 [ ${s1} \vert{}${s2} | ${s3} ]\n${win > 0 ? `🎉 Wygrana **${win} PJN-Coins**!` : `❌ Przegrana!`}` });
+            return interaction.editReply({ content: `🎰 [ ${s1} | ${s2} | ${s3} ]\n${win > 0 ? `🎉 Wygrana **${win} PJN-Coins**!` : `❌ Przegrana!`}` });
         }
 
         if (commandName === 'poker') {
@@ -4478,12 +4507,12 @@ client.on('interactionCreate', async interaction => {
                 const now = new Date();
                 const hasGuaranteedWin = user.guaranteedWinUntil && new Date(user.guaranteedWinUntil) > now;
 
-                const win = hasGuaranteedWin || Math.random() < 0.45;
-                let reward = 0;
+                const won = hasGuaranteedWin ? true : (Math.random() < 0.45);
+                let win = 0;
 
-                if (win) {
-                    reward = stawka * 2;
-                    user.balance += reward;
+                if (won) {
+                    win = Math.round(stawka * 2.2);
+                    user.balance += win;
                     user.consecutiveWins = (user.consecutiveWins || 0) + 1;
                     user.consecutiveLosses = 0;
                 } else {
@@ -4492,13 +4521,17 @@ client.on('interactionCreate', async interaction => {
                 }
 
                 await user.save();
-                await TransactionHistoryModel.create({ userId: interaction.user.id, type: 'casino_poker_bot', amount: win ? stawka : -stawka, details: 'Poker z botem' });
+                await TransactionHistoryModel.create({ userId: interaction.user.id, type: 'casino_poker_bot', amount: win > 0 ? (win - stawka) : -stawka, details: 'Poker z botem' });
 
-                return interaction.editReply({ content: `🃏 Rozegrałeś partię pokera 1v1 z botem!\n${win ? `🎉 **Wygrana!** Zyskujesz **${reward} PJN-Coins**!` : `❌ **Przegrana!** Bot okazał się lepszy.`}` });
+                return interaction.editReply({ content: `🃏 **Poker z botem:**\n${win > 0 ? `🎉 Masz lepszy układ! Wygrywasz **${win} PJN-Coins**!` : `❌ Bot miał lepsze karty! Przegrywasz ${stawka} coins.`}` });
             } else {
+                if (interaction.channelId !== '1534060082084577350') {
+                    return interaction.editReply({ content: '❌ Stół do pokera z ludźmi znajduje się na dedykowanym kanale <#1534060082084577350>!' });
+                }
+
                 let user = await UserModel.findOne({ userId: interaction.user.id });
                 if (!user) user = await UserModel.create({ userId: interaction.user.id });
-                if (user.balance < stawka) return interaction.editReply({ content: `❌ Brak środków.` });
+                if (user.balance < stawka) return interaction.editReply({ content: `❌ Nie masz wystarczająco środków (${stawka} PJN-Coins).` });
 
                 const embed = new EmbedBuilder()
                     .setColor(0x9B59B6)
@@ -4530,114 +4563,70 @@ client.on('interactionCreate', async interaction => {
             }
         }
 
-        if (commandName === 'quiz') {
-            await interaction.deferReply();
-            const randomQuiz = QUIZ_POOL[Math.floor(Math.random() * QUIZ_POOL.length)];
-            return interaction.editReply({ content: `❓ **Pytanie:** ${randomQuiz.q}\n*Poprawna odpowiedź:* \`${randomQuiz.correct}\`` });
-        }
-
         if (commandName === 'odznaki') {
             await interaction.deferReply();
             const targetUser = interaction.options.getUser('uzytkownik') || interaction.user;
             let user = await UserModel.findOne({ userId: targetUser.id });
             if (!user) user = await UserModel.create({ userId: targetUser.id });
 
-            const badgesList = user.badges && user.badges.length > 0 ? user.badges.map(b => `• ${b}`).join('\n') : 'Brak odznak.';
+            const badgesList = user.badges || [];
+            const desc = badgesList.length > 0 ? badgesList.map(b => `• ${b}`).join('\n') : 'Brak odznak na tym koncie.';
 
             const embed = new EmbedBuilder()
-                .setColor(0xF1C40F)
-                .setTitle(`🛡️ Odznaki użytkownika ${targetUser.tag}`)
-                .setDescription(badgesList)
+                .setColor(0x9B59B6)
+                .setTitle(`🛡️ Odznaki użytkownika • ${targetUser.tag}`)
+                .setThumbnail(targetUser.displayAvatarURL())
+                .setDescription(desc)
                 .setTimestamp();
             return interaction.editReply({ embeds: [embed] });
         }
 
-        if (commandName === 'daj-odznake') {
-            if (!isAuthorized(interaction.user.id)) return interaction.reply({ content: '❌ Brak uprawnień!', ephemeral: true });
-            await interaction.deferReply({ ephemeral: true });
-            const target = interaction.options.getUser('uzytkownik', true);
-            const badgeName = interaction.options.getString('odznaka', true);
-
-            let user = await UserModel.findOne({ userId: target.id });
-            if (!user) user = await UserModel.create({ userId: target.id });
-
-            if (user.badges.includes(badgeName)) {
-                return interaction.editReply({ content: `⚠️ Użytkownik posiada już tę odznakę.` });
-            }
-
-            user.badges.push(badgeName);
-            await user.save();
-            return interaction.editReply({ content: `✅ Pomyślnie przyznano odznakę **${badgeName}** dla <@${target.id}>!` });
-        }
-
-        if (commandName === 'zabierz-odznake') {
-            if (!isAuthorized(interaction.user.id)) return interaction.reply({ content: '❌ Brak uprawnień!', ephemeral: true });
-            await interaction.deferReply({ ephemeral: true });
-            const target = interaction.options.getUser('uzytkownik', true);
-            const badgeName = interaction.options.getString('odznaka', true);
-
-            let user = await UserModel.findOne({ userId: target.id });
-            if (!user) return interaction.editReply({ content: '❌ Użytkownik nie istnieje w bazie.' });
-
-            user.badges = user.badges.filter(b => b !== badgeName);
-            await user.save();
-            return interaction.editReply({ content: `✅ Pomyślnie odebrano odznakę użytkownikowi <@${target.id}>.` });
-        }
-
-        if (commandName === 'dajpunkty') {
+        if (commandName === 'dajpunkty' || commandName === 'zabierzpunkty') {
             if (!isAuthorized(interaction.user.id)) return interaction.reply({ content: '❌ Brak uprawnień!', ephemeral: true });
             await interaction.deferReply({ ephemeral: true });
             const target = interaction.options.getUser('uzytkownik', true);
             const ilosc = interaction.options.getInteger('ilosc', true);
-            const powod = interaction.options.getString('powod') || 'Brak';
+            const powod = interaction.options.getString('powod') || 'Brak powódu';
+
+            if (ilosc <= 0) return interaction.editReply({ content: '❌ Ilość musi być większa od zera.' });
 
             let user = await UserModel.findOne({ userId: target.id });
             if (!user) user = await UserModel.create({ userId: target.id });
-            user.balance += ilosc;
+
+            const isAdd = commandName === 'dajpunkty';
+            if (isAdd) {
+                user.balance += ilosc;
+            } else {
+                user.balance = Math.max(0, user.balance - ilosc);
+            }
             await user.save();
 
             await TransactionHistoryModel.create({
                 userId: interaction.user.id,
                 targetUserId: target.id,
-                type: 'admin_add',
+                type: isAdd ? 'admin_add' : 'admin_remove',
                 amount: ilosc,
                 details: powod
             });
 
-            return interaction.editReply({ content: `✅ Dodano **${ilosc} coinsów** dla <@${target.id}>.` });
-        }
-
-        if (commandName === 'zabierzpunkty') {
-            if (!isAuthorized(interaction.user.id)) return interaction.reply({ content: '❌ Brak uprawnień!', ephemeral: true });
-            await interaction.deferReply({ ephemeral: true });
-            const target = interaction.options.getUser('uzytkownik', true);
-            const ilosc = interaction.options.getInteger('ilosc', true);
-
-            let user = await UserModel.findOne({ userId: target.id });
-            if (!user) user = await UserModel.create({ userId: target.id });
-            user.balance = Math.max(0, user.balance - ilosc);
-            await user.save();
-
-            await TransactionHistoryModel.create({
-                userId: interaction.user.id,
-                targetUserId: target.id,
-                type: 'admin_remove',
-                amount: ilosc,
-                details: 'Admin zabrał punkty'
-            });
-
-            return interaction.editReply({ content: `✅ Zabrano **${ilosc} coinsów** użytkownikowi <@${target.id}>.` });
+            return interaction.editReply({ content: `✅ Pomyślnie ${isAdd ? 'dodano' : 'zabrano'} **${ilosc} PJN-Coins** dla <@${target.id}>! Powód: ${powod}` });
         }
 
         if (commandName === 'cytat') {
             await interaction.deferReply();
             const count = await QuoteModel.countDocuments();
             if (count === 0) return interaction.editReply({ content: '📭 Brak cytatów w bazie.' });
-            const random = Math.floor(Math.random() * count);
-            const q = await QuoteModel.findOne().skip(random);
-            if (!q) return interaction.editReply({ content: '❌ Nie znaleziono cytatu.' });
 
-            return interaction.editReply({ content: `💬 *„${q.text}”* — **${q.author}**` });
+            const random = Math.floor(Math.random() * count);
+            const quote = await QuoteModel.findOne().skip(random);
+            if (!quote) return interaction.editReply({ content: '❌ Nie udało się wylosować cytatu.' });
+
+            const embed = new EmbedBuilder()
+                .setColor(0xE67E22)
+                .setTitle('✨ Cytat z bazy PJN')
+                .setDescription(`> *„${quote.text}”*\n\n**—${quote.author}**`)
+                .setTimestamp();
+            return interaction.editReply({ embeds: [embed] });
         }
 
         if (commandName === 'dodaj-cytat') {
@@ -4661,39 +4650,55 @@ client.on('interactionCreate', async interaction => {
         if (commandName === 'mem') {
             await interaction.deferReply();
             const templateId = interaction.options.getString('szablon', true);
-            const text0 = interaction.options.getString('gora') || '';
-            const text1 = interaction.options.getString('dol') || '';
+            const topText = interaction.options.getString('gora') || '';
+            const bottomText = interaction.options.getString('dol') || '';
 
             try {
-                const url = `https://api.imgflip.com/caption_image?template_id=${templateId}&username=YOUR_IMGFLIP_USER&password=YOUR_IMGFLIP_PASS&text0=${encodeURIComponent(text0)}&text1=${encodeURIComponent(text1)}`;
-                // Alternatywna prosta metoda z publicznym API Imgflip bez autoryzacji jeśli wymagane, lub bezpośredni zwrót linku:
-                const res = await fetch(`https://api.imgflip.com/caption_image`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                    body: new URLSearchParams({
-                        template_id: templateId,
-                        username: 'test_user_pjn',
-                        password: 'test_password',
-                        text0: text0,
-                        text1: text1
-                    })
+                const queryParams = new URLSearchParams({
+                    template_id: templateId,
+                    username: 'YOUR_IMGFLIP_USERNAME',
+                    password: 'YOUR_IMGFLIP_PASSWORD',
+                    text0: topText,
+                    text1: bottomText
                 });
+
+                const res = await fetch(`https://api.imgflip.com/caption_image?${queryParams.toString()}`, { method: 'POST' });
                 const data = await res.json() as any;
+
                 if (data && data.success && data.data && data.data.url) {
-                    return interaction.editReply({ content: `🖼️ **Twój wygenerowany mem:**\n${data.data.url}` });
+                    const embed = new EmbedBuilder()
+                        .setColor(0xE74C3C)
+                        .setTitle('🖼️ Wygenerowany Mem')
+                        .setImage(data.data.url)
+                        .setTimestamp()
+                        .setFooter({ text: `Wygenerował: ${interaction.user.tag}` });
+                    return interaction.editReply({ embeds: [embed] });
                 } else {
-                    return interaction.editReply({ content: '❌ Nie udało się wygenerować mema z podanego szablonu.' });
+                    return interaction.editReply({ content: '❌ Nie udało się wygenerować mema przez zewnętrzne API.' });
                 }
-            } catch (e) {
+            } catch (err) {
                 return interaction.editReply({ content: '❌ Wystąpił błąd podczas generowania mema.' });
             }
         }
-    } catch (e) {
-        console.error('Błąd wykonania komendy:', e);
-        if (!interaction.replied && !interaction.deferred) {
-            await interaction.reply({ content: '❌ Wystąpił nieoczekiwany błąd.', ephemeral: true }).catch(() => {});
+    } catch (err) {
+        console.error('Błąd podczas obsługi komendy:', err);
+        if (interaction.deferred || interaction.replied) {
+            await interaction.editReply({ content: '❌ Wystąpił błąd krytyczny podczas wykonywania tej komendy.' }).catch(() => {});
+        } else {
+            await interaction.reply({ content: '❌ Wystąpił błąd krytyczny podczas wykonywania tej komendy.', ephemeral: true }).catch(() => {});
         }
     }
+});
+
+// === URUCHOMIENIE SERWERA HTTP ORAZ BOTA ===
+const server = http.createServer((req, res) => {
+    res.writeHead(200, { 'Content-Type': 'text/plain' });
+    res.end('Bot PJN jest aktywny i działa poprawnie!\n');
+});
+
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => {
+    console.log(`Serwer HTTP nasłuchuje na porcie ${PORT}`);
 });
 
 client.login(token);
