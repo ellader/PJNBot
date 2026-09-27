@@ -4701,4 +4701,148 @@ server.listen(PORT, () => {
     console.log(`Serwer HTTP nasłuchuje na porcie ${PORT}`);
 });
 
+const { Client, GatewayIntentBits, EmbedBuilder } = require('discord.js');
+const { ApiClient } = require('@twurple/api');
+const { ClientCredentialsAuthProvider } = require('@twurple/auth');
+
+// ==================== KONFIGURACJA ====================
+const DISCORD_TOKEN = 'WSTAW_TUTAJ_SWÓJ_TOKEN_DISCORD';
+const TWITCH_CLIENT_ID = 'WSTAW_TUTAJ_TWITCH_CLIENT_ID';
+const TWITCH_CLIENT_SECRET = 'WSTAW_TUTAJ_TWITCH_CLIENT_SECRET';
+
+const TWITCH_CHANNEL_NAME = 'LangusPJN';
+const DISCORD_CHANNEL_ID = '1533839105962676254';
+// =======================================================
+
+// Inicjalizacja klienta Discord
+const client = new Client({
+    intents: [
+        GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildMessages
+    ]
+});
+
+// Konfiguracja autoryzacji Twitch API
+const authProvider = new ClientCredentialsAuthProvider(TWITCH_CLIENT_ID, TWITCH_CLIENT_SECRET);
+const twitchApi = new ApiClient({ authProvider });
+
+// Zmienne stanowe
+let isLive = false;
+let checkInterval = null;
+let liveMessageId = null; 
+let streamStartTime = null;
+
+client.once('ready', async () => {
+    console.log(`Zalogowano jako ${client.user.tag}! Uruchamiam monitorowanie kanału: ${TWITCH_CHANNEL_NAME}...`);
+    
+    // Pierwsze sprawdzenie od razu po starcie, a potem co 60 sekund
+    checkStreamStatus();
+    checkInterval = setInterval(checkStreamStatus, 60 * 1000);
+});
+
+async function checkStreamStatus() {
+    try {
+        const user = await twitchApi.users.getUserByName(TWITCH_CHANNEL_NAME);
+        if (!user) {
+            console.error(`Nie znaleziono kanału Twitch: ${TWITCH_CHANNEL_NAME}`);
+            return;
+        }
+
+        const stream = await twitchApi.streams.getStreamByUserId(user.id);
+        const discordChannel = await client.channels.fetch(DISCORD_CHANNEL_ID);
+
+        if (stream && !isLive) {
+            // ==================== STREAM RUSZYŁ (ONLINE) ====================
+            isLive = true;
+            streamStartTime = new Date();
+
+            // 1. Zmiana nazwy kanału na Discordzie (dodanie prefiksu 🔴)
+            if (discordChannel && discordChannel.name) {
+                const cleanName = discordChannel.name.replace(/^[🔴🟢⚫]\s*/, '');
+                await discordChannel.setName(`🔴-${cleanName}`).catch(console.error);
+            }
+
+            // 2. Pobranie gry oraz miniaturki
+            const game = await stream.getGame();
+            const thumbnail = stream.thumbnailUrl
+                .replace('{width}', '1280')
+                .replace('{height}', '720');
+
+            // 3. Budowanie zaawansowanego Embeda Live
+            const liveEmbed = new EmbedBuilder()
+                .setColor('#9146FF') // Oficjalny kolor Twitcha
+                .setTitle(`🚨 **${stream.title}**`)
+                .setURL(`https://twitch.tv/${TWITCH_CHANNEL_NAME}`)
+                .setAuthor({
+                    name: `${user.displayName} właśnie rozpoczął transmisję!`,
+                    iconURL: user.profilePictureUrl,
+                    url: `https://twitch.tv/${TWITCH_CHANNEL_NAME}`
+                })
+                .addFields(
+                    { name: '🎮 Gra / Kategoria', value: `\`${game ? game.name : 'Nieznana'}\``, inline: true },
+                    { name: '👥 Widzów', value: `\`${stream.viewersCount}\``, inline: true },
+                    { name: '⏰ Start', value: `<t:${Math.floor(streamStartTime.getTime() / 1000)}:R>`, inline: true }
+                )
+                .setImage(thumbnail)
+                .setFooter({ 
+                    text: 'Twitch Live Notification • LangusPJN', 
+                    iconURL: 'https://static.twitchcdn.net/assets/favicon-32-e29e246c157142694348.png' 
+                })
+                .setTimestamp();
+
+            // Wysłanie wiadomości z powiadomieniem
+            const sentMessage = await discordChannel.send({
+                content: `||@everyone|| **${user.displayName}** właśnie wystartował ze streamem! Wbijaj oglądać! 🔥 https://twitch.tv/${TWITCH_CHANNEL_NAME}`,
+                embeds: [liveEmbed]
+            });
+            
+            liveMessageId = sentMessage.id;
+
+        } else if (!stream && isLive) {
+            // ==================== STREAM SIĘ SKOŃCZYŁ (OFFLINE) ====================
+            isLive = false;
+            
+            // Obliczenie czasu trwania streamu
+            const durationMs = streamStartTime ? new Date() - streamStartTime : 0;
+            const hours = Math.floor(durationMs / (1000 * 60 * 60));
+            const minutes = Math.floor((durationMs % (1000 * 60 * 60)) / (1000 * 60));
+            const durationString = `${hours}h${minutes}m`;
+
+            // 1. Przywrócenie nazwy kanału na Discordzie (oznaczenie offline za pomocą ⚫)
+            if (discordChannel && discordChannel.name) {
+                const cleanName = discordChannel.name.replace(/^[🔴🟢⚫]\s*/, '');
+                await discordChannel.setName(`⚫-${cleanName}`).catch(console.error);
+            }
+
+            // 2. Edycja wiadomości na podsumowanie
+            if (discordChannel && liveMessageId) {
+                try {
+                    const message = await discordChannel.messages.fetch(liveMessageId);
+                    const offlineEmbed = new EmbedBuilder()
+                        .setColor('#5c5e66')
+                        .setTitle(`🏁 Transmisja dobiegła końca`)
+                        .setDescription(`Dziękujemy wszystkim za obecność na dzisiejszym streamie od **${TWITCH_CHANNEL_NAME}**!`)
+                        .addFields(
+                            { name: '⏱️ Czas trwania', value: `\`${durationString}\``, inline: true },
+                            { name: '💤 Status', value: '`Offline`', inline: true }
+                        )
+                        .setFooter({ text: 'Do zobaczenia następnym razem!' })
+                        .setTimestamp();
+
+                    await message.edit({ content: '✅ *Ten stream jest już zakończony.*', embeds: [offlineEmbed] });
+                } catch (e) {
+                    console.log('Nie udało się edytować wiadomości live.');
+                }
+            }
+
+            liveMessageId = null;
+            streamStartTime = null;
+        }
+    } catch (error) {
+        console.error('Błąd podczas sprawdzania statusu Twitcha:', error);
+    }
+}
+
+// Uruchomienie bota
+
 client.login(token);
