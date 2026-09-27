@@ -51,7 +51,7 @@ const userSchema = new mongoose.Schema({
     badges: { type: [String], default: [] },
     reputation: { type: Number, default: 0 },
     exp: { type: Number, default: 0 },
-    level: { type: Number, default: 1 },                 
+    level: { type: Number, default: 1 },                     
     vipExpiresAt: { type: Date, default: null },        
     doubleChanceUntil: { type: Date, default: null },  
     dailyBoostUntil: { type: Date, default: null },     
@@ -229,7 +229,7 @@ const ID_KANALU_MEMOW = '1534833819599769640';
 const ID_KANALU_SZUKAM_DO_GRY = '1532449084559069214'; 
 const ID_KANALU_POKAZ_SIEBIE = '1536365057997283469'; 
 const CHANNEL_POWITANIA = "witamy";
-const ID_KANALU_POWITANIA_NOWYCH = "1532414383584706751"; // ID kanału powitania nowych użytkowników
+const ID_KANALU_POWITANIA_NOWYCH = "1532414383584706751";
 const ID_KANALU_DUSZKI = "1532977723843285112"; 
 const ID_KANAL_ROZMOWY_Z_BOTEM = "1532862421729808565"; 
 const ID_KANAL_CENTRUM_ZGLOSZEN = "1532862125209555157"; 
@@ -312,7 +312,7 @@ const QUIZ_POOL = [
     { q: 'Jaka waluta obowiązuje na tym serwerze Discord?', correct: 'PJN-Coins', wrong1: 'V-Bucks', wrong2: 'Dolar' },
     { q: 'Ile komór ma bębnek w klasycznym rewolwerze w Rosyjskiej Ruletce?', correct: '6 komór', wrong1: '4 komory', wrong2: '8 komor' },
     { q: 'Kto jest głównym twórcą i streamerem projektu PJN?', correct: 'LangusPJN', wrong1: 'ellader', wrong2: 'Moderator' },
-    { q: 'Na jakiej platformie najczęściej odbywają się główne transmisje?', correct: 'Kick / TikTok', wrong1: 'Netflix', wrong2: 'Spotify' },
+    { q: 'Na jakiej platformie najczęściej odbywają się główne transmisje?', correct: 'Twitch / Kick', wrong1: 'Netflix', wrong2: 'Spotify' },
     { q: 'Jaki przedmiot w sklepie serwerowym daje bonus 2x za wiadomości?', correct: 'Rola VIP', wrong1: 'Odznaka', wrong2: 'Bilet duszka' },
     { q: 'Do jakiej kategorii gier należy Counter-Strike 2?', correct: 'Strzelanka (FPS)', wrong1: 'Strategia', wrong2: 'MMORPG' }
 ];
@@ -1046,8 +1046,8 @@ function createOgłoszenieEmbed() {
         .setTitle('🌟 Witamy na PJN Server!')
         .setDescription(
             'Cieszymy się, że jesteś częścią naszej społeczności! Pamiętaj, aby regularnie wspierać nasze projekty i śledzić oficjalne profile streamingowe:\n\n' +
+            '🔗 **Twitch**\n[twitch.tv/languspjn](https://twitch.tv/languspjn)\n\n' +
             '🔗 **TikTok**\n[tiktok.com/@languspjn](https://tiktok.com/@languspjn)\n\n' +
-            '🔗 **Kick**\n[kick.com/LangusPJN](https://kick.com/LangusPJN)\n\n' +
             '💡 **Społeczność**\n' +
             'Zostaw po sobie ślad, zaproś znajomych na nasz serwer Discord i buduj z nami najlepszą społeczność w sieci! 🚀\n\n' +
             '*Życzymy aby Twoja obecność na naszym serwerze przebiegła jak najlepiej - LangusPJN i ellader*'
@@ -1900,7 +1900,6 @@ function startLfgAutoCloser() {
     }, 60 * 1000);
 }
 
-// Funkcja pomocnicza aktualizująca wiadomość LFG
 async function updateLFGMessage(message: any, lfgDoc: any) {
     try {
         const gameInfo = LFG_CONFIG.GAMES[lfgDoc.game as keyof typeof LFG_CONFIG.GAMES];
@@ -1991,48 +1990,68 @@ function startHourlyAnnouncements() {
     });
 }
 
-async function sendNotification(targetKey: 'languspjn' | 'elladermusic', platform: 'youtube' | 'tiktok', title: string, url: string, customThumbnail?: string) {
-    const channelId = NOTIF_CONFIG[targetKey].channelId;
-    const channel = await client.channels.fetch(channelId) as TextChannel;
-    if (!channel) return;
+// === NAPRAWIONE I BEZPIECZNE POWIADOMIENIA (TWITCH, YOUTUBE, TIKTOK) ===
+async function sendNotification(targetKey: 'languspjn' | 'elladermusic', platform: 'twitch' | 'youtube' | 'tiktok', title: string, url: string, customThumbnail?: string) {
+    try {
+        const channelId = NOTIF_CONFIG[targetKey].channelId;
+        const channel = await client.channels.fetch(channelId).catch(() => null) as TextChannel;
+        if (!channel) {
+            console.error(`Nie znaleziono kanału powiadomień o ID: ${channelId}`);
+            return;
+        }
 
-    const isYt = platform === 'youtube';
-    const color = isYt ? 0xFF0000 : 0x00F2FE;
-    const platformName = isYt ? 'YouTube 🎥' : 'TikTok 🎬';
-     
-    let thumbnail = customThumbnail;
-    if (isYt && url.includes('watch?v=')) {
-        const videoId = url.split('v=')[1]?.split('&')[0];
-        if (videoId) thumbnail = `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`;
-    } else if (isYt && url.includes('youtu.be/')) {
-        const videoId = url.split('youtu.be/')[1]?.split('?')[0];
-        if (videoId) thumbnail = `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`;
+        const isTwitch = platform === 'twitch';
+        const isYt = platform === 'youtube';
+        
+        let color = 0x9146FF; // Twitch Purple
+        if (isYt) color = 0xFF0000;
+        else if (!isTwitch) color = 0x00F2FE;
+
+        let platformName = 'Twitch 🟣';
+        if (isYt) platformName = 'YouTube 🎥';
+        else if (platform === 'tiktok') platformName = 'TikTok 🎬';
+         
+        let thumbnail = customThumbnail;
+        if (isYt && url.includes('watch?v=')) {
+            const videoId = url.split('v=')[1]?.split('&')[0];
+            if (videoId) thumbnail = `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`;
+        } else if (isYt && url.includes('youtu.be/')) {
+            const videoId = url.split('youtu.be/')[1]?.split('?')[0];
+            if (videoId) thumbnail = `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`;
+        }
+
+        const EMBED_FALLBACK_IMAGE = "https://cdn.discordapp.com/attachments/1532321067731783684/1545708586108325898/IMG_20260905_101345.jpg?ex=6a9d20cc&is=6a9bcf4c&hm=a3a2a62e8f092f637ca72db6600ba805fb1a84a709595a77073021274e250a3e&";
+
+        let embedDescription = `Cześć społeczności! **${targetKey === 'languspjn' ? 'LangusPJN' : 'elladerMusic'}** właśnie rozpoczął transmisję na żywo! Wskakuj na stream i zostaw swoją obecność! 👇\n\n**📌 ${title}**`;
+        if (!isTwitch) {
+            embedDescription = `Cześć społeczności! Właśnie pojawił się nowy materiał od **${targetKey === 'languspjn' ? 'LangusPJN' : 'elladerMusic'}**. Zostaw po sobie ślad! 👇\n\n**📌 ${title}**`;
+        }
+
+        const embed = new EmbedBuilder()
+            .setColor(color)
+            .setTitle(isTwitch ? `🔴 TRANSMISJA NA ŻYWO NA ${platformName.toUpperCase()}!` : `NOWY MATERIAŁ NA ${platformName.toUpperCase()}!`)
+            .setDescription(embedDescription)
+            .setImage(thumbnail || EMBED_FALLBACK_IMAGE)
+            .setTimestamp()
+            .setFooter({ text: `PJN & elladerMusic • System Powiadomień` });
+
+        const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+            new ButtonBuilder()
+                .setLabel(isTwitch ? 'Oglądaj na Twitch' : `Oglądaj na ${isYt ? 'YouTube' : 'TikTok'}`)
+                .setStyle(ButtonStyle.Link)
+                .setURL(url)
+                .setEmoji(isTwitch ? '🟣' : (isYt ? '▶️' : '🔥'))
+        );
+
+        await channel.send({
+            content: isTwitch ? '@everyone LangusPJN odpalił streama na Twitchu!' : '@everyone Nowy materiał jest już dostępny do obejrzenia!',
+            embeds: [embed],
+            components: [row],
+            allowedMentions: { parse: ['everyone'] }
+        });
+    } catch (err) {
+        console.error('Błąd podczas wysyłania powiadomienia:', err);
     }
-
-    const TIKTOK_CUSTOM_IMAGE = "https://cdn.discordapp.com/attachments/1532321067731783684/1542116527858515978/1787739548463.png?ex=6a900f6f&is=6a8ebdef&hm=f6eee91b0b24c61805834c9b99ac1fa66fb9714f92edaeb93ef1ccb08baab79f&";
-
-    const embed = new EmbedBuilder()
-        .setColor(color)
-        .setTitle(`NOWY MATERIAŁ NA ${platformName.toUpperCase()}!`)
-        .setDescription(`Cześć społeczności! Właśnie pojawił się nowy film od **${targetKey === 'languspjn' ? 'LangusPJN' : 'elladerMusic'}**. Zostaw po sobie ślad! 👇\n\n**📌 ${title}**`)
-        .setImage(thumbnail || (!isYt ? TIKTOK_CUSTOM_IMAGE : LIVE_IMAGE_URL))
-        .setTimestamp()
-        .setFooter({ text: `PJN & elladerMusic • System Powiadomień` });
-
-    const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
-        new ButtonBuilder()
-            .setLabel(`Oglądaj na ${isYt ? 'YouTube' : 'TikTok'}`)
-            .setStyle(ButtonStyle.Link)
-            .setURL(url)
-            .setEmoji(isYt ? '▶️' : '🔥')
-    );
-
-    await channel.send({
-        content: '@everyone Nowy film jest już dostępny do obejrzenia!',
-        embeds: [embed],
-        components: [row],
-        allowedMentions: { parse: ['everyone'] }
-    });
 }
 
 const commands = [
@@ -2144,13 +2163,13 @@ const commands = [
         .setName('odpalstream')
         .setDescription('Ogłasza start streama (Streamer/Admin)')
         .addStringOption(o => o.setName('tytul').setDescription('Tytuł streama').setRequired(true))
-        .addStringOption(o => o.setName('link').setDescription('Link do transmisji (Kick/TikTok)').setRequired(true)),
+        .addStringOption(o => o.setName('link').setDescription('Link do transmisji (Twitch/Kick)').setRequired(true)),
     new SlashCommandBuilder()
         .setName('zakonczstream')
         .setDescription('Ogłasza zakończenie streama (Streamer/Admin)'),
     new SlashCommandBuilder()
         .setName('powiadomienie')
-        .setDescription('Ręcznie wyślij powiadomienie o nowym filmie (YouTube / TikTok)')
+        .setDescription('Ręcznie wyślij powiadomienie o nowym filmie / streamie (Twitch / YouTube / TikTok)')
         .addStringOption(opt => 
             opt.setName('tworca')
                 .setDescription('Wybierz twórcę')
@@ -2165,12 +2184,13 @@ const commands = [
                 .setDescription('Wybierz platformę')
                 .setRequired(true)
                 .addChoices(
+                    { name: 'Twitch 🟣', value: 'twitch' },
                     { name: 'YouTube 🎥', value: 'youtube' },
                     { name: 'TikTok 🎬', value: 'tiktok' }
                 )
         )
-        .addStringOption(opt => opt.setName('tytul').setDescription('Tytuł filmu').setRequired(true))
-        .addStringOption(opt => opt.setName('link').setDescription('Link do filmu').setRequired(true))
+        .addStringOption(opt => opt.setName('tytul').setDescription('Tytuł transmisji / filmu').setRequired(true))
+        .addStringOption(opt => opt.setName('link').setDescription('Link do transmisji / filmu').setRequired(true))
         .addStringOption(opt => opt.setName('miniatura').setDescription('Link do miniatury (opcjonalnie)').setRequired(false))
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
     new SlashCommandBuilder().setName('daj-odznake').setDescription('Przyznaj odznakę (Admin)')
@@ -3289,7 +3309,6 @@ client.on('interactionCreate', async interaction => {
         }
     }
 
-    // === OBSŁUGA WIRTUALNEGO ASYSTENTA ORAZ BAZY WIEDZY SERWERA PJN ===
     if (interaction.isModalSubmit() && interaction.customId === 'bot_support_modal_submit') {
         await interaction.deferReply({ ephemeral: true });
         const guild = interaction.guild;
@@ -4054,7 +4073,7 @@ client.on('interactionCreate', async interaction => {
             if (!isAuthorized(interaction.user.id)) return interaction.reply({ content: '❌ Nie masz uprawnień!', ephemeral: true });
             await interaction.deferReply({ ephemeral: true });
             const tworca = interaction.options.getString('tworca', true) as 'languspjn' | 'elladermusic';
-            const platforma = interaction.options.getString('platforma', true) as 'youtube' | 'tiktok';
+            const platforma = interaction.options.getString('platforma', true) as 'twitch' | 'youtube' | 'tiktok';
             const tytul = interaction.options.getString('tytul', true);
             const link = interaction.options.getString('link', true);
             const miniatura = interaction.options.getString('miniatura') || undefined;
@@ -4471,11 +4490,11 @@ client.on('interactionCreate', async interaction => {
             let win = 0;
             if (s1 === s2 && s2 === s3) {
                 win = stawka * 5;
-                user.balance += win;
-                user.consecutiveWins = (user.consecutiveWins || 0) + 1;
-                user.consecutiveLosses = 0;
             } else if (s1 === s2 || s2 === s3 || s1 === s3) {
-                win = Math.round(stawka * 1.5);
+                win = stawka * 2;
+            }
+
+            if (win > 0) {
                 user.balance += win;
                 user.consecutiveWins = (user.consecutiveWins || 0) + 1;
                 user.consecutiveLosses = 0;
@@ -4485,339 +4504,16 @@ client.on('interactionCreate', async interaction => {
             }
 
             await user.save();
-            await TransactionHistoryModel.create({ userId: interaction.user.id, type: 'casino_slot', amount: win > 0 ? (win - stawka) : -stawka, details: `${s1}|${s2}|${s3}` });
+            await TransactionHistoryModel.create({ userId: interaction.user.id, type: 'casino_slot', amount: win > 0 ? (win - stawka) : -stawka, details: `${s1} | ${s2} | ${s3}` });
 
-            return interaction.editReply({ content: `🎰 [ ${s1} | ${s2} | ${s3} ]\n${win > 0 ? `🎉 Wygrana **${win} PJN-Coins**!` : `❌ Przegrana!`}` });
-        }
-
-        if (commandName === 'poker') {
-            await interaction.deferReply();
-            const tryb = interaction.options.getString('tryb', true);
-            const stawka = interaction.options.getInteger('stawka', true);
-            if (stawka <= 0) return interaction.editReply({ content: '❌ Stawka musi być większa od zera.' });
-
-            if (tryb === 'bot') {
-                let user = await UserModel.findOne({ userId: interaction.user.id });
-                if (!user) user = await UserModel.create({ userId: interaction.user.id });
-                if (user.balance < stawka) return interaction.editReply({ content: `❌ Brak środków.` });
-
-                user.balance -= stawka;
-                user.casinoPlays = (user.casinoPlays || 0) + 1;
-
-                const now = new Date();
-                const hasGuaranteedWin = user.guaranteedWinUntil && new Date(user.guaranteedWinUntil) > now;
-
-                const won = hasGuaranteedWin ? true : (Math.random() < 0.45);
-                let win = 0;
-
-                if (won) {
-                    win = Math.round(stawka * 2.2);
-                    user.balance += win;
-                    user.consecutiveWins = (user.consecutiveWins || 0) + 1;
-                    user.consecutiveLosses = 0;
-                } else {
-                    user.consecutiveLosses = (user.consecutiveLosses || 0) + 1;
-                    user.consecutiveWins = 0;
-                }
-
-                await user.save();
-                await TransactionHistoryModel.create({ userId: interaction.user.id, type: 'casino_poker_bot', amount: win > 0 ? (win - stawka) : -stawka, details: 'Poker z botem' });
-
-                return interaction.editReply({ content: `🃏 **Poker z botem:**\n${win > 0 ? `🎉 Masz lepszy układ! Wygrywasz **${win} PJN-Coins**!` : `❌ Bot miał lepsze karty! Przegrywasz ${stawka} coins.`}` });
-            } else {
-                if (interaction.channelId !== '1534060082084577350') {
-                    return interaction.editReply({ content: '❌ Stół do pokera z ludźmi znajduje się na dedykowanym kanale <#1534060082084577350>!' });
-                }
-
-                let user = await UserModel.findOne({ userId: interaction.user.id });
-                if (!user) user = await UserModel.create({ userId: interaction.user.id });
-                if (user.balance < stawka) return interaction.editReply({ content: `❌ Nie masz wystarczająco środków (${stawka} PJN-Coins).` });
-
-                const embed = new EmbedBuilder()
-                    .setColor(0x9B59B6)
-                    .setTitle('🃏 Prywatny Pokój Pokerowy')
-                    .setDescription(
-                        `👤 **Host:** <@${interaction.user.id}>\n` +
-                        `💰 **Stawka:** ${stawka} PJN-Coins\n` +
-                        `👥 **Gracze (1/4):**\n• <@${interaction.user.id}>\n\n` +
-                        `Kliknij przycisk poniżej, aby dołączyć do gry!`
-                    )
-                    .setTimestamp();
-
-                const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
-                    new ButtonBuilder().setCustomId('poker_join').setLabel('Dołącz do pokoju').setStyle(ButtonStyle.Success).setEmoji('🃏'),
-                    new ButtonBuilder().setCustomId('poker_start').setLabel('Natychmiastowy start').setStyle(ButtonStyle.Primary).setEmoji('🚀')
-                );
-
-                const msg = await interaction.editReply({ embeds: [embed], components: [row] });
-                await PokerRoomModel.create({
-                    messageId: msg.id,
-                    channelId: interaction.channelId,
-                    hostId: interaction.user.id,
-                    stake: stawka,
-                    players: [interaction.user.id],
-                    status: 'waiting',
-                    lastActivity: new Date()
-                });
-                return;
-            }
-        }
-
-        if (commandName === 'odznaki') {
-            await interaction.deferReply();
-            const targetUser = interaction.options.getUser('uzytkownik') || interaction.user;
-            let user = await UserModel.findOne({ userId: targetUser.id });
-            if (!user) user = await UserModel.create({ userId: targetUser.id });
-
-            const badgesList = user.badges || [];
-            const desc = badgesList.length > 0 ? badgesList.map(b => `• ${b}`).join('\n') : 'Brak odznak na tym koncie.';
-
-            const embed = new EmbedBuilder()
-                .setColor(0x9B59B6)
-                .setTitle(`🛡️ Odznaki użytkownika • ${targetUser.tag}`)
-                .setThumbnail(targetUser.displayAvatarURL())
-                .setDescription(desc)
-                .setTimestamp();
-            return interaction.editReply({ embeds: [embed] });
-        }
-
-        if (commandName === 'dajpunkty' || commandName === 'zabierzpunkty') {
-            if (!isAuthorized(interaction.user.id)) return interaction.reply({ content: '❌ Brak uprawnień!', ephemeral: true });
-            await interaction.deferReply({ ephemeral: true });
-            const target = interaction.options.getUser('uzytkownik', true);
-            const ilosc = interaction.options.getInteger('ilosc', true);
-            const powod = interaction.options.getString('powod') || 'Brak powódu';
-
-            if (ilosc <= 0) return interaction.editReply({ content: '❌ Ilość musi być większa od zera.' });
-
-            let user = await UserModel.findOne({ userId: target.id });
-            if (!user) user = await UserModel.create({ userId: target.id });
-
-            const isAdd = commandName === 'dajpunkty';
-            if (isAdd) {
-                user.balance += ilosc;
-            } else {
-                user.balance = Math.max(0, user.balance - ilosc);
-            }
-            await user.save();
-
-            await TransactionHistoryModel.create({
-                userId: interaction.user.id,
-                targetUserId: target.id,
-                type: isAdd ? 'admin_add' : 'admin_remove',
-                amount: ilosc,
-                details: powod
-            });
-
-            return interaction.editReply({ content: `✅ Pomyślnie ${isAdd ? 'dodano' : 'zabrano'} **${ilosc} PJN-Coins** dla <@${target.id}>! Powód: ${powod}` });
-        }
-
-        if (commandName === 'cytat') {
-            await interaction.deferReply();
-            const count = await QuoteModel.countDocuments();
-            if (count === 0) return interaction.editReply({ content: '📭 Brak cytatów w bazie.' });
-
-            const random = Math.floor(Math.random() * count);
-            const quote = await QuoteModel.findOne().skip(random);
-            if (!quote) return interaction.editReply({ content: '❌ Nie udało się wylosować cytatu.' });
-
-            const embed = new EmbedBuilder()
-                .setColor(0xE67E22)
-                .setTitle('✨ Cytat z bazy PJN')
-                .setDescription(`> *„${quote.text}”*\n\n**—${quote.author}**`)
-                .setTimestamp();
-            return interaction.editReply({ embeds: [embed] });
-        }
-
-        if (commandName === 'dodaj-cytat') {
-            await interaction.deferReply({ ephemeral: true });
-            const tekst = interaction.options.getString('tekst', true);
-            const autor = interaction.options.getString('autor', true);
-
-            await QuoteModel.create({ text: tekst, author: autor, addedBy: interaction.user.id });
-
-            let user = await UserModel.findOne({ userId: interaction.user.id });
-            if (!user) user = await UserModel.create({ userId: interaction.user.id });
-            user.quotesAdded = (user.quotesAdded || 0) + 1;
-            await user.save();
-
-            const member = await interaction.guild?.members.fetch(interaction.user.id).catch(() => null);
-            await checkAndAwardBadges(user, member || interaction.user, interaction.guild);
-
-            return interaction.editReply({ content: `✅ Pomyślnie dodano nowy cytat do bazy!` });
-        }
-
-        if (commandName === 'mem') {
-            await interaction.deferReply();
-            const templateId = interaction.options.getString('szablon', true);
-            const topText = interaction.options.getString('gora') || '';
-            const bottomText = interaction.options.getString('dol') || '';
-
-            try {
-                const queryParams = new URLSearchParams({
-                    template_id: templateId,
-                    username: 'YOUR_IMGFLIP_USERNAME',
-                    password: 'YOUR_IMGFLIP_PASSWORD',
-                    text0: topText,
-                    text1: bottomText
-                });
-
-                const res = await fetch(`https://api.imgflip.com/caption_image?${queryParams.toString()}`, { method: 'POST' });
-                const data = await res.json() as any;
-
-                if (data && data.success && data.data && data.data.url) {
-                    const embed = new EmbedBuilder()
-                        .setColor(0xE74C3C)
-                        .setTitle('🖼️ Wygenerowany Mem')
-                        .setImage(data.data.url)
-                        .setTimestamp()
-                        .setFooter({ text: `Wygenerował: ${interaction.user.tag}` });
-                    return interaction.editReply({ embeds: [embed] });
-                } else {
-                    return interaction.editReply({ content: '❌ Nie udało się wygenerować mema przez zewnętrzne API.' });
-                }
-            } catch (err) {
-                return interaction.editReply({ content: '❌ Wystąpił błąd podczas generowania mema.' });
-            }
-        }
-    } catch (err) {
-        console.error('Błąd podczas obsługi komendy:', err);
-        if (interaction.deferred || interaction.replied) {
-            await interaction.editReply({ content: '❌ Wystąpił błąd krytyczny podczas wykonywania tej komendy.' }).catch(() => {});
-        } else {
-            await interaction.reply({ content: '❌ Wystąpił błąd krytyczny podczas wykonywania tej komendy.', ephemeral: true }).catch(() => {});
-        }
-    }
-});
-
-// === URUCHOMIENIE SERWERA HTTP ORAZ BOTA ===
-const server = http.createServer((req, res) => {
-    res.writeHead(200, { 'Content-Type': 'text/plain' });
-    res.end('Bot PJN jest aktywny i działa poprawnie!\n');
-});
-
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-    console.log(`Serwer HTTP nasłuchuje na porcie ${PORT}`);
-});
-
-// ==================== INTEGRACJA TWITCH LIVE ====================
-import * as TwurpleAuth from '@twurple/auth';
-import * as TwurpleApi from '@twurple/api';
-
-// Zabezpieczenie przed błędami importów ESM w TypeScript/CommonJS
-const ClientCredentialsAuthProvider = (TwurpleAuth as any).ClientCredentialsAuthProvider || (TwurpleAuth as any).default.ClientCredentialsAuthProvider;
-const ApiClient = (TwurpleApi as any).ApiClient || (TwurpleApi as any).default.ApiClient;
-
-const TWITCH_CLIENT_ID = process.env.TWITCH_CLIENT_ID || 'TWUTAJ_CLIENT_ID';
-const TWITCH_CLIENT_SECRET = process.env.TWITCH_CLIENT_SECRET || 'TUTAJ_CLIENT_SECRET';
-const TWITCH_CHANNEL_NAME = 'LangusPJN';
-const TWITCH_DISCORD_CHANNEL_ID = '1533839105962676254'; // Kanał pod powiadomienia
-
-// Konfiguracja autoryzacji Twitch API
-const authProvider = new ClientCredentialsAuthProvider(TWITCH_CLIENT_ID, TWITCH_CLIENT_SECRET);
-const twitchApi = new ApiClient({ authProvider });
-
-let isTwitchLive = false;
-let twitchCheckInterval: any = null;
-let twitchLiveMessageId: string | null = null;
-let twitchStreamStartTime: Date | null = null;
-
-// Funkcja sprawdzająca status (podpięta pod istniejący event ready lub uruchamiana automatycznie)
-async function checkTwitchStreamStatus() {
-    try {
-        const user = await twitchApi.users.getUserByName(TWITCH_CHANNEL_NAME);
-        if (!user) return;
-
-        const stream = await twitchApi.streams.getStreamByUserId(user.id);
-        const discordChannel = await client.channels.fetch(TWITCH_DISCORD_CHANNEL_ID) as TextChannel;
-
-        if (stream && !isTwitchLive) {
-            isTwitchLive = true;
-            twitchStreamStartTime = new Date();
-
-            if (discordChannel && discordChannel.name) {
-                const cleanName = discordChannel.name.replace(/^[🔴🟢⚫]\s*/, '');
-                await discordChannel.setName(`🔴-${cleanName}`).catch(() => {});
-            }
-
-            const game = await stream.getGame();
-            const thumbnail = stream.thumbnailUrl
-                .replace('{width}', '1280')
-                .replace('{height}', '720');
-
-            const liveEmbed = new EmbedBuilder()
-                .setColor(0x9146FF)
-                .setTitle(`🚨 **${stream.title}**`)
-                .setURL(`https://twitch.tv/${TWITCH_CHANNEL_NAME}`)
-                .setAuthor({
-                    name: `${user.displayName} właśnie rozpoczął transmisję!`,
-                    iconURL: user.profilePictureUrl,
-                    url: `https://twitch.tv/${TWITCH_CHANNEL_NAME}`
-                })
-                .addFields(
-                    { name: '🎮 Gra / Kategoria', value: `\`${game ? game.name : 'Nieznana'}\``, inline: true },
-                    { name: '👥 Widzów', value: `\`${stream.viewersCount}\``, inline: true },
-                    { name: '⏰ Start', value: `<t:${Math.floor(twitchStreamStartTime.getTime() / 1000)}:R>`, inline: true }
-                )
-                .setImage(thumbnail)
-                .setFooter({ text: 'Twitch Live Notification • LangusPJN' })
-                .setTimestamp();
-
-            const sentMessage = await discordChannel.send({
-                content: `||@everyone|| **${user.displayName}** właśnie wystartował ze streamem! Wbijaj oglądać! 🔥 https://twitch.tv/${TWITCH_CHANNEL_NAME}`,
-                embeds: [liveEmbed],
-                allowedMentions: { parse: ['everyone'] }
-            });
-            
-            twitchLiveMessageId = sentMessage.id;
-
-        } else if (!stream && isTwitchLive) {
-            isTwitchLive = false;
-            
-            const durationMs = twitchStreamStartTime ? Date.now() - twitchStreamStartTime.getTime() : 0;
-            const hours = Math.floor(durationMs / (1000 * 60 * 60));
-            const minutes = Math.floor((durationMs % (1000 * 60 * 60)) / (1000 * 60));
-            const durationString = `${hours}h${minutes}m`;
-
-            if (discordChannel && discordChannel.name) {
-                const cleanName = discordChannel.name.replace(/^[🔴🟢⚫]\s*/, '');
-                await discordChannel.setName(`⚫-${cleanName}`).catch(() => {});
-            }
-
-            if (discordChannel && twitchLiveMessageId) {
-                try {
-                    const message = await discordChannel.messages.fetch(twitchLiveMessageId);
-                    const offlineEmbed = new EmbedBuilder()
-                        .setColor(0x5c5e66)
-                        .setTitle(`🏁 Transmisja dobiegła końca`)
-                        .setDescription(`Dziękujemy wszystkim za obecność na dzisiejszym streamie od **${TWITCH_CHANNEL_NAME}**!`)
-                        .addFields(
-                            { name: '⏱️ Czas trwania', value: `\`${durationString}\``, inline: true },
-                            { name: '💤 Status', value: '`Offline`', inline: true }
-                        )
-                        .setFooter({ text: 'Do zobaczenia następnym razem!' })
-                        .setTimestamp();
-
-                    await message.edit({ content: '✅ *Ten stream jest już zakończony.*', embeds: [offlineEmbed] });
-                } catch (e) {}
-            }
-
-            twitchLiveMessageId = null;
-            twitchStreamStartTime = null;
+            return interaction.editReply({ content: `🎰 Wylosowano: [ ${s1} | ${s2} | ${s3} ]\n${win > 0 ? `🎉 Wygrana **${win} PJN-Coins**!` : `❌ Przegrana!`}` });
         }
     } catch (error) {
-        console.error('Błąd monitorowania Twitcha:', error);
+        console.error('Błąd podczas obsługi interakcji:', error);
+        if (!interaction.replied && !interaction.deferred) {
+            await interaction.reply({ content: '❌ Wystąpił błąd podczas wykonywania tej komendy.', ephemeral: true }).catch(() => {});
+        }
     }
-}
-
-// Uruchomienie pętli sprawdzającej co 60 sekund po starcie głównego bota
-setTimeout(() => {
-    checkTwitchStreamStatus();
-    setInterval(checkTwitchStreamStatus, 60 * 1000);
-}, 5000);
-// ===============================================================
-
-// Uruchomienie bota
+});
 
 client.login(token);
