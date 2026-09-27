@@ -4714,8 +4714,8 @@ const TWITCH_CHANNEL_NAME = 'LangusPJN';
 const DISCORD_CHANNEL_ID = '1533839105962676254';
 // =======================================================
 
-// Inicjalizacja klienta Discord
-const client = new Client({
+// Inicjalizacja klienta Discord 
+new Client({
     intents: [
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildMessages
