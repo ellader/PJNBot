@@ -4605,4 +4605,17 @@ client.on('interactionCreate', async interaction => {
     }
 });
 
+import http from 'http';
+
+// Prosty serwer HTTP dla Render.com, żeby nie wyrzucał błędu "No open ports detected"
+const server = http.createServer((req, res) => {
+    res.writeHead(200, { 'Content-Type': 'text/plain' });
+    res.end('Bot Discord dziala poprawnie!\n');
+});
+
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => {
+    console.log(`Serwer HTTP nasłuchuje na porcie ${PORT}`);
+});
+
 client.login(token);
