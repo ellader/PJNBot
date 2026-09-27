@@ -21,6 +21,18 @@ import {
 } from 'discord.js';
 import mongoose from 'mongoose';
 import cron from 'node-cron';
+import http from 'http';
+
+// Prosty serwer HTTP dla Render.com, żeby nie wyrzucał błędu "No open ports detected"
+const server = http.createServer((req, res) => {
+    res.writeHead(200, { 'Content-Type': 'text/plain' });
+    res.end('Bot Discord dziala poprawnie!\n');
+});
+
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => {
+    console.log(`Serwer HTTP nasłuchuje na porcie ${PORT}`);
+});
 
 // === KONFIGURACJA BAZY DANYCH MONGOOSE ===
 const MONGO_URI = process.env.MONGODB_URI;
@@ -331,6 +343,8 @@ const twitchLiveStatus: { [key: string]: boolean } = {
     elladermusic: false
 };
 
+const twitchStreamStartTimes: { [key: string]: number } = {};
+
 let twitchAppAccessToken: string | null = null;
 let twitchTokenExpiresAt: number = 0;
 
@@ -387,6 +401,7 @@ async function checkTwitchLiveStatuses() {
 
             if (isLive && !wasLive) {
                 twitchLiveStatus[key] = true;
+                twitchStreamStartTimes[key] = Date.now();
                 const title = streamInfo.title || 'Transmisja na żywo';
                 const streamUrl = `https://twitch.tv/${username}`;
                 const thumbnail = streamInfo.thumbnail_url ? streamInfo.thumbnail_url.replace('{width}', '1280').replace('{height}', '720') : undefined;
@@ -403,6 +418,37 @@ async function checkTwitchLiveStatuses() {
                 }
             } else if (!isLive && wasLive) {
                 twitchLiveStatus[key] = false;
+
+                // AUTOMATYCZNE PODSUMOWANIE STREAMA
+                try {
+                    const channel = await client.channels.fetch(streamerConfig.channelId).catch(() => null) as TextChannel;
+                    if (channel) {
+                        const startTime = twitchStreamStartTimes[key];
+                        let durationText = 'Nieznany czas';
+                        if (startTime) {
+                            const diffMs = Date.now() - startTime;
+                            const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+                            const diffMins = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+                            durationText = `${diffHours} godz. ${diffMins} min.`;
+                        }
+
+                        const summaryEmbed = new EmbedBuilder()
+                            .setColor(0x9146FF)
+                            .setTitle('📊 Podsumowanie Transmisji na Żywo')
+                            .setDescription(
+                                `Transmisja użytkownika **${username === 'languspjn' ? 'LangusPJN' : 'elladerMusic'}** dobiegła końca!\n\n` +
+                                `⏱️ **Czas trwania streama:** \`${durationText}\`\n\n` +
+                                `Dziękujemy wszystkim za obecność i wspólnie spędzony czas! ❤️`
+                            )
+                            .setImage(LIVE_IMAGE_URL)
+                            .setTimestamp()
+                            .setFooter({ text: 'PJN & elladerMusic • Podsumowanie Streama' });
+
+                        await channel.send({ embeds: [summaryEmbed] });
+                    }
+                } catch (summaryErr) {
+                    console.error('Błąd wysyłania podsumowania streama:', summaryErr);
+                }
 
                 if (streamerConfig.voiceChannelIdToRename) {
                     for (const [_, guild] of client.guilds.cache) {
@@ -4603,19 +4649,6 @@ client.on('interactionCreate', async interaction => {
             await interaction.reply({ content: '❌ Wystąpił błąd podczas wykonywania tej komendy.', ephemeral: true }).catch(() => {});
         }
     }
-});
-
-import http from 'http';
-
-// Prosty serwer HTTP dla Render.com, żeby nie wyrzucał błędu "No open ports detected"
-const server = http.createServer((req, res) => {
-    res.writeHead(200, { 'Content-Type': 'text/plain' });
-    res.end('Bot Discord dziala poprawnie!\n');
-});
-
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-    console.log(`Serwer HTTP nasłuchuje na porcie ${PORT}`);
 });
 
 client.login(token);
