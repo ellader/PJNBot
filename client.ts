@@ -4702,8 +4702,12 @@ server.listen(PORT, () => {
 });
 
 // ==================== INTEGRACJA TWITCH LIVE ====================
-import { ApiClient } from '@twurple/api';
-import { ClientCredentialsAuthProvider } from '@twurple/auth';
+import * as TwurpleAuth from '@twurple/auth';
+import * as TwurpleApi from '@twurple/api';
+
+// Zabezpieczenie przed błędami importów ESM w TypeScript/CommonJS
+const ClientCredentialsAuthProvider = (TwurpleAuth as any).ClientCredentialsAuthProvider || (TwurpleAuth as any).default.ClientCredentialsAuthProvider;
+const ApiClient = (TwurpleApi as any).ApiClient || (TwurpleApi as any).default.ApiClient;
 
 const TWITCH_CLIENT_ID = process.env.TWITCH_CLIENT_ID || 'TWUTAJ_CLIENT_ID';
 const TWITCH_CLIENT_SECRET = process.env.TWITCH_CLIENT_SECRET || 'TUTAJ_CLIENT_SECRET';
