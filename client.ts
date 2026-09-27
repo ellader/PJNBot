@@ -21,7 +21,6 @@ import {
 } from 'discord.js';
 import mongoose from 'mongoose';
 import cron from 'node-cron';
-import http from 'http';
 
 // === KONFIGURACJA BAZY DANYCH MONGOOSE ===
 const MONGO_URI = process.env.MONGODB_URI;
@@ -212,16 +211,19 @@ const LFG_CONFIG = {
 
 const NOTIF_CONFIG = {
     languspjn: {
-        channelId: '1542101793171972146'
+        channelId: '1542101793171972146',
+        twitchUsername: 'languspjn',
+        voiceChannelIdToRename: '1532302511459926069' 
     },
     elladermusic: {
-        channelId: '1542101962185646111'
+        channelId: '1542101962185646111',
+        twitchUsername: 'elladermusic',
+        voiceChannelIdToRename: null
     },
     leaveLogChannelId: '1542102521814712371'
 };
 
 const FREE_GAMES_CHANNEL_ID = '1551606555533910189';
-
 const ANNOUNCE_CHANNEL_ID = '1532399010785263799';
 const ID_KANALU_CYTATY = '1534780578912665653'; 
 const ID_KANALU_ZLOTE_MYSLI = '1549709251365183558'; 
@@ -306,17 +308,6 @@ async function getFirstCategory(guild: any) {
     return firstCat ? firstCat.id : undefined;
 }
 
-const QUIZ_POOL = [
-    { q: 'Jakie miasto jest stolicą Polski?', correct: 'Warszawa', wrong1: 'Kraków', wrong2: 'Gdańsk' },
-    { q: 'Która gra posiada tryb Battle Royale z budowaniem?', correct: 'Fortnite', wrong1: 'CS2', wrong2: 'Minecraft' },
-    { q: 'Jaka waluta obowiązuje na tym serwerze Discord?', correct: 'PJN-Coins', wrong1: 'V-Bucks', wrong2: 'Dolar' },
-    { q: 'Ile komór ma bębnek w klasycznym rewolwerze w Rosyjskiej Ruletce?', correct: '6 komór', wrong1: '4 komory', wrong2: '8 komor' },
-    { q: 'Kto jest głównym twórcą i streamerem projektu PJN?', correct: 'LangusPJN', wrong1: 'ellader', wrong2: 'Moderator' },
-    { q: 'Na jakiej platformie najczęściej odbywają się główne transmisje?', correct: 'Twitch / Kick', wrong1: 'Netflix', wrong2: 'Spotify' },
-    { q: 'Jaki przedmiot w sklepie serwerowym daje bonus 2x za wiadomości?', correct: 'Rola VIP', wrong1: 'Odznaka', wrong2: 'Bilet duszka' },
-    { q: 'Do jakiej kategorii gier należy Counter-Strike 2?', correct: 'Strzelanka (FPS)', wrong1: 'Strategia', wrong2: 'MMORPG' }
-];
-
 const initialQuotes = [
     { text: "Nie liczy się to, co robisz od czasu do czasu, ale to, co robisz codziennie.", author: "Bruce Lee" },
     { text: "Bądź jak woda przepływająca przez szczeliny. Nie bądź sztywny, a dostosujesz się do otoczenia.", author: "Bruce Lee" },
@@ -332,6 +323,106 @@ async function seedQuotesIfNeeded() {
     } catch (e) {
         console.error('Błąd inicjalizacji cytatów:', e);
     }
+}
+
+// === AUTOMATYCZNY SYSTEM SPRAWDZANIA STATUSU TWITCH (TWITCH API) ===
+const twitchLiveStatus: { [key: string]: boolean } = {
+    languspjn: false,
+    elladermusic: false
+};
+
+let twitchAppAccessToken: string | null = null;
+let twitchTokenExpiresAt: number = 0;
+
+async function getTwitchAppAccessToken() {
+    if (twitchAppAccessToken && Date.now() < twitchTokenExpiresAt) {
+        return twitchAppAccessToken;
+    }
+    const clientId = process.env.TWITCH_CLIENT_ID;
+    const clientSecret = process.env.TWITCH_CLIENT_SECRET;
+    if (!clientId || !clientSecret) return null;
+
+    try {
+        const res = await fetch(`https://id.twitch.tv/oauth2/token?client_id=${clientId}&client_secret=${clientSecret}&grant_type=client_credentials`, {
+            method: 'POST'
+        });
+        const data = await res.json() as any;
+        if (data && data.access_token) {
+            twitchAppAccessToken = data.access_token;
+            twitchTokenExpiresAt = Date.now() + (data.expires_in - 300) * 1000;
+            return twitchAppAccessToken;
+        }
+    } catch (e) {
+        console.error('Błąd pobierania tokena Twitch OAuth:', e);
+    }
+    return null;
+}
+
+async function checkTwitchLiveStatuses() {
+    const clientId = process.env.TWITCH_CLIENT_ID;
+    if (!clientId) return;
+
+    const token = await getTwitchAppAccessToken();
+    if (!token) return;
+
+    for (const [key, conf] of Object.entries(NOTIF_CONFIG)) {
+        if (key === 'leaveLogChannelId') continue;
+        const streamerConfig = conf as { channelId: string; twitchUsername: string; voiceChannelIdToRename: string | null };
+        const username = streamerConfig.twitchUsername;
+        if (!username) continue;
+
+        try {
+            const res = await fetch(`https://api.twitch.tv/helix/streams?user_login=${username}`, {
+                headers: {
+                    'Client-ID': clientId,
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+            const data = await res.json() as any;
+            if (!data || !data.data) continue;
+
+            const isLive = data.data.length > 0;
+            const streamInfo = isLive ? data.data[0] : null;
+            const wasLive = twitchLiveStatus[key] || false;
+
+            if (isLive && !wasLive) {
+                twitchLiveStatus[key] = true;
+                const title = streamInfo.title || 'Transmisja na żywo';
+                const streamUrl = `https://twitch.tv/${username}`;
+                const thumbnail = streamInfo.thumbnail_url ? streamInfo.thumbnail_url.replace('{width}', '1280').replace('{height}', '720') : undefined;
+
+                await sendNotification(key as 'languspjn' | 'elladermusic', 'twitch', title, streamUrl, thumbnail);
+
+                if (streamerConfig.voiceChannelIdToRename) {
+                    for (const [_, guild] of client.guilds.cache) {
+                        const channel = await guild.channels.fetch(streamerConfig.voiceChannelIdToRename).catch(() => null);
+                        if (channel) {
+                            await channel.setName(`🔴・stream-live`).catch(() => {});
+                        }
+                    }
+                }
+            } else if (!isLive && wasLive) {
+                twitchLiveStatus[key] = false;
+
+                if (streamerConfig.voiceChannelIdToRename) {
+                    for (const [_, guild] of client.guilds.cache) {
+                        const channel = await guild.channels.fetch(streamerConfig.voiceChannelIdToRename).catch(() => null);
+                        if (channel) {
+                            await channel.setName(`🟢・twitch-offline`).catch(() => {});
+                        }
+                    }
+                }
+            }
+        } catch (err) {
+            console.error(`Błąd sprawdzania statusu Twitch dla ${username}:`, err);
+        }
+    }
+}
+
+function startTwitchMonitorCron() {
+    cron.schedule('*/2 * * * *', async () => {
+        await checkTwitchLiveStatuses();
+    });
 }
 
 // === SYSTEM AUTOMATYCZNYCH DARMOWYCH GIER (EPIC GAMES & STEAM) ===
@@ -1990,20 +2081,17 @@ function startHourlyAnnouncements() {
     });
 }
 
-// === NAPRAWIONE I BEZPIECZNE POWIADOMIENIA (TWITCH, YOUTUBE, TIKTOK) ===
+// === POWIADOMIENIA (TWITCH, YOUTUBE, TIKTOK) ===
 async function sendNotification(targetKey: 'languspjn' | 'elladermusic', platform: 'twitch' | 'youtube' | 'tiktok', title: string, url: string, customThumbnail?: string) {
     try {
         const channelId = NOTIF_CONFIG[targetKey].channelId;
         const channel = await client.channels.fetch(channelId).catch(() => null) as TextChannel;
-        if (!channel) {
-            console.error(`Nie znaleziono kanału powiadomień o ID: ${channelId}`);
-            return;
-        }
+        if (!channel) return;
 
         const isTwitch = platform === 'twitch';
         const isYt = platform === 'youtube';
         
-        let color = 0x9146FF; // Twitch Purple
+        let color = 0x9146FF; 
         if (isYt) color = 0xFF0000;
         else if (!isTwitch) color = 0x00F2FE;
 
@@ -2419,6 +2507,7 @@ client.once('ready', async () => {
     startPollChecker();
     startPokerRoomInactivityChecker();
     startFreeGamesCron();
+    startTwitchMonitorCron(); // Automatyczne monitorowanie Twitcha w tle
 });
 
 client.on('interactionCreate', async interaction => {
