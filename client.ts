@@ -406,13 +406,13 @@ async function checkTwitchLiveStatuses() {
                 const streamUrl = `https://twitch.tv/${username}`;
                 const thumbnail = streamInfo.thumbnail_url ? streamInfo.thumbnail_url.replace('{width}', '1280').replace('{height}', '720') : undefined;
 
-                await sendNotification(key as 'languspjn' | 'elladermusic', 'twitch', title, streamUrl, thumbnail);
+                await sendNotification(key as 'languspjn' | 'PJM', 'twitch', title, streamUrl, thumbnail);
 
                 if (streamerConfig.voiceChannelIdToRename) {
                     for (const [_, guild] of client.guilds.cache) {
                         const channel = await guild.channels.fetch(streamerConfig.voiceChannelIdToRename).catch(() => null);
                         if (channel) {
-                            await channel.setName(`🔴・stream-live`).catch(() => {});
+                            await channel.setName(`🟢・sᴛʀᴇᴀᴍ-ᴏɴʟɪɴᴇ`).catch(() => {});
                         }
                     }
                 }
@@ -454,7 +454,7 @@ async function checkTwitchLiveStatuses() {
                     for (const [_, guild] of client.guilds.cache) {
                         const channel = await guild.channels.fetch(streamerConfig.voiceChannelIdToRename).catch(() => null);
                         if (channel) {
-                            await channel.setName(`🟢・twitch-offline`).catch(() => {});
+                            await channel.setName(`🟣・sᴛʀᴇᴀᴍ-ᴏғғʟɪɴᴇ`).catch(() => {});
                         }
                     }
                 }
@@ -477,11 +477,52 @@ async function sendFreeGamesNotification() {
         const channel = await client.channels.fetch(FREE_GAMES_CHANNEL_ID).catch(() => null) as TextChannel;
         if (!channel) return;
 
+        // Pobieranie darmowych gier z Epic Games Store API
+        let epicGamesListText = '• Sprawdź aktualne darmowe gry w sklepie Epic Games.';
+        let epicGameUrl = 'https://store.epicgames.com/en-US/free-games';
+
+        try {
+            const res = await fetch('https://store-site-backend-static-ipv4.ak.epicgames.com/freeGamesPromotions?locale=en-US&country=US&allowCountries=US');
+            const data = await res.json() as any;
+            const elements = data?.data?.Catalog?.searchStore?.elements;
+
+            if (elements && elements.length > 0) {
+                const freeNowGames = elements.filter((game: any) => {
+                    const promotions = game.promotions?.promotionalOffers;
+                    if (!promotions || promotions.length === 0) return false;
+                    const offers = promotions[0]?.promotionalOffers;
+                    if (!offers || offers.length === 0) return false;
+                    
+                    const startDate = new Date(offers[0].startDate).getTime();
+                    const endDate = new Date(offers[0].endDate).getTime();
+                    const now = Date.now();
+                    const discount = offers[0].discountSetting?.discountPercentage;
+
+                    return discount === 0 && startDate <= now && now <= endDate;
+                });
+
+                if (freeNowGames.length > 0) {
+                    epicGamesListText = freeNowGames.map((g: any) => {
+                        const title = g.title || 'Darmowa gra';
+                        const slug = g.productSlug || g.catalogNs?.mappings?.[0]?.pageSlug;
+                        const link = slug ? `https://store.epicgames.com/en-US/p/${slug}` : 'https://store.epicgames.com/en-US/free-games';
+                        return `• **${title}** — [pobierz](${link})`;
+                    }).join('\n');
+                }
+            }
+        } catch (e) {
+            console.error('Błąd pobierania danych Epic Games API:', e);
+        }
+
         const epicEmbed = new EmbedBuilder()
             .setColor(0x2A2A2A)
             .setTitle('🎮 Darmowa Gra w Epic Games Store')
-            .setDescription('Odbierz aktualne darmowe gry w sklepie Epic Games!\n\n> Sprawdź oficjalną stronę Epic Games Store, aby dodać najnowsze darmowe tytuły na swoje konto na stałe.')
-            .addFields({ name: '🔗 Link do pobrania / sprawdzenia', value: '[Przejdź do Epic Games Store](https://store.epicgames.com/en-US/free-games)', inline: false })
+            .setDescription(
+                'Odbierz aktualne darmowe gry w sklepie Epic Games na stałe do swojego konta!\n\n' +
+                '🎁 **Aktualnie darmowe tytuły:**\n' +
+                `${epicGamesListText}\n\n` +
+                '🔗 [Przejdź do Epic Games Store](https://store.epicgames.com/en-US/free-games)'
+            )
             .setImage(LIVE_IMAGE_URL)
             .setTimestamp()
             .setFooter({ text: 'PJN Darmowe Gry • Epic Games' });
@@ -489,15 +530,27 @@ async function sendFreeGamesNotification() {
         const steamEmbed = new EmbedBuilder()
             .setColor(0x1B2838)
             .setTitle('🎮 Darmowe Gry / Promocje na Steam')
-            .setDescription('Sprawdź najnowsze darmowe gry, wersje próbną oraz darmowe dodatki (DLC) dostępne obecnie na platformie Steam.')
-            .addFields({ name: '🔗 Link do pobrania / sprawdzenia', value: '[Przejdź do Steam Free to Play / Promocji](https://store.steampowered.com/genre/Free%20to%20Play/)', inline: false })
+            .setDescription(
+                'Sprawdź najnowsze darmowe gry, wersje próbne oraz darmowe dodatki (DLC) dostępne obecnie na platformie Steam.\n\n' +
+                '• Zobacz pełną listę darmowych produkcji: [pobierz / sprawdź](https://store.steampowered.com/genre/Free%20to%20Play/)\n\n' +
+                '🔗 [Przejdź do Steam Free to Play](https://store.steampowered.com/genre/Free%20to%20Play/)'
+            )
             .setImage(LIVE_IMAGE_URL)
             .setTimestamp()
             .setFooter({ text: 'PJN Darmowe Gry • Steam' });
 
+        const epicRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+            new ButtonBuilder().setLabel('Odbierz w Epic Games').setStyle(ButtonStyle.Link).setURL(epicGameUrl).setEmoji('🛒')
+        );
+
+        const steamRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+            new ButtonBuilder().setLabel('Przejdź do Steam F2P').setStyle(ButtonStyle.Link).setURL('https://store.steampowered.com/genre/Free%20to%20Play/').setEmoji('🎮')
+        );
+
         await channel.send({
             content: '@everyone Świeża dostawa informacji o **darmowych grach** z Epic Games i Steam jest już dostępna!',
             embeds: [epicEmbed, steamEmbed],
+            components: [epicRow, steamRow],
             allowedMentions: { parse: ['everyone'] }
         });
     } catch (err) {
