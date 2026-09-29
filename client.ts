@@ -4742,9 +4742,8 @@ client.on('interactionCreate', async interaction => {
     }
 });
 
-// === SYSTEM PRYWATNYCH POKOJÓW GŁOSOWYCH (DODANE NA KONIEC) ===
+// === KOMPLETNY SYSTEM POKOJÓW GŁOSOWYCH ===
 const voiceSessions = new Map<string, number>();
-const ID_KATEGORII_POKOJOW = '1532302511459926067';
 
 client.on('voiceStateUpdate', async (oldState, newState) => {
     try {
@@ -4755,8 +4754,11 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
         const channelId = newState.channelId;
         const guild = newState.guild;
 
-        // Używamy istniejącej stałej ID_KANAL_TWORZENIA_POKOJU z Twojego kodu
-        if (channelId === ID_KANAL_TWORZENIA_POKOJU) {
+        const ID_KANAL_TWORZENIA = '1554376037746352169';
+        const ID_KATEGORII = '1532302511459926067';
+
+        // 1. TWORZENIE PRYWATNEGO KANAŁU
+        if (channelId === ID_KANAL_TWORZENIA) {
             const cleanName = member.displayName.toLowerCase().replace(/[^a-z0-9]/g, '');
             const privateChannelName = `🎧•pokój-${cleanName || 'uzytkownika'}`;
 
@@ -4764,7 +4766,7 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
                 const voiceChan = await guild.channels.create({
                     name: privateChannelName,
                     type: ChannelType.GuildVoice,
-                    parent: ID_KATEGORII_POKOJOW,
+                    parent: ID_KATEGORII,
                     permissionOverwrites: [
                         { id: guild.id, deny: [PermissionFlagsBits.ViewChannel] },
                         { 
@@ -4807,13 +4809,15 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
             }
         }
 
+        // 2. USUWANIE PUSTYCH KANAŁÓW
         if (oldState.channel && oldState.channel.members.size === 0) {
             const oldChan = oldState.channel;
-            if (oldChan.parentId === ID_KATEGORII_POKOJOW && oldChan.id !== ID_KANAL_TWORZENIA_POKOJU) {
+            if (oldChan.parentId === ID_KATEGORII && oldChan.id !== ID_KANAL_TWORZENIA) {
                 await oldChan.delete('Pusty prywatny kanał').catch(() => {});
             }
         }
 
+        // 3. NALICZANIE CZASU I XP
         if (!oldState.channelId && newState.channelId) {
             voiceSessions.set(userId, Date.now());
         } else if (oldState.channelId && !newState.channelId) {
@@ -4841,4 +4845,6 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
     }
 });
 
-client.login(token);
+// === URUCHOMIENIE BOTA ===
+client.login(token).catch(err => {
+    console.error('Błąd podczas logowania bota Discord:', err);
