@@ -412,7 +412,7 @@ async function checkTwitchLiveStatuses() {
                     for (const [_, guild] of client.guilds.cache) {
                         const channel = await guild.channels.fetch(streamerConfig.voiceChannelIdToRename).catch(() => null);
                         if (channel) {
-                            await channel.setName(`🟢・sᴛʀᴇᴀᴍ-ᴏɴʟɪɴᴇ`).catch(() => {});
+                            await channel.setName(`🟢•ᴛᴡɪᴛᴄʜ-ᴏɴʟɪɴᴇ`).catch(() => {});
                         }
                     }
                 }
@@ -454,7 +454,7 @@ async function checkTwitchLiveStatuses() {
                     for (const [_, guild] of client.guilds.cache) {
                         const channel = await guild.channels.fetch(streamerConfig.voiceChannelIdToRename).catch(() => null);
                         if (channel) {
-                            await channel.setName(`🟣・sᴛʀᴇᴀᴍ-ᴏғғʟɪɴᴇ`).catch(() => {});
+                            await channel.setName(`🟣•ᴛᴡɪᴛᴄʜ-ᴏғғʟɪɴᴇ`).catch(() => {});
                         }
                     }
                 }
