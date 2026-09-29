@@ -4743,7 +4743,7 @@ client.on('interactionCreate', async interaction => {
 
 // === SYSTEM ŚLEDZENIA CZASU I TWORZENIA PRYWATNYCH POKOJÓW GŁOSOWYCH ===
 const voiceSessions = new Map<string, number>();
-const ID_KANAL_TWORZENIA_POKOJU = '1554376037746352169';
+const ID_KANAL_TWORZENIA_POKOJU = '1554409138824417300';
 const ID_KATEGORII_POKOJOW = '1532302511459926067';
 
 client.on('voiceStateUpdate', async (oldState, newState) => {
