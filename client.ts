@@ -4767,13 +4767,13 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
 
         // 3. NALICZANIE CZASU I XP
         if (!oldState.channelId && newState.channelId) {
-            voiceSessions.set(userId, Date.now());
+            voiceSessionsMap.set(userId, Date.now());
         } else if (oldState.channelId && !newState.channelId) {
-            const startTime = voiceSessions.get(userId);
+            const startTime = voiceSessionsMap.set(userId);
             if (startTime) {
                 const diffMs = Date.now() - startTime;
                 const minutes = Math.floor(diffMs / (1000 * 60));
-                voiceSessions.delete(userId);
+                voiceSessionsMap.delete(userId);
 
                 if (minutes > 0) {
                     let user = await UserModel.findOne({ userId });
