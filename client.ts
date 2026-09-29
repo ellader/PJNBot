@@ -5712,8 +5712,8 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
     }
 });
 
-// === OSTATECZNA POPRAWKA USUWANIA I TWORZENIA POKOJÓW ===
-const userVoiceTracker = new Map();
+// === KOMPLETNY BLOK POKOJÓW (BEZ KONFLIKTÓW STAŁYCH) ===
+const trackerMap = new Map();
 
 client.on('voiceStateUpdate', async (oldState, newState) => {
     try {
@@ -5724,20 +5724,19 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
         const channelId = newState.channelId;
         const guild = newState.guild;
 
-        const ID_KANAL_TWORZENIA = '1554376037746352169';
-        const ID_KATEGORII = '1532302511459926067';
+        const TARGET_CREATE_ID = '1554376037746352169';
+        const TARGET_CATEGORY_ID = '1532302511459926067';
 
         // 1. TWORZENIE PRYWATNEGO KANAŁU GŁOSOWEGO I TEKSTOWEGO
-        if (channelId === ID_KANAL_TWORZENIA) {
+        if (channelId === TARGET_CREATE_ID) {
             const cleanName = member.displayName.toLowerCase().replace(/[^a-z0-9]/g, '');
             const channelName = `🎧•pokój-${cleanName || 'uzytkownika'}`;
 
             try {
-                // Tworzymy kanał głosowy
                 const voiceChan = await guild.channels.create({
                     name: channelName,
                     type: ChannelType.GuildVoice,
-                    parent: ID_KATEGORII,
+                    parent: TARGET_CATEGORY_ID,
                     permissionOverwrites: [
                         { id: guild.id, deny: [PermissionFlagsBits.ViewChannel] },
                         { 
@@ -5755,24 +5754,19 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
                     ]
                 });
 
-                // Tworzymy powiązany kanał tekstowy
                 const textChan = await guild.channels.create({
                     name: `chat-${cleanName || 'pokoj'}`,
                     type: ChannelType.GuildText,
-                    parent: ID_KATEGORII,
+                    parent: TARGET_CATEGORY_ID,
                     permissionOverwrites: [
                         { id: guild.id, deny: [PermissionFlagsBits.ViewChannel] },
                         { id: userId, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] }
                     ]
                 });
 
-                // Zapisujemy ID kanału tekstowego w topicu głosu
                 await voiceChan.setTopic(textChan.id).catch(() => {});
-
-                // Przenosimy użytkownika
                 await member.voice.setChannel(voiceChan).catch(() => {});
 
-                // Wysyłamy instrukcję na kanał tekstowy
                 const textEmbed = new EmbedBuilder()
                     .setColor(0x3498DB)
                     .setTitle('🎛️ Instrukcja & Panel Zarządzania Prywatnym Pokojem')
@@ -5796,15 +5790,14 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
             }
         }
 
-        // 2. BEZPIECZNE USUWANIE: tylko gdy kanał jest w tej kategorii, jest pusty, NIE jest głównym kanałem tworzenia i nazwa zawiera "pokój"
+        // 2. BEZPIECZNE USUWANIE TYLKO PRYWATNYCH PUSTYCH POKOJÓW
         if (oldState.channel && oldState.channel.members.size === 0) {
             const oldChan = oldState.channel;
             if (
-                oldChan.parentId === ID_KATEGORII && 
-                oldChan.id !== ID_KANAL_TWORZENIA && 
+                oldChan.parentId === TARGET_CATEGORY_ID && 
+                oldChan.id !== TARGET_CREATE_ID && 
                 (oldChan.name.includes('pokój') || oldChan.name.includes('chat-'))
             ) {
-                // Usuwamy powiązany kanał tekstowy, jeśli istnieje w topicu
                 const textChanId = oldChan.topic;
                 if (textChanId) {
                     const textChan = guild.channels.cache.get(textChanId);
@@ -5812,20 +5805,19 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
                         await textChan.delete('Pusty prywatny czat').catch(() => {});
                     }
                 }
-                // Usuwamy kanał głosowy
                 await oldChan.delete('Pusty prywatny kanał głosowy').catch(() => {});
             }
         }
 
-        // 3. ŚLEDZENIE CZASU NA GŁOSIE I NALICZANIE XP + COINSÓW
+        // 3. NALICZANIE CZASU I XP
         if (!oldState.channelId && newState.channelId) {
-            voiceSessions.set(userId, Date.now());
+            trackerMap.set(userId, Date.now());
         } else if (oldState.channelId && !newState.channelId) {
-            const startTime = voiceSessions.get(userId);
+            const startTime = trackerMap.get(userId);
             if (startTime) {
                 const diffMs = Date.now() - startTime;
                 const minutes = Math.floor(diffMs / (1000 * 60));
-                voiceSessions.delete(userId);
+                trackerMap.delete(userId);
 
                 if (minutes > 0) {
                     let user = await UserModel.findOne({ userId });
@@ -5841,17 +5833,9 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
             }
         }
     } catch (err) {
-        console.error('Błąd w obsłudze voiceStateUpdate:', err);
+        console.error('Błąd w voiceStateUpdate:', err);
     }
-
-        // 2. USUWANIE TYLKO PRYWATNYCH POKOJÓW (które zaczynają się od "🎧•pokój-")
-        if (oldState.channel && oldState.channel.members.size === 0) {
-            const oldChan = oldState.channel;
-            if (oldChan.parentId === ID_KATEGORII && oldChan.name.startsWith('🎧•pokój-')) {
-                await oldChan.delete('Pusty prywatny kanał').catch(() => {});
-            }
-        }
-    });
+});
 
 // === URUCHOMIENIE BOTA ===
 client.login(token);
