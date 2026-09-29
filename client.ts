@@ -4808,6 +4808,4 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
     });
 
 // === URUCHOMIENIE BOTA ===
-client.login(token).catch(err => {
-    console.error('Błąd podczas logowania bota Discord:', err);
-});
+client.login(token);
