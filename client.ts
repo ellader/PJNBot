@@ -4927,19 +4927,7 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
         console.error('Błąd w obsłudze voiceStateUpdate:', err);
     }
 });
-Wklejenie tego bloku w miejsce starego zdarzenia voiceStateUpdate załatwi sprawę w 100%!
 
-Używam telefonu i nie mogę znaleźć takiej linii, a nie mogę tego dodać po prostu na sam koniec pliku?
-
-Jasne, w pełni rozumiem! Z telefonu szukanie konkretnych linii w długim kodzie bywa uciążliwe.
-
-Tak, możesz dodać ten kod na sam koniec pliku!
-
-Oto jedna ważna uwaga: ponieważ na samym końcu Twojego pliku jest już wywołanie client.login(token), musisz wkleić ten nowy kod TUŻ PRZED client.login(token), a nie całkowicie na samym dole.
-
-Oto jak powinien wyglądać koniec Twojego pliku:
-
-JavaScript
 // === TĘ SEKCJĘ WKLEJASZ TUTŻ PRZED LOGOWANIEM BOTA ===
 
 const voiceSessions = new Map<string, number>();
@@ -5044,18 +5032,7 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
 client.login(token).catch(err => {
     console.error('Błąd podczas logowania bota Discord:', err);
 });
-Wklejenie tego tuż przed client.login(token) sprawi, że funkcja zadziała idealnie bez szukania staryх linijek w środku kodu!
 
-Błąd na zrzucie ekranu mówi jasno: The symbol 'ID_KANAL_TWORZENIA_POKOJU' has already been declared.
-
-Oznacza to, że ta nazwa zmiennej jest już gdzieś wyżej w Twoim kodzie i dodając ją ponownie na końcu, wywołałeś konflikt.
-
-Jak to naprawić?
-Wystarczy, że usuniesz powtórzone deklaracje const zmiennych z wklejonego kodu (ponieważ zmienna ID_KANAL_TWORZENIA_POKOJU już gdzieś tam istnieje).
-
-Użyj poniższego kodu na samym końcu pliku (tuż przed client.login(token)). Nie zawiera on już ponownych deklaracji stalych, więc nie wyrzuci błędu:
-
-JavaScript
 // === SYSTEM PRYWATNYCH POKOJÓW GŁOSOWYCH (DODANE NA KONIEC) ===
 const voiceSessions = new Map<string, number>();
 const ID_KATEGORII_POKOJOW = '1532302511459926067';
@@ -5159,20 +5136,7 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
 client.login(token).catch(err => {
     console.error('Błąd podczas logowania bota Discord:', err);
 });
-Podmień to na końcu kodu, a budowanie na Renderze przejrze pomyślnie!
 
-I bot nie tworzy kanału prywatnego po wejściu na kanał
-
-Problem polega na tym, że dodając kod na samym końcu, wkleiłeś go po pierwszym zdarzeniu voiceStateUpdate, które już wcześniej istniało w Twoim kodzie. W JavaScript/TypeScript, jeśli zdefiniujesz to samo zdarzenie (client.on('voiceStateUpdate', ...)) dwa razy, to pierwsze zdarzenie (stare) nadpisuje nowe albo powoduje, że kod zachowuje się nieprzewidywalnie.
-
-Zauważ też, że w kodzie użyliśmy stałej ID_KANAL_TWORZENIA_POKOJU, ale w tym nowym fragmencie nie zadeklarowaliśmy jej wartości (skoro stara deklaracja była wyżej lub zaginęła, bot nie wie, jakie ID ma przypisane ta zmienna).
-
-Jak to naprawić raz a dobrze?
-Musimy wkleić jeden, kompletny blok na sam koniec pliku (przed client.login), a ze środka kodu usunąć stare zdarzenie voiceStateUpdate, żeby się nie gryzły. Ponieważ na telefonie trudno szukać linijek w środku, najprościej będzie zadeklarować ID bezpośrednio w nowym bloku, a starego po prostu nie dotykać (zostanie zignorowane lub możemy je zastąpić).
-
-Skopiuj i podmień całą końcówkę swojego pliku (tuż przed client.login) na ten gotowy fragment, w którym ID kanału jest wpisane na sztywno, więc na pewno zadziała:
-
-JavaScript
 // === KOMPLETNY SYSTEM POKOJÓW GŁOSOWYCH ===
 const voiceSessions = new Map<string, number>();
 
@@ -5280,17 +5244,7 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
 client.login(token).catch(err => {
     console.error('Błąd podczas logowania bota Discord:', err);
 });
-Wklej ten dokładny fragment na sam koniec pliku (zastępując nim poprzednio wklejany kod końcowy). Dzięki temu ID kanału (1554376037746352169) jest wklejone bezpośrednio w kodzie i bot od razu po wejściu na ten kanał utworzy Ci pokój!
 
-Ale czemu te kanały się usunęły? Miały się tylko usuwać te prywatne założone przez bota
-
-Przepraszam za to zamieszanie! Problem wynika z warunku sprawdzającego puste kanały – bot sprawdzał jedynie, czy kategoria się zgadza i czy to nie jest kanał tworzenia, ale usuwał każdy pusty kanał w tej kategorii.
-
-Aby bot usuwał wyłącznie te kanały, które sam utworzył (czyli te, których nazwa zaczyna się od 🎧•pokój-), musimy dodać to jako warunek do kodu.
-
-Podmień końcówkę pliku na poniższy, poprawiony fragment:
-
-JavaScript
 // === NAPRAWIONY SYSTEM POKOJÓW GŁOSOWYCH ===
 const voiceSessions = new Map<string, number>();
 
@@ -5398,13 +5352,7 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
 client.login(token).catch(err => {
     console.error('Błąd podczas logowania bota Discord:', err);
 });
-Teraz bot będzie patrzył na nazwę – jeśli kanał nie zaczyna się od 🎧•pokój- (czyli np. Twój główny kanał do tworzenia pokoi albo inne zwykłe kanały), to go nie ruszy.
 
-Błąd na zrzucie ekranu (Expected "as" but found "voiceSessions") oznacza, że przy wklejaniu kodu na sam koniec pliku wkradła się literówka lub brakowało jakiegoś znaku (np. nawiasu klamrowego), przez co kompilator TypeScript pogubił się w składni.
-
-Upewnij się, że wklejasz dokładnie ten czysty i poprawny blok kodu na sam koniec pliku (przed client.login):
-
-JavaScript
 // === SYSTEM POKOJÓW GŁOSOWYCH ===
 const voiceSessionsMap = new Map();
 
@@ -5509,23 +5457,7 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
 client.login(token).catch(err => {
     console.error('Błąd podczas logowania bota Discord:', err);
 });
-Zmieniłem w nim nazwę voiceSessions na voiceSessionsMap, co uchroni nas przed jakimkolwiek konfliktem z wcześniejszymi zmiennymi w kodzie. Wklej ten fragment na sam koniec pliku i zapisz.
 
-Widzę na screenie z GitHub/Rendera dokładnie, w czym tkwi problem!
-
-W liniach 4770 i 4772 używasz nazwy voiceSessions, podczas gdy w nowym kodzie na początku zdefiniowaliśmy zmienną jako voiceSessionsMap. Przez to kompilator wyrzuca błąd, że voiceSessions nie zostało zdefiniowane.
-
-Aby to błyskawicznie naprawić, zamień te dwie linijki w swoim kodzie:
-
-Linijka 4770: zmień voiceSessions.set na voiceSessionsMap.set
-
-Linijka 4772: zmień voiceSessions.get na voiceSessionsMap.get
-
-Linijka 4776: zmień voiceSessions.delete na voiceSessionsMap.delete
-
-Alternatywnie, możesz po prostu wkleić poniższy, w 100% spójny blok kodu dokładnie w to miejsce (nadpisując te linie), i wszystko ruszy bez żadnych błędów:
-
-JavaScript
         // 3. NALICZANIE CZASU I XP
         if (!oldState.channelId && newState.channelId) {
             voiceSessionsMap.set(userId, Date.now());
@@ -5549,15 +5481,7 @@ JavaScript
                 }
             }
         }
-Zmień te nazwy na voiceSessionsMap i projekt skompiluje się bez problemu na Renderze!
 
-Błąd Expected "as" but found "voiceSessions" w linii 4694 (widoczny na zrzucie ekranu) oznacza, że gdzieś wcześniej w kodzie nadal znajduje się definicja lub odwołanie z użyciem słowa voiceSessions, które kłóci się ze składnią TypeScriptu (prawdopodobnie pomylono składnię importu/eksportu lub nazwa jest gdzieś zdublowana).
-
-Najprostszym i najczystszym rozwiązaniem, które całkowicie wyeliminuje ten błąd kompilacji, jest usunięcie starego bloku śledzenia czasu głosowego (który prawdopodobnie jest wyżej w pliku) i wklejenie całego, poprawionego bloku na sam koniec.
-
-Wklej ten w 100% kompletny i niezależny blok na sam koniec pliku (zastępując nim wszystko, co dopisywaliśmy ostatnio, tuż przed client.login):
-
-JavaScript
 // === KOMPLETNY I BEZPIECZNY SYSTEM POKOJÓW GŁOSOWYCH ===
 const userVoiceTracker = new Map();
 
@@ -5660,26 +5584,7 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
         console.error('Błąd w voiceStateUpdate:', err);
     }
 });
-Zmień nazwę mapy na userVoiceTracker i upewnij się, że nie masz wyżej w pliku innej zduplikowanej funkcji voiceStateUpdate. To w 100% rozwiąże problem z kompilacją na Renderze.   
-JPG
 
-𝗡𝗶𝗲 𝗺𝗮 𝗼𝗽𝗶𝘀𝘂 𝗶 𝗱𝗮𝗹𝗲𝗷 𝘂𝘀𝘂𝘄𝗮 𝗸𝗮𝗻𝗮ł𝘆 które nie są prywatne
-
-Dwa problemy, które opisujesz, wynikają z następujących kwestii:
-
-Brak wiadomości z instrukcją/panelem w nowym pokoju: Na Discordzie utworzenie kanału głosowego typu GuildVoice nie tworzy automatycznie przypisanego do niego kanału tekstowego na czacie głosowym (takiego, w którym można pisać wiadomości). Bot wysyłał wiadomość na sam kanał głosowy jako powiadomienie, ale nie widać jej tak jak zwykłego tekstu na kanale tekstowym. Aby użytkownik widział instrukcję, musimy wysłać ją na zwykły kanał tekstowy lub stworzyć powiązany kanał tekstowy.
-
-Usuwanie niechcianych kanałów: Jeśli bot usuwa kanały, które nie są prywatne, oznacza to, że w kodzie wciąż gdzieś wykonuje się stara wersja zdarzenia voiceStateUpdate (dublowanie nasłuchiwania w pliku), która nie miała warunku .startsWith('🎧•pokój-').
-
-Oto w pełni poprawiony, czysty i bezpieczny kod. Rozwiązuje on oba problemy:
-
-Tworzy dedykowany kanał tekstowy (lub wysyła embed z instrukcją na czat tekstowy, jeśli masz do tego uprawnienia), albo po prostu wysyła wiadomość wewnątrz kanału. Najlepiej jednak sprawić, by bot wysyłał wiadomość powitalną bezpośrednio na czat serwera lub tworzył kanał tekstowy. Zróbmy tak, że bot utworzy prywatny kanał tekstowy lub wyśle wiadomość na czat, żeby użytkownik ją widział.
-
-Ma rygorystyczny filtr, który usuwa tylko i wyłącznie kanały zaczynające się od 🎧•pokój-.
-
-Podmień całą tę sekcję na sam koniec pliku, a koniecznie upewnij się, że wyżej w pliku nie ma innych funkcji client.on('voiceStateUpdate', ...):
-
-JavaScript
 // === OSTATECZNY, POPRAWIONY SYSTEM PRYWATNYCH POKOJÓW ===
 const userVoiceTracker = new Map();
 
@@ -5811,20 +5716,7 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
         console.error('Błąd w voiceStateUpdate:', err);
     }
 });
-Co zostało poprawione?
-Wizualna instrukcja: Bot tworzy teraz dedykowany kanał tekstowy (np. #chat-ellader) obok kanału głosowego i wysyła tam czytelny embed z przyciskami. Dzięki temu użytkownik od razu widzi panel i instrukcję.
 
-Bezpieczeństwo kanałów: Warunek oldChan.name.startsWith('🎧•pokój-') gwarantuje, że bot nigdy nie dotknie żadnego innego kanału na serwerze – usunie wyłącznie te, które sam założył dla użytkowników.
-
-Usuwa wszystkie inne kanały głosowe ale nie usuwa kanałów stworzonych bez bota
-
-To bardzo ważna uwaga – przepraszam Cię, że warunek zadziałał na odwrót! Skoro napisałeś, że „usuwa wszystkie inne kanały głosowe, ale nie usuwa kanałów stworzonych przez bota”, oznacza to, że warunek oldChan.name.startsWith('🎧•pokój-') z jakiegoś powodu nie łapał nazwy stworzonego kanału, albo funkcja kasowała wszystko inne.
-
-Poprawiłem ten warunek, aby bot usuwał wyłącznie kanały, które znajdują się w odpowiedniej kategorii oraz nie są głównym kanałem tworzenia (oraz dodatkowo upewniamy się, że to nie są inne ważne kanały statyczne).
-
-Podmień końcówkę pliku na poniższy, w 100% sprawdzony kod:
-
-JavaScript
 // === OSTATECZNA POPRAWKA USUWANIA I TWORZENIA POKOJÓW ===
 const userVoiceTracker = new Map();
 
