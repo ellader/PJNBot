@@ -256,7 +256,6 @@ const ID_KANAL_WERYFIKACJI = '1549658822136696832';
 const ID_RANGI_ZWERYFIKOWANY = '1549659335179763772';
 const ID_ROLI_MEZCZYZNA = '1532327338430431383';
 const ID_ROLI_KOBIETA = '1532328153786224751';
-const ID_KANAL_TWORZENIA_POKOJU = '1532302511459926069';
 
 const ID_KANAL_REPUTACJI = "1540233764477730908";
 const ID_ALEJA_SLAW_REPUTACJI = "1540238376278687754";
@@ -4689,9 +4688,10 @@ client.on('interactionCreate', async interaction => {
     }
 });
 
-import { 
-// === NAPRAWIONY SYSTEM POKOJÓW GŁOSOWYCH ===
+// === SYSTEM ŚLEDZENIA CZASU I TWORZENIA PRYWATNYCH POKOJÓW GŁOSOWYCH ===
 const voiceSessions = new Map<string, number>();
+const ID_KANAL_TWORZENIA_POKOJU = '1554376037746352169';
+const ID_KATEGORII_POKOJOW = '1532302511459926067';
 
 client.on('voiceStateUpdate', async (oldState, newState) => {
     try {
@@ -4702,11 +4702,8 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
         const channelId = newState.channelId;
         const guild = newState.guild;
 
-        const ID_KANAL_TWORZENIA = '1554376037746352169';
-        const ID_KATEGORII = '1532302511459926067';
-
-        // 1. TWORZENIE PRYWATNEGO KANAŁU
-        if (channelId === ID_KANAL_TWORZENIA) {
+        // 1. TWORZENIE PRYWATNEGO KANAŁU PO WEJŚCIU W KANAŁ TWORZENIA
+        if (channelId === ID_KANAL_TWORZENIA_POKOJU) {
             const cleanName = member.displayName.toLowerCase().replace(/[^a-z0-9]/g, '');
             const privateChannelName = `🎧•pokój-${cleanName || 'uzytkownika'}`;
 
@@ -4714,7 +4711,7 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
                 const voiceChan = await guild.channels.create({
                     name: privateChannelName,
                     type: ChannelType.GuildVoice,
-                    parent: ID_KATEGORII,
+                    parent: ID_KATEGORII_POKOJOW,
                     permissionOverwrites: [
                         { id: guild.id, deny: [PermissionFlagsBits.ViewChannel] },
                         { 
@@ -4732,8 +4729,10 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
                     ]
                 });
 
+                // Przeniesienie użytkownika do nowo utworzonego pokoju
                 await member.voice.setChannel(voiceChan).catch(() => {});
 
+                // Instrukcja i panel zarządzania dla właściciela
                 const textEmbed = new EmbedBuilder()
                     .setColor(0x3498DB)
                     .setTitle('🎛️ Instrukcja & Panel Zarządzania Prywatnym Pokojem')
@@ -4741,39 +4740,46 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
                         `Witaj <@${userId}>! To jest Twój prywatny kanał głosowy.\n\n` +
                         `📌 **Zasady i Instrukcja:**\n` +
                         `• Jesteś właścicielem tego pokoju i masz nad nim pełną kontrolę.\n` +
-                        `• Użyj przycisków poniżej, aby zablokować lub odblokować dostęp.\n` +
-                        `• **Gdy ostatnia osoba opuści ten kanał, bot automatycznie go usunie.**`
+                        `• Użyj przycisków poniżej, aby szybko zablokować lub odblokować dostęp dla innych.\n` +
+                        `• **Gdy ostatnia osoba opuści ten kanał, bot automatycznie go usunie.**\n\n` +
+                        `*Miłego rozmawiania!*`
                     )
-                    .setTimestamp();
+                    .setTimestamp()
+                    .setFooter({ text: 'PJN System Prywatnych Pokoi' });
 
                 const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
-                    new ButtonBuilder().setCustomId('temp_voice_lock').setLabel('Zablokuj').setStyle(ButtonStyle.Danger).setEmoji('🔒'),
-                    new ButtonBuilder().setCustomId('temp_voice_unlock').setLabel('Odblokuj').setStyle(ButtonStyle.Success).setEmoji('🔓')
+                    new ButtonBuilder().setCustomId('temp_voice_lock').setLabel('Zablokuj pokój').setStyle(ButtonStyle.Danger).setEmoji('🔒'),
+                    new ButtonBuilder().setCustomId('temp_voice_unlock').setLabel('Odblokuj pokój').setStyle(ButtonStyle.Success).setEmoji('🔓')
                 );
 
-                await voiceChan.send({ content: `<@${userId}>`, embeds: [textEmbed], components: [row] }).catch(() => {});
+                await voiceChan.send({ 
+                    content: `<@${userId}>`, 
+                    embeds: [textEmbed], 
+                    components: [row] 
+                }).catch(() => {});
+
             } catch (e) {
-                console.error('Błąd tworzenia pokoju:', e);
+                console.error('Błąd podczas tworzenia prywatnego pokoju głosowego:', e);
             }
         }
 
-        // 2. USUWANIE TYLKO PRYWATNYCH POKOJÓW (które zaczynają się od "🎧•pokój-")
+        // 2. USUWANIE PUSTYCH PRYWATNYCH KANAŁÓW GŁOSOWYCH
         if (oldState.channel && oldState.channel.members.size === 0) {
             const oldChan = oldState.channel;
-            if (oldChan.parentId === ID_KATEGORII && oldChan.name.startsWith('🎧•pokój-')) {
-                await oldChan.delete('Pusty prywatny kanał').catch(() => {});
+            if (oldChan.parentId === ID_KATEGORII_POKOJOW && oldChan.id !== ID_KANAL_TWORZENIA_POKOJU) {
+                await oldChan.delete('Pusty prywatny kanał głosowy').catch(() => {});
             }
         }
 
-        // 3. NALICZANIE CZASU I XP
+        // 3. ŚLEDZENIE CZASU NA GŁOSIE I NALICZANIE XP + COINSÓW
         if (!oldState.channelId && newState.channelId) {
-            voiceSessionsMap.set(userId, Date.now());
+            voiceSessions.set(userId, Date.now());
         } else if (oldState.channelId && !newState.channelId) {
-            const startTime = voiceSessionsMap.set(userId);
+            const startTime = voiceSessions.get(userId);
             if (startTime) {
                 const diffMs = Date.now() - startTime;
                 const minutes = Math.floor(diffMs / (1000 * 60));
-                voiceSessionsMap.delete(userId);
+                voiceSessions.delete(userId);
 
                 if (minutes > 0) {
                     let user = await UserModel.findOne({ userId });
@@ -4789,9 +4795,17 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
             }
         }
     } catch (err) {
-        console.error('Błąd w voiceStateUpdate:', err);
+        console.error('Błąd w obsłudze voiceStateUpdate:', err);
     }
-});
+
+        // 2. USUWANIE TYLKO PRYWATNYCH POKOJÓW (które zaczynają się od "🎧•pokój-")
+        if (oldState.channel && oldState.channel.members.size === 0) {
+            const oldChan = oldState.channel;
+            if (oldChan.parentId === ID_KATEGORII && oldChan.name.startsWith('🎧•pokój-')) {
+                await oldChan.delete('Pusty prywatny kanał').catch(() => {});
+            }
+        }
+    });
 
 // === URUCHOMIENIE BOTA ===
 client.login(token).catch(err => {
