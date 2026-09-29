@@ -511,19 +511,40 @@ function startFreeGamesCron() {
     });
 }
 
-// === SYSTEM POWITANIA NOWYCH UŻYTKOWNIKÓW ===
+// === SYSTEM POWITANIA NOWYCH UŻYTKOWNIKÓW Z PREZENTEM 200 COINSÓW ===
 client.on('guildMemberAdd', async member => {
     try {
         const guild = member.guild;
         const channel = await guild.channels.fetch(ID_KANALU_POWITANIA_NOWYCH).catch(() => null) as TextChannel;
         if (!channel) return;
 
+        // Automatyczne przyznanie 200 PJN-Coins na start w bazie danych
+        let user = await UserModel.findOne({ userId: member.id });
+        if (!user) {
+            user = await UserModel.create({ userId: member.id, balance: 200 });
+        } else {
+            user.balance += 200;
+            await user.save();
+        }
+
+        await TransactionHistoryModel.create({
+            userId: client.user?.id || 'system',
+            targetUserId: member.id,
+            type: 'admin_add',
+            amount: 200,
+            details: 'Prezent na start za dołączenie do serwera'
+        });
+
         const welcomeEmbed = new EmbedBuilder()
-            .setColor(0x2ECC71)
-            .setTitle('👋 Nowy użytkownik na pokładzie!')
+            .setColor(0x9B59B6)
+            .setTitle('🎉 Witamy na serwerze PJN!')
             .setDescription(
-                `Witaj <@${member.id}> na serwerze **${guild.name}**!\n\n` +
-                `Cieszymy się, że dołączyłeś do naszej społeczności. Pamiętaj, aby zapoznać się z regulaminem, zweryfikować konto i miło spędzić z nami czas! 🚀`
+                `Witaj <@${member.id}>! Cieszymy się, że dołączyłeś do naszej społeczności. 🚀\n\n` +
+                `🎁 **Na start otrzymujesz w prezencie 200 PJN-Coins!**\n\n` +
+                `🎛️ **Centrum Dowodzenia • Od tego możesz zacząć 👇**\n` +
+                `• Zweryfikuj się i wybierz płeć: <#${ID_KANAL_WERYFIKACJI}>\n` +
+                `• Dostosuj role: <#${ID_KANAL_RANG}>\n` +
+                `• Szukaj do gry: <#${ID_KANALU_SZUKAM_DO_GRY}>`
             )
             .setThumbnail(member.user.displayAvatarURL())
             .setImage(LIVE_IMAGE_URL)
@@ -531,7 +552,7 @@ client.on('guildMemberAdd', async member => {
             .setFooter({ text: 'PJN System Powitań' });
 
         await channel.send({
-            content: `<@${member.id}> Witaj na serwerze!`,
+            content: `🎉 Witamy na serwerze PJN!\nWitaj <@${member.id}>! Cieszymy się, że dołączyłeś do naszej społeczności. 🚀`,
             embeds: [welcomeEmbed],
             allowedMentions: { users: [member.id] }
         });
@@ -4436,6 +4457,24 @@ client.on('interactionCreate', async interaction => {
         if (commandName === 'zakonczstream') {
             if (!isAuthorized(interaction.user.id)) return interaction.reply({ content: '❌ Brak uprawnień!', ephemeral: true });
             await interaction.deferReply();
+
+            // Ręczne podsumowanie streama
+            const channel = interaction.channel as TextChannel;
+            if (channel) {
+                const summaryEmbed = new EmbedBuilder()
+                    .setColor(0x9146FF)
+                    .setTitle('📊 Podsumowanie Transmisji na Żywo')
+                    .setDescription(
+                        `Transmisja została zakończona ręcznie komendą administratora!\n\n` +
+                        `Dziękujemy wszystkim za obecność i wspólnie spędzony czas! ❤️`
+                    )
+                    .setImage(LIVE_IMAGE_URL)
+                    .setTimestamp()
+                    .setFooter({ text: 'PJN & elladerMusic • Podsumowanie Streama' });
+
+                await channel.send({ embeds: [summaryEmbed] });
+            }
+
             const embed = new EmbedBuilder()
                 .setColor(0x9146FF)
                 .setTitle('⏹️ TRANSMISJA ZAKOŃCZONA')
@@ -4443,9 +4482,8 @@ client.on('interactionCreate', async interaction => {
                 .setImage(LIVE_IMAGE_URL)
                 .setTimestamp();
 
-            const channel = interaction.channel as TextChannel;
             if (channel) await channel.send({ embeds: [embed] });
-            await interaction.editReply({ content: `✅ Pomyślnie ogłoszono zakończenie streama!` });
+            await interaction.editReply({ content: `✅ Pomyślnie ogłoszono zakończenie streama i wysłano podsumowanie!` });
             return;
         }
 
