@@ -4817,22 +4817,6 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
         }
 
         
-Rozmowa z Gemini
-Na tej linii jest zupełnie co innego
-
-Przepraszam Cię najmocniej! Kod, który wkleiłeś w pierwszej wiadomości, urwał się lub miał inną strukturę linii, przez co numeracja mogła się nie zgadzać.
-
-Najprostszy i najbezpieczniejszy sposób, aby to poprawnie znaleźć i podmienić:
-
-Otwórz swój plik z kodem bota w edytorze (np. VS Code).
-
-Wciśnij skrót Ctrl + F (lub Cmd + F na Macu) i wpisz:
-
-JavaScript
-client.on('voiceStateUpdate'
-Znajdź ten fragment kodu, skopiuj go i zamień w całości na poniższy blok (zawierający już Twoje ID kanału tworzenia i ID kategorii):
-
-JavaScript
 // === SYSTEM ŚLEDZENIA CZASU I TWORZENIA PRYWATNYCH POKOJÓW GŁOSOWYCH ===
 const voiceSessions = new Map<string, number>();
 const ID_KANAL_TWORZENIA_POKOJU = '1554376037746352169';
