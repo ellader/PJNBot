@@ -2620,7 +2620,6 @@ client.once('ready', async () => {
     startServerStatsCron();
     startPollChecker();
     startPokerRoomInactivityChecker();
-    startFreeGamesCron();
     startTwitchMonitorCron(); // Automatyczne monitorowanie Twitcha w tle
 });
 
