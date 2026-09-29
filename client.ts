@@ -4929,11 +4929,9 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
 });
 
 // === TĘ SEKCJĘ WKLEJASZ TUTŻ PRZED LOGOWANIEM BOTA ===
-
 const voiceSessions = new Map<string, number>();
 const ID_KANAL_TWORZENIA_POKOJU = '1554376037746352169';
 const ID_KATEGORII_POKOJOW = '1532302511459926067';
-
 client.on('voiceStateUpdate', async (oldState, newState) => {
     try {
         const member = newState.member || oldState.member;
@@ -5027,16 +5025,13 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
         console.error('Błąd w voiceStateUpdate:', err);
     }
 });
-
 // === URUCHOMIENIE BOTA (ZOSTAJE NA SAMYM KOŃCU) ===
 client.login(token).catch(err => {
     console.error('Błąd podczas logowania bota Discord:', err);
 });
-
 // === SYSTEM PRYWATNYCH POKOJÓW GŁOSOWYCH (DODANE NA KONIEC) ===
 const voiceSessions = new Map<string, number>();
 const ID_KATEGORII_POKOJOW = '1532302511459926067';
-
 client.on('voiceStateUpdate', async (oldState, newState) => {
     try {
         const member = newState.member || oldState.member;
