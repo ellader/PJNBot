@@ -4781,7 +4781,7 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
                     ]
                 });
 
-                // === OSTATECZNY SYSTEM PRYWATNYCH POKOJÓW GŁOSOWYCH ===
+// === OSTATECZNY SYSTEM PRYWATNYCH POKOJÓW GŁOSOWYCH ===
 const safeVoiceTracker = new Map();
 
 function startFreeGamesCron() {
@@ -4826,7 +4826,6 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
                     ]
                 });
 
-                // Krótkie opóźnienie przed przeniesieniem, aby kanał na pewno zdążył powstać w Discord API
                 setTimeout(async () => {
                     await member.voice.setChannel(voiceChan).catch(() => {});
                 }, 500);
@@ -4854,10 +4853,9 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
             }
         }
 
-        // 2. USUWANIE PUSTYCH POKOJÓW (Niezawodne kasowanie, gdy ktoś wyjdzie)
+        // 2. USUWANIE PUSTYCH POKOJÓW
         if (oldState.channel && oldState.channel.id !== ID_KANAL_TWORZENIA) {
             const leftChannel = oldState.channel;
-            // Sprawdzamy czy kanał jest w docelowej kategorii i czy został całkowicie opuszczony
             if (leftChannel.parentId === ID_KATEGORII && leftChannel.members.size === 0) {
                 await leftChannel.delete('Pusty prywatny kanał głosowy').catch(() => {});
             }
