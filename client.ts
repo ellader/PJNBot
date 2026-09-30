@@ -4781,7 +4781,7 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
                     ]
                 });
 
-// === OSTATECZNY SYSTEM PRYWATNYCH POKOJÓW GŁOSOWYCH ===
+// === KOMPLETNY I CZYSTY SYSTEM POKOJÓW GŁOSOWYCH ===
 const safeVoiceTracker = new Map();
 
 function startFreeGamesCron() {
@@ -4889,6 +4889,7 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
     }
 });
 
+// === LOGOWANIE BOTA ===
 client.login(token).catch(err => {
     console.error('Błąd podczas logowania bota Discord:', err);
 });
