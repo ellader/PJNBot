@@ -4734,5 +4734,142 @@ client.on('interactionCreate', async interaction => {
         }
     }
 });
+// === KOMPLETNY SYSTEM PRYWATNYCH POKOJÓW GŁOSOWYCH (BEZ KONFLIKTÓW) ===
+const safeVoiceTracker = new Map();
+
+function startFreeGamesCron() {
+    // Funkcja zabezpieczająca przed błędem braku definicji
+}
+
+client.on('voiceStateUpdate', async (oldState, newState) => {
+    try {
+        const member = newState.member || oldState.member;
+        if (!member || member.user.bot) return;
+
+        const userId = member.id;
+        const channelId = newState.channelId;
+        const guild = newState.guild;
+
+        const ID_KANAL_TWORZENIA = '1554376037746352169';
+        const ID_KATEGORII = '1532302511459926067';
+
+        // 1. TWORZENIE PRYWATNEGO POKOJU (GŁOS + TEKST Z INSTRUKCJĄ)
+        if (channelId === ID_KANAL_TWORZENIA) {
+            const cleanName = member.displayName.toLowerCase().replace(/[^a-z0-9]/g, '');
+            const channelName = `🎧•pokój-${cleanName || 'uzytkownika'}`;
+
+            try {
+                // Tworzymy kanał głosowy
+                const voiceChan = await guild.channels.create({
+                    name: channelName,
+                    type: ChannelType.GuildVoice,
+                    parent: ID_KATEGORII,
+                    permissionOverwrites: [
+                        { id: guild.id, deny: [PermissionFlagsBits.ViewChannel] },
+                        { 
+                            id: userId, 
+                            allow: [
+                                PermissionFlagsBits.ViewChannel, 
+                                PermissionFlagsBits.Connect, 
+                                PermissionFlagsBits.Speak, 
+                                PermissionFlagsBits.ManageChannels, 
+                                PermissionFlagsBits.MuteMembers, 
+                                PermissionFlagsBits.DeafenMembers,
+                                PermissionFlagsBits.MoveMembers
+                            ] 
+                        }
+                    ]
+                });
+
+                // Tworzymy powiązany kanał tekstowy z instrukcją
+                const textChan = await guild.channels.create({
+                    name: `chat-${cleanName || 'pokoj'}`,
+                    type: ChannelType.GuildText,
+                    parent: ID_KATEGORII,
+                    permissionOverwrites: [
+                        { id: guild.id, deny: [PermissionFlagsBits.ViewChannel] },
+                        { id: userId, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] }
+                    ]
+                });
+
+                // Zapisujemy ID kanału tekstowego w topicu kanału głosowego, aby bot wiedział, co skasować
+                await voiceChan.setTopic(textChan.id).catch(() => {});
+                
+                // Przenosimy użytkownika do jego nowego pokoju
+                await member.voice.setChannel(voiceChan).catch(() => {});
+
+                // Wysyłamy embed z instrukcją i przyciskami zarządzania
+                const textEmbed = new EmbedBuilder()
+                    .setColor(0x3498DB)
+                    .setTitle('🎛️ Instrukcja & Panel Zarządzania Prywatnym Pokojem')
+                    .setDescription(
+                        `Witaj <@${userId}>! To jest Twój prywatny kanał tekstowy powiązany z pokojem głosowym.\n\n` +
+                        `📌 **Instrukcja obsługi:**\n` +
+                        `• Jesteś właścicielem tego pokoju i masz nad nim pełną kontrolę (możesz wyciszać, wyrzucać i zarządzać uprawnieniami).\n` +
+                        `• Użyj przycisków poniżej, aby szybko **zablokować** lub **odblokować** dostęp do swojego kanału głosowego dla innych.\n` +
+                        `• **Gdy wszyscy opuszczą ten kanał głosowy, bot automatycznie usunie zarówno głos, jak i ten czat.**`
+                    )
+                    .setTimestamp();
+
+                const row = new ActionRowBuilder().addComponents(
+                    new ButtonBuilder().setCustomId('temp_voice_lock').setLabel('Zablokuj').setStyle(ButtonStyle.Danger).setEmoji('🔒'),
+                    new ButtonBuilder().setCustomId('temp_voice_unlock').setLabel('Odblokuj').setStyle(ButtonStyle.Success).setEmoji('🔓')
+                );
+
+                await textChan.send({ content: `<@${userId}>`, embeds: [textEmbed], components: [row] }).catch(() => {});
+            } catch (e) {
+                console.error('Błąd podczas tworzenia prywatnego pokoju:', e);
+            }
+        }
+
+        // 2. USUWANIE WYŁĄCZNIE PUSTYCH POKOJÓW STWORZONYCH PRZEZ BOTA
+        if (oldState.channel && oldState.channel.members.size === 0) {
+            const oldChan = oldState.channel;
+            // Warunek sprawdza, czy kanał jest w tej kategorii, nie jest kanałem tworzenia i ma nazwę pokoju
+            if (
+                oldChan.parentId === ID_KATEGORII && 
+                oldChan.id !== ID_KANAL_TWORZENIA && 
+                (oldChan.name.includes('pokój') || oldChan.name.includes('chat-'))
+            ) {
+                // Usuwamy powiązany kanał tekstowy (jeśli istnieje zapisanego w topicu)
+                const textChanId = oldChan.topic;
+                if (textChanId) {
+                    const textChan = guild.channels.cache.get(textChanId);
+                    if (textChan) {
+                        await textChan.delete('Pusty prywatny czat').catch(() => {});
+                    }
+                }
+                // Usuwamy kanał głosowy
+                await oldChan.delete('Pusty prywatny kanał głosowy').catch(() => {});
+            }
+        }
+
+        // 3. NALICZANIE CZASU, XP I MONET ZA AKTYWNOŚĆ GŁOSOWĄ
+        if (!oldState.channelId && newState.channelId) {
+            safeVoiceTracker.set(userId, Date.now());
+        } else if (oldState.channelId && !newState.channelId) {
+            const startTime = safeVoiceTracker.get(userId);
+            if (startTime) {
+                const diffMs = Date.now() - startTime;
+                const minutes = Math.floor(diffMs / (1000 * 60));
+                safeVoiceTracker.delete(userId);
+
+                if (minutes > 0) {
+                    let user = await UserModel.findOne({ userId });
+                    if (!user) user = await UserModel.create({ userId });
+
+                    user.voiceMinutes = (user.voiceMinutes || 0) + minutes;
+                    user.balance = (user.balance || 0) + (minutes * 2); 
+                    await user.save();
+
+                    await addExp(userId, minutes * 5, member.guild); 
+                    await checkAndAwardBadges(user, member, member.guild);
+                }
+            }
+        }
+    } catch (err) {
+        console.error('Błąd w zdarzeniu voiceStateUpdate:', err);
+    }
+});
 
 client.login(token);
