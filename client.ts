@@ -4781,33 +4781,65 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
                     ]
                 });
 
-                // Tworzymy powiązany kanał tekstowy z instrukcją
-                const textChan = await guild.channels.create({
-                    name: `chat-${cleanName || 'pokoj'}`,
-                    type: ChannelType.GuildText,
+                // === OSTATECZNY SYSTEM PRYWATNYCH POKOJÓW GŁOSOWYCH ===
+const safeVoiceTracker = new Map();
+
+function startFreeGamesCron() {
+    // Funkcja zabezpieczająca przed błędem braku definicji
+}
+
+client.on('voiceStateUpdate', async (oldState, newState) => {
+    try {
+        const member = newState.member || oldState.member;
+        if (!member || member.user.bot) return;
+
+        const userId = member.id;
+        const guild = newState.guild;
+
+        const ID_KANAL_TWORZENIA = '1554409138824417300';
+        const ID_KATEGORII = '1532302511459926067';
+
+        // 1. TWORZENIE PRYWATNEGO KANAŁU GŁOSOWEGO
+        if (newState.channelId === ID_KANAL_TWORZENIA) {
+            const cleanName = member.displayName.toLowerCase().replace(/[^a-z0-9]/g, '');
+            const channelName = `🎧•pokój-${cleanName || 'uzytkownika'}`;
+
+            try {
+                const voiceChan = await guild.channels.create({
+                    name: channelName,
+                    type: ChannelType.GuildVoice,
                     parent: ID_KATEGORII,
                     permissionOverwrites: [
                         { id: guild.id, deny: [PermissionFlagsBits.ViewChannel] },
-                        { id: userId, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] }
+                        { 
+                            id: userId, 
+                            allow: [
+                                PermissionFlagsBits.ViewChannel, 
+                                PermissionFlagsBits.Connect, 
+                                PermissionFlagsBits.Speak, 
+                                PermissionFlagsBits.ManageChannels, 
+                                PermissionFlagsBits.MuteMembers, 
+                                PermissionFlagsBits.DeafenMembers,
+                                PermissionFlagsBits.MoveMembers
+                            ] 
+                        }
                     ]
                 });
 
-                // Zapisujemy ID kanału tekstowego w topicu kanału głosowego, aby bot wiedział, co skasować
-                await voiceChan.setTopic(textChan.id).catch(() => {});
-                
-                // Przenosimy użytkownika do jego nowego pokoju
-                await member.voice.setChannel(voiceChan).catch(() => {});
+                // Krótkie opóźnienie przed przeniesieniem, aby kanał na pewno zdążył powstać w Discord API
+                setTimeout(async () => {
+                    await member.voice.setChannel(voiceChan).catch(() => {});
+                }, 500);
 
-                // Wysyłamy embed z instrukcją i przyciskami zarządzania
                 const textEmbed = new EmbedBuilder()
                     .setColor(0x3498DB)
-                    .setTitle('🎛️ Instrukcja & Panel Zarządzania Prywatnym Pokojem')
+                    .setTitle('🎛️ Panel Zarządzania Prywatnym Pokojem')
                     .setDescription(
-                        `Witaj <@${userId}>! To jest Twój prywatny kanał tekstowy powiązany z pokojem głosowym.\n\n` +
+                        `Witaj <@${userId}>! To jest Twój prywatny kanał głosowy.\n\n` +
                         `📌 **Instrukcja obsługi:**\n` +
-                        `• Jesteś właścicielem tego pokoju i masz nad nim pełną kontrolę (możesz wyciszać, wyrzucać i zarządzać uprawnieniami).\n` +
-                        `• Użyj przycisków poniżej, aby szybko **zablokować** lub **odblokować** dostęp do swojego kanału głosowego dla innych.\n` +
-                        `• **Gdy wszyscy opuszczą ten kanał głosowy, bot automatycznie usunie zarówno głos, jak i ten czat.**`
+                        `• Masz pełną kontrolę nad tym pokojem (możesz wyciszać i wyrzucać osoby).\n` +
+                        `• Użyj przycisków poniżej, aby **zablokować** lub **odblokować** wejście dla innych.\n` +
+                        `• **Gdy kanał będzie pusty, bot automatycznie go usunie.**`
                     )
                     .setTimestamp();
 
@@ -4816,31 +4848,18 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
                     new ButtonBuilder().setCustomId('temp_voice_unlock').setLabel('Odblokuj').setStyle(ButtonStyle.Success).setEmoji('🔓')
                 );
 
-                await textChan.send({ content: `<@${userId}>`, embeds: [textEmbed], components: [row] }).catch(() => {});
+                await voiceChan.send({ content: `<@${userId}>`, embeds: [textEmbed], components: [row] }).catch(() => {});
             } catch (e) {
                 console.error('Błąd podczas tworzenia prywatnego pokoju:', e);
             }
         }
 
-        // 2. USUWANIE WYŁĄCZNIE PUSTYCH POKOJÓW STWORZONYCH PRZEZ BOTA
-        if (oldState.channel && oldState.channel.members.size === 0) {
-            const oldChan = oldState.channel;
-            // Warunek sprawdza, czy kanał jest w tej kategorii, nie jest kanałem tworzenia i ma nazwę pokoju
-            if (
-                oldChan.parentId === ID_KATEGORII && 
-                oldChan.id !== ID_KANAL_TWORZENIA && 
-                (oldChan.name.includes('pokój') || oldChan.name.includes('chat-'))
-            ) {
-                // Usuwamy powiązany kanał tekstowy (jeśli istnieje zapisanego w topicu)
-                const textChanId = oldChan.topic;
-                if (textChanId) {
-                    const textChan = guild.channels.cache.get(textChanId);
-                    if (textChan) {
-                        await textChan.delete('Pusty prywatny czat').catch(() => {});
-                    }
-                }
-                // Usuwamy kanał głosowy
-                await oldChan.delete('Pusty prywatny kanał głosowy').catch(() => {});
+        // 2. USUWANIE PUSTYCH POKOJÓW (Niezawodne kasowanie, gdy ktoś wyjdzie)
+        if (oldState.channel && oldState.channel.id !== ID_KANAL_TWORZENIA) {
+            const leftChannel = oldState.channel;
+            // Sprawdzamy czy kanał jest w docelowej kategorii i czy został całkowicie opuszczony
+            if (leftChannel.parentId === ID_KATEGORII && leftChannel.members.size === 0) {
+                await leftChannel.delete('Pusty prywatny kanał głosowy').catch(() => {});
             }
         }
 
