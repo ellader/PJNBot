@@ -406,13 +406,13 @@ async function checkTwitchLiveStatuses() {
                 const streamUrl = `https://twitch.tv/${username}`;
                 const thumbnail = streamInfo.thumbnail_url ? streamInfo.thumbnail_url.replace('{width}', '1280').replace('{height}', '720') : undefined;
 
-                await sendNotification(key as 'languspjn' | 'elladermusic', 'twitch', title, streamUrl, thumbnail);
+                await sendNotification(key as 'languspjn' | 'Langus', 'twitch', title, streamUrl, thumbnail);
 
                 if (streamerConfig.voiceChannelIdToRename) {
                     for (const [_, guild] of client.guilds.cache) {
                         const channel = await guild.channels.fetch(streamerConfig.voiceChannelIdToRename).catch(() => null);
                         if (channel) {
-                            await channel.setName(`🔴・stream-live`).catch(() => {});
+                            await channel.setName(`🟢・ᴛᴡɪᴛᴄʜ-ᴏɴʟɪɴᴇ`).catch(() => {});
                         }
                     }
                 }
@@ -442,7 +442,7 @@ async function checkTwitchLiveStatuses() {
                             )
                             .setImage(LIVE_IMAGE_URL)
                             .setTimestamp()
-                            .setFooter({ text: 'PJN & elladerMusic • Podsumowanie Streama' });
+                            .setFooter({ text: 'PJN & LangusTwitch • Podsumowanie Streama' });
 
                         await channel.send({ embeds: [summaryEmbed] });
                     }
@@ -454,7 +454,7 @@ async function checkTwitchLiveStatuses() {
                     for (const [_, guild] of client.guilds.cache) {
                         const channel = await guild.channels.fetch(streamerConfig.voiceChannelIdToRename).catch(() => null);
                         if (channel) {
-                            await channel.setName(`🟢・twitch-offline`).catch(() => {});
+                            await channel.setName(`🟣・ᴛᴡɪᴛᴄʜ-ᴏғғʟɪɴᴇ`).catch(() => {});
                         }
                     }
                 }
