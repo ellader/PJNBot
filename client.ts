@@ -4750,7 +4750,7 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
         const channelId = newState.channelId;
         const guild = newState.guild;
 
-        const ID_KANAL_TWORZENIA = '1554376037746352169';
+        const ID_KANAL_TWORZENIA = '1554409138824417300';
         const ID_KATEGORII = '1532302511459926067';
 
         // 1. TWORZENIE PRYWATNEGO POKOJU (GŁOS + TEKST Z INSTRUKCJĄ)
