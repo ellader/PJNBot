@@ -1030,11 +1030,6 @@ async function checkFortniteServerStatus() {
     }
 }
 
- } catch (err) {
-        console.error('Błąd podczas sprawdzania statusu i eventów Fortnite:', err);
-    }
-}
-
 function startFortniteStatusCron() {
     cron.schedule('*/5 * * * *', async () => {
         await checkFortniteServerStatus();
