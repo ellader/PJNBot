@@ -4735,4 +4735,86 @@ client.on('interactionCreate', async interaction => {
     }
 });
 
+// === SYSTEM NALICZANIA EXP I STATYSTYK ZA WIADOMOŚCI ===
+client.on('messageCreate', async message => {
+    if (message.author.bot || !message.guild) return;
+
+    try {
+        const userId = message.author.id;
+        let user = await UserModel.findOne({ userId });
+        if (!user) {
+            user = await UserModel.create({ userId });
+        }
+
+        // 1. Zwiększamy licznik wiadomości i emotek
+        user.messageCount = (user.messageCount || 0) + 1;
+
+        const currentHour = new Date().getHours();
+        if (currentHour >= 0 && currentHour < 6) {
+            user.nightMessageCount = (user.nightMessageCount || 0) + 1;
+        }
+
+        const customEmojis = message.content.match(/<a?:\w+:\d+>/g);
+        if (customEmojis) {
+            user.emojiCount = (user.emojiCount || 0) + customEmojis.length;
+        }
+
+        await user.save();
+
+        // 2. Dodawanie równe 150 XP za wiadomość
+        await addExp(userId, 150, message.guild);
+
+        // 3. Sprawdzenie odznak
+        const member = await message.guild.members.fetch(userId).catch(() => null);
+        await checkAndAwardBadges(user, member || message.author, message.guild);
+
+    } catch (err) {
+        console.error('Błąd podczas naliczania expa za wiadomość:', err);
+    }
+});
+
+// Słownik do śledzenia, kiedy użytkownik dołączył do kanału głosowego
+const voiceSessions = new Map<string, number>();
+
+client.on('voiceStateUpdate', async (oldState, newState) => {
+    const member = newState.member;
+    if (!member || member.user.bot) return;
+
+    const userId = member.id;
+    const now = Date.now();
+
+    // Użytkownik wszedł na kanał głosowy (i nie był wcześniej na mute/deafen)
+    if (!oldState.channelId && newState.channelId) {
+        voiceSessions.set(userId, now);
+    } 
+    // Użytkownik wyszedł z kanału głosowego
+    else if (oldState.channelId && !newState.channelId) {
+        const joinTime = voiceSessions.get(userId);
+        if (joinTime) {
+            const minutesInVoice = Math.floor((now - joinTime) / (1000 * 60));
+            voiceSessions.delete(userId);
+
+            if (minutesInVoice > 0) {
+                try {
+                    let user = await UserModel.findOne({ userId });
+                    if (!user) user = await UserModel.create({ userId });
+
+                    user.voiceMinutes = (user.voiceMinutes || 0) + minutesInVoice;
+                    await user.save();
+
+                    // Przykładowo: 10 XP za każdą minutę spędzoną na głosie (możesz zmienić wartość)
+                    const expEarned = minutesInVoice * 10;
+                    await addExp(userId, expEarned, member.guild);
+
+                    const memberObj = await member.guild.members.fetch(userId).catch(() => null);
+                    await checkAndAwardBadges(user, memberObj || member.user, member.guild);
+                } catch (e) {
+                    console.error('Błąd podczas naliczania minut głosowych:', e);
+                }
+            }
+        }
+    }
+});
+
+
 client.login(token);
