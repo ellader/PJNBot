@@ -933,13 +933,16 @@ async function checkFortniteServerStatus() {
 
         const rolePing = `<@&${ID_RANGI_AKTUALIZACJE_FORTNITE}>`;
 
+        // 1. Sprawdzanie statusu serwerów i wersji gry
         const statusRes = await fetch('https://fortnite-api.com/v1/status');
         if (statusRes.ok) {
             const statusData = await statusRes.json() as any;
-            if (statusData && statusData.status === 200) {
-                const isOnline = statusData.data.seasons?.[0]?.enabled ?? true;
+            if (statusData && statusData.status === 200 && statusData.data) {
+                // POPRAWKA: Używamy właściwego pola 'serviceConnected' zwracanego przez API
+                const isOnline = statusData.data.serviceConnected ?? true;
                 const currentVersion = statusData.data.version;
 
+                // Wykrywanie nowej wersji gry
                 if (currentVersion && currentVersion !== lastFortniteVersion) {
                     if (lastFortniteVersion !== null) {
                         const updateEmbed = new EmbedBuilder()
@@ -965,6 +968,7 @@ async function checkFortniteServerStatus() {
                     lastFortniteVersion = currentVersion;
                 }
 
+                // Wykrywanie zmiany statusu serwera (Online <-> Offline)
                 if (lastFortniteServerStatus !== null && lastFortniteServerStatus !== isOnline) {
                     const serverEmbed = new EmbedBuilder()
                         .setColor(isOnline ? 0x2ECC71 : 0xE74C3C)
@@ -987,7 +991,45 @@ async function checkFortniteServerStatus() {
             }
         }
 
+        // 2. Sprawdzanie eventów Fortnite
         const res = await fetch('https://fortnite-api.com/v2/events', {
+            headers: { 'Authorization': process.env.FORTNITE_API_KEY || '' }
+        });
+        if (!res.ok) return;
+        const data = await res.json() as any;
+
+        if (!data || !data.data || !data.data.events) return;
+
+        const events = data.data.events;
+        if (events.length === 0) return;
+
+        const latestEvent = events[0];
+        const eventId = latestEvent.id || latestEvent.name;
+
+        if (eventId !== lastFortniteEventId) {
+            lastFortniteEventId = eventId;
+            const eventName = latestEvent.name || 'Nowy Event w Fortnite';
+            const eventDesc = latestEvent.shortDescription || latestEvent.description || 'Sprawdź szczegóły w grze!';
+
+            const embed = new EmbedBuilder()
+                .setColor(0x9B59B6)
+                .setTitle(`🎉 Nowy Event w Fortnite: ${eventName}`)
+                .setDescription(`📋 **Opis wydarzenia:**\n${eventDesc}\n\n*Wskocz do gry i sprawdź najnowszą zawartość oraz wyzwania!*`)
+                .setImage(LIVE_IMAGE_URL)
+                .setTimestamp()
+                .setFooter({ text: 'Fortnite Events • API' });
+
+            await channel.send({
+                content: `${rolePing} 📢 Pojawił się nowy event w Fortnite!`,
+                embeds: [embed],
+                allowedMentions: { roles: [ID_RANGI_AKTUALIZACJE_FORTNITE] }
+            });
+        }
+    } catch (err) {
+        console.error('Błąd podczas sprawdzania statusu i eventów Fortnite:', err);
+    }
+}
+const res = await fetch('https://fortnite-api.com/v2/events', {
             headers: { 'Authorization': process.env.FORTNITE_API_KEY || '' }
         });
         if (!res.ok) return;
