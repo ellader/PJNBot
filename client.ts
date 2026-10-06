@@ -1029,6 +1029,7 @@ async function checkFortniteServerStatus() {
         console.error('Błąd podczas sprawdzania statusu i eventów Fortnite:', err);
     }
 }
+
 const res = await fetch('https://fortnite-api.com/v2/events', {
             headers: { 'Authorization': process.env.FORTNITE_API_KEY || '' }
         });
