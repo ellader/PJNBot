@@ -1030,40 +1030,7 @@ async function checkFortniteServerStatus() {
     }
 }
 
-const res = await fetch('https://fortnite-api.com/v2/events', {
-            headers: { 'Authorization': process.env.FORTNITE_API_KEY || '' }
-        });
-        if (!res.ok) return;
-        const data = await res.json() as any;
-
-        if (!data || !data.data || !data.data.events) return;
-
-        const events = data.data.events;
-        if (events.length === 0) return;
-
-        const latestEvent = events[0];
-        const eventId = latestEvent.id || latestEvent.name;
-
-        if (eventId !== lastFortniteEventId) {
-            lastFortniteEventId = eventId;
-            const eventName = latestEvent.name || 'Nowy Event w Fortnite';
-            const eventDesc = latestEvent.shortDescription || latestEvent.description || 'Sprawdź szczegóły w grze!';
-
-            const embed = new EmbedBuilder()
-                .setColor(0x9B59B6)
-                .setTitle(`🎉 Nowy Event w Fortnite: ${eventName}`)
-                .setDescription(`📋 **Opis wydarzenia:**\n${eventDesc}\n\n*Wskocz do gry i sprawdź najnowszą zawartość oraz wyzwania!*`)
-                .setImage(LIVE_IMAGE_URL)
-                .setTimestamp()
-                .setFooter({ text: 'Fortnite Events • API' });
-
-            await channel.send({
-                content: `${rolePing} 📢 Pojawił się nowy event w Fortnite!`,
-                embeds: [embed],
-                allowedMentions: { roles: [ID_RANGI_AKTUALIZACJE_FORTNITE] }
-            });
-        }
-    } catch (err) {
+ } catch (err) {
         console.error('Błąd podczas sprawdzania statusu i eventów Fortnite:', err);
     }
 }
