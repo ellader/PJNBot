@@ -4737,6 +4737,53 @@ client.on('interactionCreate', async interaction => {
         if (!interaction.replied && !interaction.deferred) {
             await interaction.reply({ content: '❌ Wystąpił błąd podczas wykonywania tej komendy.', ephemeral: true }).catch(() => {});
         }
+                if (commandName === 'dajpunkty') {
+            if (!isAuthorized(interaction.user.id) && !interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) {
+                return interaction.reply({ content: '❌ Nie masz uprawnień do użycia tej komendy!', ephemeral: true });
+            }
+
+            await interaction.deferReply({ ephemeral: true });
+            const targetUser = interaction.options.getUser('uzytkownik', true);
+            const ilosc = interaction.options.getInteger('ilosc', true);
+            const powod = interaction.options.getString('powod') || 'Brak podanego powodu';
+
+            if (ilosc <= 0) {
+                return interaction.editReply({ content: '❌ Ilość punktów musi być większa od zera.' });
+            }
+
+            let user = await UserModel.findOne({ userId: targetUser.id });
+            if (!user) user = await UserModel.create({ userId: targetUser.id });
+
+            user.balance += ilosc;
+            await user.save();
+
+            await TransactionHistoryModel.create({
+                userId: interaction.user.id,
+                targetUserId: targetUser.id,
+                type: 'admin_add',
+                amount: ilosc,
+                details: powod
+            });
+
+            try {
+                await targetUser.send({
+                    embeds: [
+                        new EmbedBuilder()
+                            .setColor(0x2ECC71)
+                            .setTitle('🎁 Otrzymałeś PJN-Coins od administracji!')
+                            .setDescription(
+                                `Administrator przyznał Ci **${ilosc} PJN-Coins** na serwerze **${interaction.guild?.name}**!\n\n` +
+                                `📌 **Powód:** ${powod}\n` +
+                                `💰 **Twój nowy stan portfela:** ${user.balance} PJN-Coins`
+                            )
+                            .setTimestamp()
+                    ]
+                }).catch(() => {});
+            } catch (e) {}
+
+            await interaction.editReply({ content: `✅ Pomyślnie przyznano **${ilosc} PJN-Coins** użytkownikowi <@${targetUser.id}>!` });
+            return;
+        }
     }
 });
 
