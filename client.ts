@@ -56,7 +56,7 @@ const userSchema = new mongoose.Schema({
     consecutiveWins: { type: Number, default: 0 },
     consecutiveLosses: { type: Number, default: 0 }, 
     nightMessageCount: { type: Number, default: 0 }, 
-    totalDonated: { type: Number, default: 0 },     
+    totalDonated: { type: Number, default: 0 },      
     quotesAdded: { type: Number, default: 0 },
     helpCount: { type: Number, default: 0 },
     joinedAt: { type: Date, default: Date.now },
@@ -247,6 +247,11 @@ const NOTIF_CONFIG = {
 };
 
 const FREE_GAMES_CHANNEL_ID = '1551606555533910189';
+const ID_KANALU_PREDICTY = '1563192039846445057';
+const ID_KANALU_REKORDY_STREAM = '1563192290602909787';
+const ID_KANALU_ANONIMOWE_WYZNANIA = '1563192566583795782';
+const ID_KANALU_POMYSLE_I_SUGESTIE = '1563191817384493186';
+
 const ANNOUNCE_CHANNEL_ID = '1532399010785263799';
 const ID_KANALU_CYTATY = '1534780578912665653'; 
 const ID_KANALU_ZLOTE_MYSLI = '1549709251365183558'; 
@@ -4389,364 +4394,30 @@ client.on('interactionCreate', async interaction => {
             user.balance -= stawka;
             user.casinoPlays = (user.casinoPlays || 0) + 1;
 
-            const rollUser = Math.floor(Math.random() * 6) + 1;
-            const rollBot = Math.floor(Math.random() * 6) + 1;
+            const userRoll = Math.floor(Math.random() * 6) + 1;
+            const botRoll = Math.floor(Math.random() * 6) + 1;
 
-            if (rollUser > rollBot) {
-                const win = stawka * 2;
-                user.balance += win;
+            if (userRoll > botRoll) {
+                const winAmount = stawka * 2;
+                user.balance += winAmount;
                 user.consecutiveWins = (user.consecutiveWins || 0) + 1;
                 user.consecutiveLosses = 0;
                 await user.save();
-                await sendCoinsNotification(interaction.user.id, stawka, 'Kasyno Kostka PJN', 'Wygrana w pojedynku rzutu kością');
-                return interaction.editReply({ content: `🎲 **Rzut Kością:**\nTwoja wyrzucona liczba: **${rollUser}** | Liczba bota: **${rollBot}**\n🎉 Wygrałeś **${win} PJN-Coins**!` });
-            } else {
+                await sendCoinsNotification(interaction.user.id, stawka, 'Kasyno Kostka PJN', 'Wygrana w rzucie kością');
+                return interaction.editReply({ content: `🎲 **Rzut Kością:**\nTy wyrzuciłeś: **${userRoll}** | Bot wyrzucił: **${botRoll}**\n🎉 Wygrana! Otrzymujesz **${winAmount} PJN-Coins**!` });
+            } else if (userRoll < botRoll) {
                 user.consecutiveLosses = (user.consecutiveLosses || 0) + 1;
                 user.consecutiveWins = 0;
                 await user.save();
-                return interaction.editReply({ content: `🎲 **Rzut Kością:**\nTwoja wyrzucona liczba: **${rollUser}** | Liczba bota: **${rollBot}**\n💥 Przegrałeś **${stawka} PJN-Coins**!` });
-            }
-        }
-
-        if (commandName === 'moneta') {
-            await interaction.deferReply();
-            const wybor = interaction.options.getString('wybor', true);
-            const stawka = interaction.options.getInteger('stawka', true);
-
-            if (stawka <= 0) return interaction.editReply({ content: '❌ Stawka musi być większa niż 0!' });
-
-            let user = await UserModel.findOne({ userId: interaction.user.id });
-            if (!user || user.balance < stawka) return interaction.editReply({ content: '❌ Nie masz tylu środków w portfelu!' });
-
-            user.balance -= stawka;
-            user.casinoPlays = (user.casinoPlays || 0) + 1;
-
-            const result = Math.random() < 0.5 ? 'orzel' : 'reszka';
-            const resultText = result === 'orzel' ? 'Orzeł' : 'Reszka';
-
-            if (wybor === result) {
-                const win = stawka * 2;
-                user.balance += win;
-                user.consecutiveWins = (user.consecutiveWins || 0) + 1;
-                user.consecutiveLosses = 0;
-                await user.save();
-                await sendCoinsNotification(interaction.user.id, stawka, 'Kasyno Moneta PJN', 'Wygrany rzut monetą');
-                return interaction.editReply({ content: `🪙 **Rzut Monetą:**\nWypadł: **${resultText}**!\n🎉 Trafiłeś i wygrywasz **${win} PJN-Coins**!` });
+                return interaction.editReply({ content: `🎲 **Rzut Kością:**\nTy wyrzuciłeś: **${userRoll}** | Bot wyrzucił: **${botRoll}**\n💥 Przegrana! Tracisz **${stawka} PJN-Coins**.` });
             } else {
-                user.consecutiveLosses = (user.consecutiveLosses || 0) + 1;
-                user.consecutiveWins = 0;
-                await user.save();
-                return interaction.editReply({ content: `🪙 **Rzut Monetą:**\nWypadł: **${resultText}**!\n💥 Niestety, przegrałeś **${stawka} PJN-Coins**.` });
-            }
-        }
-
-        if (commandName === 'slot') {
-            await interaction.deferReply();
-            const stawka = interaction.options.getInteger('stawka', true);
-
-            if (stawka <= 0) return interaction.editReply({ content: '❌ Stawka musi być większa niż 0!' });
-
-            let user = await UserModel.findOne({ userId: interaction.user.id });
-            if (!user || user.balance < stawka) return interaction.editReply({ content: '❌ Nie masz tylu środków w portfelu!' });
-
-            user.balance -= stawka;
-            user.casinoPlays = (user.casinoPlays || 0) + 1;
-
-            const items = ['🍒', '🍋', '🍇', '🔔', '💎', '7️⃣'];
-            const s1 = items[Math.floor(Math.random() * items.length)];
-            const s2 = items[Math.floor(Math.random() * items.length)];
-            const s3 = items[Math.floor(Math.random() * items.length)];
-
-            if (s1 === s2 && s2 === s3) {
-                const win = stawka * 5;
-                user.balance += win;
-                user.consecutiveWins = (user.consecutiveWins || 0) + 1;
-                user.consecutiveLosses = 0;
-                await user.save();
-                await sendCoinsNotification(interaction.user.id, win - stawka, 'Kasyno Sloty PJN', 'Trafiony JACKPOT na jednorękim bandycie!');
-                return interaction.editReply({ content: `🎰 **Jednoręki Bandyta:**\n[ ${s1} | ${s2} | ${s3} ]\n🔥 **JACKPOT!** Wygrywasz **${win} PJN-Coins**!` });
-            } else if (s1 === s2 || s2 === s3 || s1 === s3) {
-                const win = Math.floor(stawka * 1.5);
-                user.balance += win;
-                user.consecutiveWins = (user.consecutiveWins || 0) + 1;
-                user.consecutiveLosses = 0;
-                await user.save();
-                await sendCoinsNotification(interaction.user.id, win - stawka, 'Kasyno Sloty PJN', 'Trafiona para na jednorękim bandycie');
-                return interaction.editReply({ content: `🎰 **Jednoręki Bandyta:**\n[ ${s1} | ${s2} | ${s3} ]\n✨ Trafiłeś 2 takie same symbole! Wygrywasz **${win} PJN-Coins**!` });
-            } else {
-                user.consecutiveLosses = (user.consecutiveLosses || 0) + 1;
-                user.consecutiveWins = 0;
-                await user.save();
-                return interaction.editReply({ content: `🎰 **Jednoręki Bandyta:**\n[ ${s1} | ${s2} | ${s3} ]\n💥 Przegrałeś **${stawka} PJN-Coins**!` });
-            }
-        }
-
-        if (commandName === 'kpn') {
-            await interaction.deferReply();
-            const wybor = interaction.options.getString('wybor', true);
-            const stawka = interaction.options.getInteger('stawka', true);
-
-            if (stawka <= 0) return interaction.editReply({ content: '❌ Stawka musi być większa niż 0!' });
-
-            let user = await UserModel.findOne({ userId: interaction.user.id });
-            if (!user || user.balance < stawka) return interaction.editReply({ content: '❌ Nie masz tylu środków!' });
-
-            user.balance -= stawka;
-            user.casinoPlays = (user.casinoPlays || 0) + 1;
-
-            const options = ['kamien', 'papier', 'nozyce'];
-            const botChoice = options[Math.floor(Math.random() * options.length)];
-
-            if (wybor === botChoice) {
                 user.balance += stawka;
                 await user.save();
-                return interaction.editReply({ content: `✂️ **KPN:** Remis! Bot również wybrał tę samą opcję. Stawka **${stawka} PJN-Coins** wraca do Ciebie.` });
-            }
-
-            const winConditions: { [key: string]: string } = { kamien: 'nozyce', papier: 'kamien', nozyce: 'papier' };
-            if (winConditions[wybor] === botChoice) {
-                const win = stawka * 2;
-                user.balance += win;
-                user.consecutiveWins = (user.consecutiveWins || 0) + 1;
-                user.consecutiveLosses = 0;
-                await user.save();
-                await sendCoinsNotification(interaction.user.id, stawka, 'Kasyno KPN PJN', 'Wygrany pojedynek Kamień, Papier, Nożyce');
-                return interaction.editReply({ content: `✂️ **KPN:** Wygrałeś! Bot wybrał **${botChoice}**. Otrzymujesz **${win} PJN-Coins**!` });
-            } else {
-                user.consecutiveLosses = (user.consecutiveLosses || 0) + 1;
-                user.consecutiveWins = 0;
-                await user.save();
-                return interaction.editReply({ content: `✂️ **KPN:** Przegrałeś! Bot wybrał **${botChoice}**. Tracisz **${stawka} PJN-Coins**.` });
+                return interaction.editReply({ content: `🎲 **Rzut Kością:**\nTy wyrzuciłeś: **${userRoll}** | Bot wyrzucił: **${botRoll}**\n⚖️ Remis! Zwrócono stawkę **${stawka} PJN-Coins**.` });
             }
         }
-
-        if (commandName === 'poker') {
-            await interaction.deferReply();
-            const tryb = interaction.options.getString('tryb', true);
-            const stawka = interaction.options.getInteger('stawka', true);
-
-            if (stawka <= 0) return interaction.editReply({ content: '❌ Stawka musi być większa niż 0!' });
-
-            let user = await UserModel.findOne({ userId: interaction.user.id });
-            if (!user || user.balance < stawka) return interaction.editReply({ content: '❌ Nie masz tylu środków w portfelu!' });
-
-            if (tryb === 'bot') {
-                user.balance -= stawka;
-                user.casinoPlays = (user.casinoPlays || 0) + 1;
-
-                const isWin = Math.random() < 0.5;
-                if (isWin) {
-                    const win = stawka * 2;
-                    user.balance += win;
-                    user.consecutiveWins = (user.consecutiveWins || 0) + 1;
-                    user.consecutiveLosses = 0;
-                    await user.save();
-                    await sendCoinsNotification(interaction.user.id, stawka, 'Kasyno Poker PJN', 'Wygrana gra w pokera z botem');
-                    return interaction.editReply({ content: `🃏 **Poker 1v1 z Botem:**\nPokonałeś bota w pojedynku kart! Wygrywasz **${win} PJN-Coins**!` });
-                } else {
-                    user.consecutiveLosses = (user.consecutiveLosses || 0) + 1;
-                    user.consecutiveWins = 0;
-                    await user.save();
-                    return interaction.editReply({ content: `🃏 **Poker 1v1 z Botem:**\nBot miał silniejszy układ kart! Tracisz **${stawka} PJN-Coins**.` });
-                }
-            } else {
-                const embed = new EmbedBuilder()
-                    .setColor(0x9B59B6)
-                    .setTitle('🃏 Nowy Pokój Pokerowy')
-                    .setDescription(
-                        `👤 **Host:** <@${interaction.user.id}>\n` +
-                        `💰 **Stawka:** ${stawka} PJN-Coins\n` +
-                        `👥 **Gracze (1/4):**\n• <@${interaction.user.id}>\n\n` +
-                        `Kliknij przycisk poniżej, aby dołączyć!`
-                    )
-                    .setTimestamp();
-
-                const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
-                    new ButtonBuilder().setCustomId('poker_join').setLabel('Dołącz do pokoju').setStyle(ButtonStyle.Success).setEmoji('🃏'),
-                    new ButtonBuilder().setCustomId('poker_start').setLabel('Natychmiastowy start').setStyle(ButtonStyle.Primary).setEmoji('🚀')
-                );
-
-                const sentMsg = await interaction.editReply({ embeds: [embed], components: [row] });
-
-                await PokerRoomModel.create({
-                    messageId: sentMsg.id,
-                    channelId: interaction.channelId,
-                    hostId: interaction.user.id,
-                    stake: stawka,
-                    players: [interaction.user.id]
-                });
-                return;
-            }
-        }
-
-        if (commandName === 'quiz-gra' || commandName === 'quiz') {
-            await interaction.deferReply();
-            const randomQuiz = QUIZ_POOL[Math.floor(Math.random() * QUIZ_POOL.length)];
-
-            const embed = new EmbedBuilder()
-                .setColor(0xF1C40F)
-                .setTitle('🎰 Quiz z nagrodami PJN-Coins!')
-                .setDescription(`**Pytanie:**\n${randomQuiz.q}\n\n*Wybierz prawidłową odpowiedź z przycisków poniżej!*`)
-                .setTimestamp();
-
-            const answers = [
-                { label: randomQuiz.correct, customId: 'quiz_correct', style: ButtonStyle.Success },
-                { label: randomQuiz.wrong1, customId: 'quiz_wrong_1', style: ButtonStyle.Danger },
-                { label: randomQuiz.wrong2, customId: 'quiz_wrong_2', style: ButtonStyle.Danger }
-            ].sort(() => Math.random() - 0.5);
-
-            const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
-                answers.map(a => new ButtonBuilder().setCustomId(a.customId).setLabel(a.label).setStyle(ButtonStyle.Primary))
-            );
-
-            return interaction.editReply({ embeds: [embed], components: [row] });
-        }
-
-        if (commandName === 'ankieta') {
-            await interaction.deferReply();
-            const pytanie = interaction.options.getString('pytanie', true);
-            const opcjeRaw = interaction.options.getString('opcje', true);
-            const czasStr = interaction.options.getString('czas') || null;
-
-            const options = opcjeRaw.split(',').map(o => o.trim()).filter(o => o.length > 0);
-            if (options.length < 2 || options.length > 10) {
-                return interaction.editReply({ content: '❌ Ankieta musi zawierać od 2 do 10 opcji oddzielonych przecinkami!' });
-            }
-
-            let endsAt: Date | null = null;
-            if (czasStr) {
-                const now = new Date();
-                if (czasStr === '15m') endsAt = new Date(now.getTime() + 15 * 60 * 1000);
-                if (czasStr === '1h') endsAt = new Date(now.getTime() + 60 * 60 * 1000);
-                if (czasStr === '6h') endsAt = new Date(now.getTime() + 6 * 60 * 60 * 1000);
-                if (czasStr === '24h') endsAt = new Date(now.getTime() + 24 * 60 * 60 * 1000);
-            }
-
-            const votes: string[][] = options.map(() => []);
-
-            let timeInfo = endsAt ? `⏳ Koniec: <t:${Math.floor(endsAt.getTime() / 1000)}:R>` : '⏳ Ankieta bez limitu czasu';
-            let desc = `📊 **Ankieta aktywna na żywo**\n${timeInfo}\n\n`;
-
-            const components: ActionRowBuilder<ButtonBuilder>[] = [];
-            let currentRow = new ActionRowBuilder<ButtonBuilder>();
-
-            for (let i = 0; i < options.length; i++) {
-                desc += `**${i + 1}.${options[i]}**\n\`[░░░░░░░░░░]\` **0\%** (0 głosów)\n\n`;
-                currentRow.addComponents(new ButtonBuilder().setCustomId(`poll_vote_${i}`).setLabel(`${i + 1} (0)`).setStyle(ButtonStyle.Secondary));
-                if (currentRow.components.length === 5 || i === options.length - 1) {
-                    components.push(currentRow);
-                    currentRow = new ActionRowBuilder<ButtonBuilder>();
-                }
-            }
-
-            const adminRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
-                new ButtonBuilder().setCustomId('poll_show_voters').setLabel('🔍 Kto głosował? (Admin)').setStyle(ButtonStyle.Primary)
-            );
-            components.push(adminRow);
-
-            const embed = new EmbedBuilder().setColor(0x3498DB).setTitle(`🗳️ ${pytanie}`).setDescription(desc).setTimestamp();
-            const sentMsg = await interaction.editReply({ embeds: [embed], components });
-
-            await PollModel.create({
-                messageId: sentMsg.id,
-                channelId: interaction.channelId,
-                question: pytanie,
-                options: options,
-                votes: votes,
-                endsAt: endsAt
-            });
-            return;
-        }
-
-        if (commandName === 'fn-top') {
-            await interaction.deferReply();
-            await refreshFortniteRankingMessage(interaction.guild);
-            return interaction.editReply({ content: `✅ Odświeżono i zaktualizowano ranking zabójstw Fortnite na kanale <#${ID_KANAL_RANKING_FORTNITE}>!` });
-        }
-
-        if (commandName === 'nowości') {
-            await interaction.deferReply();
-            if (!isAuthorized(interaction.user.id) && !interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) {
-                return interaction.editReply({ content: '❌ Brak uprawnień!' });
-            }
-
-            const tytul = interaction.options.getString('tytul', true);
-            const coNowego = interaction.options.getString('co_nowego', true);
-
-            const embed = new EmbedBuilder()
-                .setColor(0x2ECC71)
-                .setTitle(`🌟 Aktualizacja i Nowości: ${tytul}`)
-                .setDescription(`Świeże zmiany na serwerze PJN!\n\n📋 **Lista nowości:**\n${coNowego}`)
-                .setImage(LIVE_IMAGE_URL)
-                .setTimestamp()
-                .setFooter({ text: 'PJN System Ogłoszeń' });
-
-            const channel = await client.channels.fetch(ANNOUNCE_CHANNEL_ID).catch(() => null) as TextChannel;
-            if (channel) {
-                await channel.send({ content: '@everyone Pojawiła się **nowa aktualizacja** na serwerze!', embeds: [embed], allowedMentions: { parse: ['everyone'] } });
-            }
-
-            return interaction.editReply({ content: '✅ Pomyślnie wysłano ogłoszenie o nowościach!' });
-        }
-
-        if (commandName === 'ogloszenie-techniczne') {
-            await interaction.deferReply();
-            if (!isAuthorized(interaction.user.id) && !interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) {
-                return interaction.editReply({ content: '❌ Brak uprawnień!' });
-            }
-
-            const tytul = interaction.options.getString('tytul', true);
-            const opis = interaction.options.getString('opis', true);
-
-            const embed = new EmbedBuilder()
-                .setColor(0xE74C3C)
-                .setTitle(`🛠️ Prace Techniczne: ${tytul}`)
-                .setDescription(`Informujemy o pracach konserwacyjnych bota / serwera.\n\n📋 **Opis prac:**\n${opis}`)
-                .setTimestamp();
-
-            const channel = await client.channels.fetch(ANNOUNCE_CHANNEL_ID).catch(() => null) as TextChannel;
-            if (channel) {
-                await channel.send({ content: '@everyone **Ogłoszenie techniczne:**', embeds: [embed], allowedMentions: { parse: ['everyone'] } });
-            }
-
-            return interaction.editReply({ content: '✅ Pomyślnie wysłano ogłoszenie techniczne!' });
-        }
-
-        if (commandName === 'odpalstream') {
-            await interaction.deferReply();
-            const tytul = interaction.options.getString('tytul', true);
-            const link = interaction.options.getString('link', true);
-
-            await sendNotification('languspjn', 'twitch', tytul, link);
-            return interaction.editReply({ content: '✅ Pomyślnie wysłano powiadomienie o streamie!' });
-        }
-
-        if (commandName === 'zakonczstream') {
-            await interaction.deferReply();
-            return interaction.editReply({ content: '✅ Zapisano zakończenie streama!' });
-        }
-
-        if (commandName === 'powiadomienie') {
-            await interaction.deferReply();
-            if (!isAuthorized(interaction.user.id) && !interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) {
-                return interaction.editReply({ content: '❌ Brak uprawnień!' });
-            }
-
-            const tworca = interaction.options.getString('tworca', true) as 'languspjn' | 'elladermusic';
-            const platforma = interaction.options.getString('platforma', true) as 'twitch' | 'youtube' | 'tiktok';
-            const tytul = interaction.options.getString('tytul', true);
-            const link = interaction.options.getString('link', true);
-            const miniatura = interaction.options.getString('miniatura') || undefined;
-
-            await sendNotification(tworca, platforma, tytul, link, miniatura);
-            return interaction.editReply({ content: '✅ Pomyślnie wysłano powiadomienie na odpowiedni kanał!' });
-        }
-
-    } catch (err) {
-        console.error('Błąd podczas wykonywania komendy:', err);
-        if (!interaction.replied && !interaction.deferred) {
-            await interaction.reply({ content: '❌ Wystąpił błąd podczas wykonywania tej komendy.', ephemeral: true }).catch(() => {});
-        }
+    } catch (e) {
+        console.error('Błąd podczas wykonywania komendy:', e);
     }
 });
 
