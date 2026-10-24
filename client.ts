@@ -115,6 +115,19 @@ const pokerRoomSchema = new mongoose.Schema({
 });
 const PokerRoomModel = mongoose.model('PokerRoom', pokerRoomSchema);
 
+// Nowy schemat dla predykcji
+const predictionSchema = new mongoose.Schema({
+    messageId: { type: String, required: true, unique: true },
+    channelId: { type: String, required: true },
+    question: { type: String, required: true },
+    option1: { type: String, required: true },
+    option2: { type: String, required: true },
+    votes1: { type: [String], default: [] },
+    votes2: { type: [String], default: [] },
+    ended: { type: Boolean, default: false }
+});
+const PredictionModel = mongoose.model('Prediction', predictionSchema);
+
 const AVAILABLE_BADGES = [
     '💬 **Początkujący Gadulec**',
     '📜 **Kronikarz Chatu**',
@@ -641,7 +654,6 @@ client.on('guildMemberAdd', async member => {
             details: 'Prezent na start za dołączenie do serwera'
         });
 
-        // Powiadomienie PW dla nowego użytkownika
         await sendCoinsNotification(member.id, 200, 'System PJN', 'Prezent na start za dołączenie do serwera Discord');
 
         const welcomeEmbed = new EmbedBuilder()
@@ -722,6 +734,56 @@ async function setupWheelOfFortuneChannel() {
         );
 
         await channel.send({ embeds: [embed], components: [row] });
+    } catch (e) {}
+}
+
+// === INICJALIZACJA KANAŁU PREDYKCJI ===
+async function setupPredictionsChannel() {
+    try {
+        const channel = await client.channels.fetch(ID_KANALU_PREDICTY).catch(() => null) as TextChannel;
+        if (!channel) return;
+        await clearBotMessagesInChannel(channel, 50);
+
+        const embed = new EmbedBuilder()
+            .setColor(0x00D9FF)
+            .setTitle('🔮 Strefa Predykcji i Zakładów PJN')
+            .setDescription(
+                'Witaj w oficjalnej strefie predykcji serwera!\n\n' +
+                '🤖 **Jak to działa?**\n' +
+                '• Administratorzy tworzą oficjalne predykcje za pomocą komendy `/predykcja`.\n' +
+                '• Głosuj na wybraną opcję za pomocą przycisków pod aktywnymi predykcjami.\n' +
+                '• Śledź wyniki i sprawdź swoją intuicję!'
+            )
+            .setImage(LIVE_IMAGE_URL)
+            .setTimestamp()
+            .setFooter({ text: 'PJN System Predykcji' });
+
+        await channel.send({ embeds: [embed] });
+    } catch (e) {}
+}
+
+// === INICJALIZACJA KANAŁU SUGESTJI ===
+async function setupSuggestionsChannel() {
+    try {
+        const channel = await client.channels.fetch(ID_KANALU_POMYSLE_I_SUGESTIE).catch(() => null) as TextChannel;
+        if (!channel) return;
+        await clearBotMessagesInChannel(channel, 50);
+
+        const embed = new EmbedBuilder()
+            .setColor(0x3498DB)
+            .setTitle('💡 Pomysły i Sugestie dotyczące Serwera')
+            .setDescription(
+                'Masz ciekawy pomysł na rozwój naszego serwera lub bota?\n\n' +
+                '✨ **Jak złożyć sugestię?**\n' +
+                '• Wpisz w dowolnym miejscu komendę `/sugestia [twoja treść]`.\n' +
+                '• Bot automatycznie opublikuje ją tutaj wraz z przyciskami do głosowania (👍 / 👎).\n' +
+                '• Najlepsze pomysły trafiają do realizacji!'
+            )
+            .setImage(LIVE_IMAGE_URL)
+            .setTimestamp()
+            .setFooter({ text: 'PJN System Sugestii' });
+
+        await channel.send({ embeds: [embed] });
     } catch (e) {}
 }
 
@@ -968,7 +1030,6 @@ async function checkFortniteServerStatus() {
 
         const rolePing = `<@&${ID_RANGI_AKTUALIZACJE_FORTNITE}>`;
 
-        // Sprawdzanie statusu serwerów i wersji gry
         const statusRes = await fetch('https://fortnite-api.com/v1/status');
         if (statusRes.ok) {
             const statusData = await statusRes.json() as any;
@@ -976,7 +1037,6 @@ async function checkFortniteServerStatus() {
                 const isOnline = statusData.data.serviceConnected ?? true;
                 const currentVersion = statusData.data.version;
 
-                // Wykrywanie nowej wersji gry
                 if (currentVersion && currentVersion !== lastFortniteVersion) {
                     if (lastFortniteVersion !== null) {
                         const updateEmbed = new EmbedBuilder()
@@ -1002,7 +1062,6 @@ async function checkFortniteServerStatus() {
                     lastFortniteVersion = currentVersion;
                 }
 
-                // Wykrywanie zmiany statusu serwera (Online <-> Offline)
                 if (lastFortniteServerStatus !== null && lastFortniteServerStatus !== isOnline) {
                     const serverEmbed = new EmbedBuilder()
                         .setColor(isOnline ? 0x2ECC71 : 0xE74C3C)
@@ -1025,7 +1084,6 @@ async function checkFortniteServerStatus() {
             }
         }
 
-        // Sprawdzanie eventów Fortnite
         const res = await fetch('https://fortnite-api.com/v2/events', {
             headers: { 'Authorization': process.env.FORTNITE_API_KEY || '' }
         });
@@ -2214,7 +2272,6 @@ client.on('voiceStateUpdate', async (oldState: VoiceState, newState: VoiceState)
     try {
         const guild = newState.guild || oldState.guild;
 
-        // 1. Gracz wchodzi na kanał do tworzenia własnego pokoju (ID: 1554409138824417300)
         if (newState.channelId === ID_KANAL_TWORZENIA_POKOJU && newState.member) {
             const parentCategoryId = newState.channel?.parentId || await getFirstCategory(guild);
 
@@ -2244,7 +2301,6 @@ client.on('voiceStateUpdate', async (oldState: VoiceState, newState: VoiceState)
             tempVoiceChannels.add(tempChannel.id);
             await newState.setChannel(tempChannel).catch(() => {});
 
-            // Wyślij panel zarządzania pokojem na czacie kanału głosowego
             const controlEmbed = new EmbedBuilder()
                 .setColor(0x3498DB)
                 .setTitle(`🔊 Prywatny Pokój: ${newState.member.displayName}`)
@@ -2264,7 +2320,6 @@ client.on('voiceStateUpdate', async (oldState: VoiceState, newState: VoiceState)
             await tempChannel.send({ embeds: [controlEmbed], components: [controlRow] }).catch(() => {});
         }
 
-        // 2. Gracz opuścił stary kanał głosowy - sprawdzamy czy należy go usunąć
         if (oldState.channelId && tempVoiceChannels.has(oldState.channelId)) {
             const voiceChan = oldState.channel;
             if (voiceChan && voiceChan.members.size === 0) {
@@ -2281,7 +2336,6 @@ client.on('voiceStateUpdate', async (oldState: VoiceState, newState: VoiceState)
 client.on('messageCreate', async message => {
     if (message.author.bot || !message.guild) return;
 
-    // Statystyki wiadomości i Doświadczenie (XP)
     let user = await UserModel.findOne({ userId: message.author.id });
     if (!user) user = await UserModel.create({ userId: message.author.id });
 
@@ -2302,7 +2356,6 @@ client.on('messageCreate', async message => {
     await addExp(message.author.id, Math.floor(Math.random() * 10) + 5, message.guild);
     await checkAndAwardBadges(user, message.member || message.author, message.guild);
 
-    // KOMENDY REPUTACJI TEKSTOWE (+rep, +reputacja, -rep, -reputacja)
     const content = message.content.trim();
     if (
         content.startsWith('+rep') || 
@@ -2325,7 +2378,6 @@ client.on('messageCreate', async message => {
             return message.reply('❌ Boty nie mogą brać udziału w systemie reputacji!');
         }
 
-        // Ograniczenie czasowe (cooldown 24h na tę samą osobę)
         const existingCooldown = await RepCooldownModel.findOne({
             giverId: message.author.id,
             targetId: targetMember.id
@@ -2372,6 +2424,7 @@ client.on('messageCreate', async message => {
     }
 });
 
+// === LISTA KOMEND SLASH (Z NOWYMI KOMENDAMI SUGESTIE I PREDYKCJE) ===
 const commands = [
     new SlashCommandBuilder().setName('portfel').setDescription('Sprawdź stan swoich PJN-Coins w portfelu'),
     new SlashCommandBuilder().setName('sklep').setDescription('Otwórz podgląd sklepu i sprawdź swoje środki'),
@@ -2415,6 +2468,22 @@ const commands = [
         .setName('profil')
         .setDescription('Kompleksowa karta profilu gracza z poziomem, odznakami i statystykami')
         .addUserOption(o => o.setName('uzytkownik').setDescription('Użytkownik').setRequired(false)),
+    
+    // Nowa komenda: Sugestie
+    new SlashCommandBuilder()
+        .setName('sugestia')
+        .setDescription('Wyślij swoją sugestię lub pomysł na kanał sugestii')
+        .addStringOption(o => o.setName('tresc').setDescription('Treść Twojej sugestii').setRequired(true)),
+
+    // Nowa komenda: Predykcja
+    new SlashCommandBuilder()
+        .setName('predykcja')
+        .setDescription('Utwórz nową predykcję/zakład na kanale predykcji (Admin)')
+        .addStringOption(o => o.setName('pytanie').setDescription('Temat lub pytanie predykcji').setRequired(true))
+        .addStringOption(o => o.setName('opcja1').setDescription('Pierwsza opcja').setRequired(true))
+        .addStringOption(o => o.setName('opcja2').setDescription('Druga opcja').setRequired(true))
+        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+
     new SlashCommandBuilder()
         .setName('ankieta')
         .setDescription('Stwórz interaktywną ankietę na żywo ze statusem głosowania i licznikiem')
@@ -2702,6 +2771,8 @@ client.once('ready', async () => {
     await setupFortniteUpdateChannel(); 
     await setupRussianRouletteChannel();
     await setupWheelOfFortuneChannel();
+    await setupPredictionsChannel();
+    await setupSuggestionsChannel();
     await setupCasinoHubChannel();
     await setupBotInteractiveChannelInstruction(); 
     await setupCenterZgloszenChannel(); 
@@ -2766,6 +2837,57 @@ client.on('interactionCreate', async interaction => {
             await interaction.editReply({ content: `✅ Pomyślnie dodano wiadomość do **Złotych myśli serwera PJN** (<#${ID_KANALU_ZLOTE_MYSLI}>)!` });
             return;
         }
+    }
+
+    // Obsługa głosowania w predykcjach
+    if (interaction.isButton() && interaction.customId.startsWith('predict_vote_')) {
+        await interaction.deferUpdate();
+        const parts = interaction.customId.split('_');
+        const choice = parseInt(parts[2]); // 1 lub 2
+
+        const prediction = await PredictionModel.findOne({ messageId: interaction.message.id });
+        if (!prediction || prediction.ended) {
+            return interaction.followUp({ content: '❌ Ta predykcja jest już nieaktualna lub została zakończona.', ephemeral: true });
+        }
+
+        const userId = interaction.user.id;
+
+        // Usuń z obu list i dodaj do wybranej
+        prediction.votes1 = prediction.votes1.filter(id => id !== userId);
+        prediction.votes2 = prediction.votes2.filter(id => id !== userId);
+
+        if (choice === 1) {
+            prediction.votes1.push(userId);
+        } else {
+            prediction.votes2.push(userId);
+        }
+
+        await prediction.save();
+
+        const totalVotes = prediction.votes1.length + prediction.votes2.length;
+        const p1Count = prediction.votes1.length;
+        const p2Count = prediction.votes2.length;
+        const p1Percent = totalVotes > 0 ? Math.round((p1Count / totalVotes) * 100) : 0;
+        const p2Percent = totalVotes > 0 ? Math.round((p2Count / totalVotes) * 100) : 0;
+
+        const embed = new EmbedBuilder()
+            .setColor(0x00D9FF)
+            .setTitle(`🔮 Predykcja: ${prediction.question}`)
+            .setDescription(
+                `Głosuj na poniższe opcje za pomocą przycisków!\n\n` +
+                `1️⃣ **${prediction.option1}** — **${p1Percent}%** (${p1Count} głosów)\n` +
+                `2️⃣ **${prediction.option2}** — **${p2Percent}%** (${p2Count} głosów)\n\n` +
+                `👥 Łącznie głosów: **${totalVotes}**`
+            )
+            .setTimestamp();
+
+        const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+            new ButtonBuilder().setCustomId('predict_vote_1').setLabel(`1️⃣ ${prediction.option1}`).setStyle(ButtonStyle.Primary),
+            new ButtonBuilder().setCustomId('predict_vote_2').setLabel(`2️⃣ ${prediction.option2}`).setStyle(ButtonStyle.Secondary)
+        );
+
+        await interaction.message.edit({ embeds: [embed], components: [row] });
+        return;
     }
 
     if (interaction.isButton() && (interaction.customId === 'poker_join' || interaction.customId === 'poker_start')) {
@@ -3464,7 +3586,6 @@ client.on('interactionCreate', async interaction => {
             return;
         }
 
-        // ZAMYKANIE TICKETU (M.IN. DUSZKI I ZGŁOSZENIA) Z ZACHĘTĄ DO DAWANIA REPUTACJI
         if (interaction.customId === 'close_ticket') {
             await interaction.deferReply({ ephemeral: true });
             const channel = interaction.channel as TextChannel;
@@ -3505,7 +3626,6 @@ client.on('interactionCreate', async interaction => {
 
                 await channel.send({ embeds: [closedEmbed] });
 
-                // POWIADOMIENIE ZACHĘCAJĄCE DO ODDANIA REPUTACJI ZA POMOC Z DUSZKAMI
                 if (isGhostTicket) {
                     const repReminderEmbed = new EmbedBuilder()
                         .setColor(0xF1C40F)
@@ -3733,6 +3853,79 @@ client.on('interactionCreate', async interaction => {
     const { commandName } = interaction;
 
     try {
+        // Obsługa nowej komendy /sugestia
+        if (commandName === 'sugestia') {
+            await interaction.deferReply({ ephemeral: true });
+            const tresc = interaction.options.getString('tresc', true);
+            const channel = await interaction.guild?.channels.fetch(ID_KANALU_POMYSLE_I_SUGESTIE).catch(() => null) as TextChannel;
+
+            if (!channel) {
+                return interaction.editReply({ content: '❌ Kanał sugestii nie został skonfigurowany lub nie istnieje na serwerze.' });
+            }
+
+            const embed = new EmbedBuilder()
+                .setColor(0x3498DB)
+                .setTitle('💡 Nowa Sugestia / Pomysł')
+                .setDescription(`> *${tresc}*`)
+                .setAuthor({ name: interaction.user.tag, iconURL: interaction.user.displayAvatarURL() })
+                .setTimestamp()
+                .setFooter({ text: 'PJN System Sugestii' });
+
+            const sentMsg = await channel.send({ embeds: [embed] });
+            await sentMsg.react('👍');
+            await sentMsg.react('👎');
+
+            return interaction.editReply({ content: `✅ Twoja sugestia została pomyślnie wysłana na kanał <#${ID_KANALU_POMYSLE_I_SUGESTIE}>!` });
+        }
+
+        // Obsługa nowej komendy /predykcja
+        if (commandName === 'predykcja') {
+            await interaction.deferReply({ ephemeral: true });
+            if (!isAuthorized(interaction.user.id) && !interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) {
+                return interaction.editReply({ content: '❌ Brak uprawnień do tworzenia predykcji!' });
+            }
+
+            const pytanie = interaction.options.getString('pytanie', true);
+            const opcja1 = interaction.options.getString('opcja1', true);
+            const opcja2 = interaction.options.getString('opcja2', true);
+
+            const channel = await interaction.guild?.channels.fetch(ID_KANALU_PREDICTY).catch(() => null) as TextChannel;
+            if (!channel) {
+                return interaction.editReply({ content: '❌ Kanał predykcji nie został skonfigurowany lub nie istnieje.' });
+            }
+
+            const embed = new EmbedBuilder()
+                .setColor(0x00D9FF)
+                .setTitle(`🔮 Predykcja: ${pytanie}`)
+                .setDescription(
+                    `Głosuj na poniższe opcje za pomocą przycisków!\n\n` +
+                    `1️⃣ **${opcja1}** — **0%** (0 głosów)\n` +
+                    `2️⃣ **${opcja2}** — **0%** (0 głosów)\n\n` +
+                    `👥 Łącznie głosów: **0**`
+                )
+                .setTimestamp();
+
+            const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+                new ButtonBuilder().setCustomId('predict_vote_1').setLabel(`1️⃣ ${opcja1}`).setStyle(ButtonStyle.Primary),
+                new ButtonBuilder().setCustomId('predict_vote_2').setLabel(`2️⃣ ${opcja2}`).setStyle(ButtonStyle.Secondary)
+            );
+
+            const sentMsg = await channel.send({ embeds: [embed], components: [row] });
+
+            await PredictionModel.create({
+                messageId: sentMsg.id,
+                channelId: channel.id,
+                question: pytanie,
+                option1: opcja1,
+                option2: opcja2,
+                votes1: [],
+                votes2: [],
+                ended: false
+            });
+
+            return interaction.editReply({ content: `✅ Pomyślnie utworzono predykcję na kanale <#${ID_KANALU_PREDICTY}>!` });
+        }
+
         if (commandName === 'szukam') {
             if (interaction.channelId !== ID_KANALU_SZUKAM_DO_GRY) {
                 return interaction.reply({ 
@@ -4211,7 +4404,6 @@ client.on('interactionCreate', async interaction => {
                 uDoc.badges.push(badge);
                 await uDoc.save();
 
-                // Dodatek bonusowy 500 PJN Coins przy ręcznym nadaniu odznaki
                 uDoc.balance += 500;
                 await uDoc.save();
 
