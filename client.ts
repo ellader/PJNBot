@@ -56,7 +56,7 @@ const userSchema = new mongoose.Schema({
     consecutiveWins: { type: Number, default: 0 },
     consecutiveLosses: { type: Number, default: 0 }, 
     nightMessageCount: { type: Number, default: 0 }, 
-    totalDonated: { type: Number, default: 0 },      
+    totalDonated: { type: Number, default: 0 },    
     quotesAdded: { type: Number, default: 0 },
     helpCount: { type: Number, default: 0 },
     joinedAt: { type: Date, default: Date.now },
@@ -115,7 +115,7 @@ const pokerRoomSchema = new mongoose.Schema({
 });
 const PokerRoomModel = mongoose.model('PokerRoom', pokerRoomSchema);
 
-// Rozbudowany schemat dla predykcji (3 opcje + nagrody PJN Coins / vDolce)
+// Schemat dla predykcji (dokładnie 5 opcji, połączona nagroda z ilością np. "500 PJN-Coins", opcja czasu i mnożnik puli)
 const predictionSchema = new mongoose.Schema({
     messageId: { type: String, required: true, unique: true },
     channelId: { type: String, required: true },
@@ -123,11 +123,16 @@ const predictionSchema = new mongoose.Schema({
     option1: { type: String, required: true },
     option2: { type: String, required: true },
     option3: { type: String, default: null },
+    option4: { type: String, default: null },
+    option5: { type: String, default: null },
     votes1: { type: [String], default: [] },
     votes2: { type: [String], default: [] },
     votes3: { type: [String], default: [] },
-    rewardType: { type: String, default: 'coins' }, // 'coins' lub 'vdolce'
-    rewardAmount: { type: Number, default: 0 },
+    votes4: { type: [String], default: [] },
+    votes5: { type: [String], default: [] },
+    rewardText: { type: String, default: '500 PJN-Coins' },
+    multiplier: { type: Number, default: 1 },
+    endsAt: { type: Date, default: null },
     ended: { type: Boolean, default: false }
 });
 const PredictionModel = mongoose.model('Prediction', predictionSchema);
@@ -749,8 +754,9 @@ async function setupPredictionsChannel() {
             .setDescription(
                 'Witaj w oficjalnej strefie predykcji serwera!\n\n' +
                 '🤖 **Jak to działa?**\n' +
-                '• Administratorzy tworzą oficjalne predykcje z 3 opcjami za pomocą komendy `/predykcja` (wygodne wysuwane okienko).\n' +
-                '• Nagrody: **PJN Coins** (automatyczna wypłata po zamknięciu przez bota) lub **vDolce** (nagroda przyznawana ręcznie przez administratora).\n' +
+                '• Administratorzy tworzą oficjalne predykcje z **5 opcjami** za pomocą komendy `/predykcja` (wygodne wysuwane okienko).\n' +
+                '• Możesz wybrać czas trwania predykcji (5, 10, 15 lub 20 minut) z automatycznym rozstrzygnięciem.\n' +
+                '• Admin może nałożyć mnożnik puli, a po zakończeniu bot podsumuje wyniki i rozda wygrane PJN Coins!\n' +
                 '• Głosuj na wybraną opcję za pomocą przycisków pod aktywnymi predykcjami!'
             )
             .setImage(LIVE_IMAGE_URL)
@@ -1373,6 +1379,78 @@ function startPollChecker() {
                         }
                     }
                 }
+            }
+        } catch (e) {}
+    }, 15 * 1000);
+}
+
+// === AUTOMATYCZNE ROZSTRZYGANIE PREDYKCJI (TIMER) ===
+function startPredictionChecker() {
+    setInterval(async () => {
+        try {
+            const now = new Date();
+            const activePredictions = await PredictionModel.find({ ended: false, endsAt: { $ne: null, $lte: now } });
+
+            for (const pred of activePredictions) {
+                pred.ended = true;
+                await pred.save();
+
+                const channel = await client.channels.fetch(pred.channelId).catch(() => null) as TextChannel;
+                if (!channel) continue;
+
+                const msg = await channel.messages.fetch(pred.messageId).catch(() => null);
+                if (!msg) continue;
+
+                // Automatyczne ustalenie zwycięzcy na podstawie największej liczby głosów (lub domyślnie opcja 1 jeśli remis/brak)
+                const counts = [
+                    { opt: 1, text: pred.option1, votes: pred.votes1.length },
+                    { opt: 2, text: pred.option2, votes: pred.votes2.length },
+                    { opt: 3, text: pred.option3, votes: pred.votes3 ? pred.votes3.length : 0 },
+                    { opt: 4, text: pred.option4, votes: pred.votes4 ? pred.votes4.length : 0 },
+                    { opt: 5, text: pred.option5, votes: pred.votes5 ? pred.votes5.length : 0 }
+                ].filter(o => o.text !== null);
+
+                counts.sort((a, b) => b.votes - a.votes);
+                const winner = counts[0];
+                const winningIndex = winner.opt;
+                const winningOptionText = winner.text;
+                const winnersIds = winningIndex === 1 ? pred.votes1 :
+                                   winningIndex === 2 ? pred.votes2 :
+                                   winningIndex === 3 ? pred.votes3 :
+                                   winningIndex === 4 ? pred.votes4 : pred.votes5;
+
+                // Parsowanie nagrody (np. "500 PJN-Coins" -> wyciągamy liczbę 500)
+                const matchNumber = pred.rewardText.match(/\d+/);
+                const baseReward = matchNumber ? parseInt(matchNumber[0]) : 500;
+                const finalReward = Math.round(baseReward * (pred.multiplier || 1));
+
+                for (const winnerId of winnersIds) {
+                    let uDoc = await UserModel.findOne({ userId: winnerId });
+                    if (!uDoc) uDoc = await UserModel.create({ userId: winnerId });
+                    uDoc.balance += finalReward;
+                    await uDoc.save();
+                    await sendCoinsNotification(winnerId, finalReward, 'System Predykcji PJN', `Wygrana w predykcji: "${pred.question}" (Mnożnik x${pred.multiplier})`);
+                    await TransactionHistoryModel.create({
+                        userId: client.user?.id || 'system',
+                        targetUserId: winnerId,
+                        type: 'prediction_win',
+                        amount: finalReward,
+                        details: `Wygrana w predykcji (${finalReward} coins)`
+                    });
+                }
+
+                const endedEmbed = new EmbedBuilder()
+                    .setColor(0x2ECC71)
+                    .setTitle(`🔒 Predykcja Zakończona (Czas Minął): ${pred.question}`)
+                    .setDescription(
+                        `🏆 **Wygrywająca opcja (najwięcej głosów):** \`${winningOptionText}\`\n` +
+                        `✨ **Nagroda:** ${pred.rewardText} *(Mnożnik: x${pred.multiplier})*\n\n` +
+                        `👥 Liczba zwycięzców: **${winnersIds.length} osób**\n` +
+                        `💰 Rozdano po **${finalReward} PJN-Coins** dla zwycięzców!`
+                    )
+                    .setTimestamp();
+
+                await msg.edit({ embeds: [endedEmbed], components: [] }).catch(() => {});
             }
         } catch (e) {}
     }, 15 * 1000);
@@ -2506,7 +2584,7 @@ const commands = [
         .setName('profil')
         .setDescription('Kompleksowa karta profilu gracza z poziomem, odznakami i statystykami')
         .addUserOption(o => o.setName('uzytkownik').setDescription('Użytkownik').setRequired(false)),
-     
+    
     // Sugestie
     new SlashCommandBuilder()
         .setName('sugestia')
@@ -2525,10 +2603,10 @@ const commands = [
         .setDescription('Zgłoś lub opublikuj rekord ze streama')
         .addStringOption(o => o.setName('opis').setDescription('Opis rekordu (np. Ilość widzów / donor)').setRequired(true)),
 
-    // Rozbudowana predykcja przez Modal (wysuwane okienko)
+    // Predykcja (5 opcji, czas trwania 5/10/15/20 min, powiązana nagroda, mnożnik)
     new SlashCommandBuilder()
         .setName('predykcja')
-        .setDescription('Otwórz formularz tworzenia nowej predykcji/zakładu z 3 opcjami i nagrodą (Admin)')
+        .setDescription('Otwórz formularz tworzenia nowej predykcji/zakładu z 5 opcjami i czasem (Admin)')
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
 
     new SlashCommandBuilder()
@@ -2840,6 +2918,7 @@ client.once('ready', async () => {
     startFortniteStatusCron(); 
     startServerStatsCron();
     startPollChecker();
+    startPredictionChecker();
     startPokerRoomInactivityChecker();
     startTwitchMonitorCron();
 });
@@ -2873,7 +2952,7 @@ client.on('interactionCreate', async interaction => {
         }
     }
 
-    // Głosowanie w rozbudowanej predykcji
+    // Głosowanie w zmodernizowanej predykcji (5 opcji)
     if (interaction.isButton() && interaction.customId.startsWith('predict_vote_')) {
         await interaction.deferUpdate();
         const choice = parseInt(interaction.customId.replace('predict_vote_', ''));
@@ -2886,36 +2965,41 @@ client.on('interactionCreate', async interaction => {
         const userId = interaction.user.id;
         prediction.votes1 = prediction.votes1.filter(id => id !== userId);
         prediction.votes2 = prediction.votes2.filter(id => id !== userId);
-        if (prediction.option3) {
-            prediction.votes3 = prediction.votes3.filter(id => id !== userId);
-        }
+        if (prediction.option3) prediction.votes3 = prediction.votes3.filter(id => id !== userId);
+        if (prediction.option4) prediction.votes4 = prediction.votes4.filter(id => id !== userId);
+        if (prediction.option5) prediction.votes5 = prediction.votes5.filter(id => id !== userId);
 
         if (choice === 1) prediction.votes1.push(userId);
         else if (choice === 2) prediction.votes2.push(userId);
         else if (choice === 3 && prediction.option3) prediction.votes3.push(userId);
+        else if (choice === 4 && prediction.option4) prediction.votes4.push(userId);
+        else if (choice === 5 && prediction.option5) prediction.votes5.push(userId);
 
         await prediction.save();
 
         const v1 = prediction.votes1.length;
         const v2 = prediction.votes2.length;
         const v3 = prediction.option3 ? prediction.votes3.length : 0;
-        const totalVotes = v1 + v2 + v3;
+        const v4 = prediction.option4 ? prediction.votes4.length : 0;
+        const v5 = prediction.option5 ? prediction.votes5.length : 0;
+        const totalVotes = v1 + v2 + v3 + v4 + v5;
 
         const p1Pct = totalVotes > 0 ? Math.round((v1 / totalVotes) * 100) : 0;
         const p2Pct = totalVotes > 0 ? Math.round((v2 / totalVotes) * 100) : 0;
         const p3Pct = (prediction.option3 && totalVotes > 0) ? Math.round((v3 / totalVotes) * 100) : 0;
+        const p4Pct = (prediction.option4 && totalVotes > 0) ? Math.round((v4 / totalVotes) * 100) : 0;
+        const p5Pct = (prediction.option5 && totalVotes > 0) ? Math.round((v5 / totalVotes) * 100) : 0;
 
-        let rewardInfoText = prediction.rewardType === 'coins' 
-            ? `🎁 **Nagroda:** ${prediction.rewardAmount} PJN-Coins (dla wygranych)` 
-            : `🎁 **Nagroda:** ${prediction.rewardAmount} vDolce / V-Bucks (przyznaje administrator)`;
+        let timeRemainingText = prediction.endsAt ? `⏳ Koniec: <t:${Math.floor(new Date(prediction.endsAt).getTime() / 1000)}:R>` : '';
 
-        let desc = `Głosuj na poniższe opcje za pomocą przycisków!\n\n` +
+        let desc = `Głosuj na poniższe opcje za pomocą przycisków!\n${timeRemainingText}\n\n` +
             `1️⃣ **${prediction.option1}** — **${p1Pct}%** (${v1} głosów)\n` +
             `2️⃣ **${prediction.option2}** — **${p2Pct}%** (${v2} głosów)\n`;
-        if (prediction.option3) {
-            desc += `3️⃣ **${prediction.option3}** — **${p3Pct}%** (${v3} głosów)\n`;
-        }
-        desc += `\n${rewardInfoText}\n👥 Łącznie głosów: **${totalVotes}**`;
+        if (prediction.option3) desc += `3️⃣ **${prediction.option3}** — **${p3Pct}%** (${v3} głosów)\n`;
+        if (prediction.option4) desc += `4️⃣ **${prediction.option4}** — **${p4Pct}%** (${v4} głosów)\n`;
+        if (prediction.option5) desc += `5️⃣ **${prediction.option5}** — **${p5Pct}%** (${v5} głosów)\n`;
+
+        desc += `\n🎁 **Nagroda:** ${prediction.rewardText} *(Mnożnik: x${prediction.multiplier})*\n👥 Łącznie głosów: **${totalVotes}**`;
 
         const embed = new EmbedBuilder()
             .setColor(0x00D9FF)
@@ -2924,19 +3008,38 @@ client.on('interactionCreate', async interaction => {
             .setTimestamp();
 
         const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
-            new ButtonBuilder().setCustomId('predict_vote_1').setLabel(`1️⃣ ${prediction.option1}`).setStyle(ButtonStyle.Primary),
-            new ButtonBuilder().setCustomId('predict_vote_2').setLabel(`2️⃣ ${prediction.option2}`).setStyle(ButtonStyle.Secondary)
+            new ButtonBuilder().setCustomId('predict_vote_1').setLabel(`1️⃣ ${prediction.option1.substring(0, 20)}`).setStyle(ButtonStyle.Primary),
+            new ButtonBuilder().setCustomId('predict_vote_2').setLabel(`2️⃣ ${prediction.option2.substring(0, 20)}`).setStyle(ButtonStyle.Secondary)
         );
-        if (prediction.option3) {
-            row.addComponents(new ButtonBuilder().setCustomId('predict_vote_3').setLabel(`3️⃣ ${prediction.option3}`).setStyle(ButtonStyle.Success));
-        }
+        if (prediction.option3) row.addComponents(new ButtonBuilder().setCustomId('predict_vote_3').setLabel(`3️⃣ ${prediction.option3.substring(0, 20)}`).setStyle(ButtonStyle.Success));
+        if (prediction.option4) row.addComponents(new ButtonBuilder().setCustomId('predict_vote_4').setLabel(`4️⃣ ${prediction.option4.substring(0, 20)}`).setStyle(ButtonStyle.Danger));
+        if (prediction.option5) row.addComponents(new ButtonBuilder().setCustomId('predict_vote_5').setLabel(`5️⃣ ${prediction.option5.substring(0, 20)}`).setStyle(ButtonStyle.Primary));
 
         const adminCloseRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
-            new ButtonBuilder().setCustomId(`predict_close_${prediction.messageId}`).setLabel('🔒 Zamknij predykcję (Admin)').setStyle(ButtonStyle.Danger)
+            new ButtonBuilder().setCustomId(`predict_close_${prediction.messageId}`).setLabel('🔒 Zamknij predykcję (Admin)').setStyle(ButtonStyle.Danger),
+            new ButtonBuilder().setCustomId(`predict_multiply_${prediction.messageId}`).setLabel('⭐ Pomnóż pulę (x2) (Admin)').setStyle(ButtonStyle.Secondary)
         );
 
         await interaction.message.edit({ embeds: [embed], components: [row, adminCloseRow] });
         return;
+    }
+
+    // Pomnożenie puli nagrody przez administratora
+    if (interaction.isButton() && interaction.customId.startsWith('predict_multiply_')) {
+        if (!isAuthorized(interaction.user.id) && !interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) {
+            return interaction.reply({ content: '❌ Tylko administrator może pomnożyć pulę!', ephemeral: true });
+        }
+
+        const messageId = interaction.customId.replace('predict_multiply_', '');
+        const prediction = await PredictionModel.findOne({ messageId });
+        if (!prediction || prediction.ended) {
+            return interaction.reply({ content: '❌ Ta predykcja nie istnieje lub została zamknięta.', ephemeral: true });
+        }
+
+        prediction.multiplier = (prediction.multiplier || 1) * 2;
+        await prediction.save();
+
+        return interaction.reply({ content: `⭐ Pomyślnie zwiększono mnożnik nagrody tej predykcji do **x${prediction.multiplier}**!`, ephemeral: true });
     }
 
     // Zamknięcie predykcji przez administratora
@@ -2955,9 +3058,9 @@ client.on('interactionCreate', async interaction => {
             { label: `1️⃣ ${prediction.option1.substring(0, 80)}`, value: 'win_1' },
             { label: `2️⃣ ${prediction.option2.substring(0, 80)}`, value: 'win_2' }
         ];
-        if (prediction.option3) {
-            selectOptions.push({ label: `3️⃣ ${prediction.option3.substring(0, 80)}`, value: 'win_3' });
-        }
+        if (prediction.option3) selectOptions.push({ label: `3️⃣ ${prediction.option3.substring(0, 80)}`, value: 'win_3' });
+        if (prediction.option4) selectOptions.push({ label: `4️⃣ ${prediction.option4.substring(0, 80)}`, value: 'win_4' });
+        if (prediction.option5) selectOptions.push({ label: `5️⃣ ${prediction.option5.substring(0, 80)}`, value: 'win_5' });
 
         const selectMenu = new StringSelectMenuBuilder()
             .setCustomId(`predict_resolve_${messageId}`)
@@ -2975,8 +3078,8 @@ client.on('interactionCreate', async interaction => {
 
         await interaction.deferUpdate();
         const messageId = interaction.customId.replace('predict_resolve_', '');
-        const winningChoice = interaction.values[0]; // 'win_1', 'win_2', 'win_3'
-        const winningIndex = winningChoice === 'win_1' ? 1 : winningChoice === 'win_2' ? 2 : 3;
+        const winningChoice = interaction.values[0]; // 'win_1', etc.
+        const winningIndex = parseInt(winningChoice.replace('win_', ''));
 
         const prediction = await PredictionModel.findOne({ messageId });
         if (!prediction || prediction.ended) return;
@@ -2984,30 +3087,36 @@ client.on('interactionCreate', async interaction => {
         prediction.ended = true;
         await prediction.save();
 
-        const winnersIds = winningIndex === 1 ? prediction.votes1 : winningIndex === 2 ? prediction.votes2 : prediction.votes3;
-        const winningOptionText = winningIndex === 1 ? prediction.option1 : winningIndex === 2 ? prediction.option2 : prediction.option3;
+        const winnersIds = winningIndex === 1 ? prediction.votes1 :
+                           winningIndex === 2 ? prediction.votes2 :
+                           winningIndex === 3 ? prediction.votes3 :
+                           winningIndex === 4 ? prediction.votes4 : prediction.votes5;
 
-        let payoutResultText = '';
-        if (prediction.rewardType === 'coins') {
-            const rewardPerUser = prediction.rewardAmount;
-            for (const winnerId of winnersIds) {
-                let uDoc = await UserModel.findOne({ userId: winnerId });
-                if (!uDoc) uDoc = await UserModel.create({ userId: winnerId });
-                uDoc.balance += rewardPerUser;
-                await uDoc.save();
-                await sendCoinsNotification(winnerId, rewardPerUser, 'System Predykcji PJN', `Wygrana w predykcji: "${prediction.question}"`);
-                await TransactionHistoryModel.create({
-                    userId: client.user?.id || 'system',
-                    targetUserId: winnerId,
-                    type: 'prediction_win',
-                    amount: rewardPerUser,
-                    details: `Wygrana w predykcji (${rewardPerUser} coins)`
-                });
-            }
-            payoutResultText = `💰 Rozdano po **${rewardPerUser} PJN-Coins** dla \`${winnersIds.length}\` zwycięzców!`;
-        } else {
-            payoutResultText = `🎁 Nagroda: **${prediction.rewardAmount} vDolce / V-Bucks** — Administrator rozda nagrody zwycięzcom ręcznie!`;
+        const winningOptionText = winningIndex === 1 ? prediction.option1 :
+                                  winningIndex === 2 ? prediction.option2 :
+                                  winningIndex === 3 ? prediction.option3 :
+                                  winningIndex === 4 ? prediction.option4 : prediction.option5;
+
+        const matchNumber = prediction.rewardText.match(/\d+/);
+        const baseReward = matchNumber ? parseInt(matchNumber[0]) : 500;
+        const finalReward = Math.round(baseReward * (prediction.multiplier || 1));
+
+        for (const winnerId of winnersIds) {
+            let uDoc = await UserModel.findOne({ userId: winnerId });
+            if (!uDoc) uDoc = await UserModel.create({ userId: winnerId });
+            uDoc.balance += finalReward;
+            await uDoc.save();
+            await sendCoinsNotification(winnerId, finalReward, 'System Predykcji PJN', `Wygrana w predykcji: "${prediction.question}"`);
+            await TransactionHistoryModel.create({
+                userId: client.user?.id || 'system',
+                targetUserId: winnerId,
+                type: 'prediction_win',
+                amount: finalReward,
+                details: `Wygrana w predykcji (${finalReward} coins)`
+            });
         }
+
+        const payoutResultText = `💰 Rozdano po **${finalReward} PJN-Coins** *(w tym mnożnik x${prediction.multiplier})* dla \`${winnersIds.length}\` zwycięzców!`;
 
         const channel = await interaction.guild?.channels.fetch(prediction.channelId).catch(() => null) as TextChannel;
         if (channel) {
@@ -3955,33 +4064,34 @@ client.on('interactionCreate', async interaction => {
         return;
     }
 
-    // Obsługa Modala wysuwanego dla Predykcji (3 opcje, nagroda coins / vdolce, ilość)
+    // Obsługa Modala wysuwanego dla Predykcji (5 opcji, czas trwania, połączona nagroda)
     if (interaction.isModalSubmit() && interaction.customId === 'prediction_create_modal') {
         await interaction.deferReply({ ephemeral: true });
         const pytanie = interaction.fields.getTextInputValue('pred_question');
         const opcja1 = interaction.fields.getTextInputValue('pred_opt1');
         const opcja2 = interaction.fields.getTextInputValue('pred_opt2');
         const opcja3 = interaction.fields.getTextInputValue('pred_opt3') || null;
-        const typNagrodyRaw = interaction.fields.getTextInputValue('pred_reward_type').toLowerCase().trim();
-        const typNagrody = typNagrodyRaw.includes('vdol') || typNagrodyRaw.includes('v') ? 'vdolce' : 'coins';
-        const wartoscNagrody = parseInt(interaction.fields.getTextInputValue('pred_reward_amount')) || 0;
+        const opcja4 = interaction.fields.getTextInputValue('pred_opt4') || null;
+        const opcja5 = interaction.fields.getTextInputValue('pred_opt5') || null;
+        const nagroda = interaction.fields.getTextInputValue('pred_reward') || '500 PJN-Coins';
+        const czasMins = parseInt(interaction.fields.getTextInputValue('pred_time')) || 15;
 
         const channel = await interaction.guild?.channels.fetch(ID_KANAL_PREDICTY).catch(() => null) as TextChannel;
         if (!channel) {
             return interaction.editReply({ content: '❌ Kanał predykcji nie został skonfigurowany lub nie istnieje.' });
         }
 
-        let rewardInfoText = typNagrody === 'coins' 
-            ? `🎁 **Nagroda:** ${wartoscNagrody} PJN-Coins (automatycznie po zamknięciu)` 
-            : `🎁 **Nagroda:** ${wartoscNagrody} vDolce / V-Bucks (nagroda od administratora)`;
+        const endsAtDate = new Date(Date.now() + czasMins * 60 * 1000);
+        let timeRemainingText = `⏳ Koniec: <t:${Math.floor(endsAtDate.getTime() / 1000)}:R>`;
 
-        let desc = `Głosuj na poniższe opcje za pomocą przycisków!\n\n` +
+        let desc = `Głosuj na poniższe opcje za pomocą przycisków!\n${timeRemainingText}\n\n` +
             `1️⃣ **${opcja1}** — **0%** (0 głosów)\n` +
             `2️⃣ **${opcja2}** — **0%** (0 głosów)\n`;
-        if (opcja3) {
-            desc += `3️⃣ **${opcja3}** — **0%** (0 głosów)\n`;
-        }
-        desc += `\n${rewardInfoText}\n👥 Łącznie głosów: **0**`;
+        if (opcja3) desc += `3️⃣ **${opcja3}** — **0%** (0 głosów)\n`;
+        if (opcja4) desc += `4️⃣ **${opcja4}** — **0%** (0 głosów)\n`;
+        if (opcja5) desc += `5️⃣ **${opcja5}** — **0%** (0 głosów)\n`;
+
+        desc += `\n🎁 **Nagroda:** ${nagroda} *(Mnożnik: x1)*\n👥 Łącznie głosów: **0**`;
 
         const embed = new EmbedBuilder()
             .setColor(0x00D9FF)
@@ -3990,17 +4100,18 @@ client.on('interactionCreate', async interaction => {
             .setTimestamp();
 
         const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
-            new ButtonBuilder().setCustomId('predict_vote_1').setLabel(`1️⃣ ${opcja1}`).setStyle(ButtonStyle.Primary),
-            new ButtonBuilder().setCustomId('predict_vote_2').setLabel(`2️⃣ ${opcja2}`).setStyle(ButtonStyle.Secondary)
+            new ButtonBuilder().setCustomId('predict_vote_1').setLabel(`1️⃣ ${opcja1.substring(0, 20)}`).setStyle(ButtonStyle.Primary),
+            new ButtonBuilder().setCustomId('predict_vote_2').setLabel(`2️⃣ ${opcja2.substring(0, 20)}`).setStyle(ButtonStyle.Secondary)
         );
-        if (opcja3) {
-            row.addComponents(new ButtonBuilder().setCustomId('predict_vote_3').setLabel(`3️⃣ ${opcja3}`).setStyle(ButtonStyle.Success));
-        }
+        if (opcja3) row.addComponents(new ButtonBuilder().setCustomId('predict_vote_3').setLabel(`3️⃣ ${opcja3.substring(0, 20)}`).setStyle(ButtonStyle.Success));
+        if (opcja4) row.addComponents(new ButtonBuilder().setCustomId('predict_vote_4').setLabel(`4️⃣ ${opcja4.substring(0, 20)}`).setStyle(ButtonStyle.Danger));
+        if (opcja5) row.addComponents(new ButtonBuilder().setCustomId('predict_vote_5').setLabel(`5️⃣ ${opcja5.substring(0, 20)}`).setStyle(ButtonStyle.Primary));
 
         const sentMsg = await channel.send({ embeds: [embed], components: [row] });
 
         const adminCloseRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
-            new ButtonBuilder().setCustomId(`predict_close_${sentMsg.id}`).setLabel('🔒 Zamknij predykcję (Admin)').setStyle(ButtonStyle.Danger)
+            new ButtonBuilder().setCustomId(`predict_close_${sentMsg.id}`).setLabel('🔒 Zamknij predykcję (Admin)').setStyle(ButtonStyle.Danger),
+            new ButtonBuilder().setCustomId(`predict_multiply_${sentMsg.id}`).setLabel('⭐ Pomnóż pulę (x2) (Admin)').setStyle(ButtonStyle.Secondary)
         );
         await sentMsg.edit({ embeds: [embed], components: [row, adminCloseRow] });
 
@@ -4011,15 +4122,20 @@ client.on('interactionCreate', async interaction => {
             option1: opcja1,
             option2: opcja2,
             option3: opcja3,
+            option4: opcja4,
+            option5: opcja5,
             votes1: [],
             votes2: [],
             votes3: [],
-            rewardType: typNagrody,
-            rewardAmount: wartoscNagrody,
+            votes4: [],
+            votes5: [],
+            rewardText: nagroda,
+            multiplier: 1,
+            endsAt: endsAtDate,
             ended: false
         });
 
-        return interaction.editReply({ content: `✅ Pomyślnie utworzono rozbudowaną predykcję na kanale <#${ID_KANALU_PREDICTY}>!` });
+        return interaction.editReply({ content: `✅ Pomyślnie utworzono predykcję (z 5 opcjami) na kanale <#${ID_KANALU_PREDICTY}>!` });
     }
 
     if (interaction.isAutocomplete()) {
@@ -4134,7 +4250,7 @@ client.on('interactionCreate', async interaction => {
             return interaction.editReply({ content: `✅ Rekord został pomyślnie opublikowany na kanale <#${ID_KANALU_REKORDY_STREAM}>!` });
         }
 
-        // Wywołanie modala (wysuwane okienko) dla predykcji
+        // Wywołanie modala (wysuwane okienko) dla predykcji (5 opcji, złączona nagroda, czas 5/10/15/20 min)
         if (commandName === 'predykcja') {
             if (!isAuthorized(interaction.user.id) && !interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) {
                 return interaction.reply({ content: '❌ Brak uprawnień do tworzenia predykcji!', ephemeral: true });
@@ -4142,7 +4258,7 @@ client.on('interactionCreate', async interaction => {
 
             const modal = new ModalBuilder()
                 .setCustomId('prediction_create_modal')
-                .setTitle('Utwórz Nową Predykcję PJN');
+                .setTitle('Utwórz Nową Predykcję PJN (5 Opcji)');
 
             const qInput = new TextInputBuilder()
                 .setCustomId('pred_question')
@@ -4168,15 +4284,27 @@ client.on('interactionCreate', async interaction => {
                 .setStyle(TextInputStyle.Short)
                 .setRequired(false);
 
-            const rewardTypeInput = new TextInputBuilder()
-                .setCustomId('pred_reward_type')
-                .setLabel('Nagroda: wpisz "coins" lub "vdolce"')
+            const opt4Input = new TextInputBuilder()
+                .setCustomId('pred_opt4')
+                .setLabel('Opcja 4 (opcjonalnie)')
+                .setStyle(TextInputStyle.Short)
+                .setRequired(false);
+
+            const opt5Input = new TextInputBuilder()
+                .setCustomId('pred_opt5')
+                .setLabel('Opcja 5 (opcjonalnie)')
+                .setStyle(TextInputStyle.Short)
+                .setRequired(false);
+
+            const rewardInput = new TextInputBuilder()
+                .setCustomId('pred_reward')
+                .setLabel('Nagroda z ilością (np. 500 PJN-Coins)')
                 .setStyle(TextInputStyle.Short)
                 .setRequired(true);
 
-            const rewardAmtInput = new TextInputBuilder()
-                .setCustomId('pred_reward_amount')
-                .setLabel('Ilość (liczba nagrody)')
+            const timeInput = new TextInputBuilder()
+                .setCustomId('pred_time')
+                .setLabel('Czas trwania w minutach (5 / 10 / 15 / 20)')
                 .setStyle(TextInputStyle.Short)
                 .setRequired(true);
 
@@ -4185,8 +4313,10 @@ client.on('interactionCreate', async interaction => {
                 new ActionRowBuilder<TextInputBuilder>().addComponents(opt1Input),
                 new ActionRowBuilder<TextInputBuilder>().addComponents(opt2Input),
                 new ActionRowBuilder<TextInputBuilder>().addComponents(opt3Input),
-                new ActionRowBuilder<TextInputBuilder>().addComponents(rewardTypeInput),
-                new ActionRowBuilder<TextInputBuilder>().addComponents(rewardAmtInput)
+                new ActionRowBuilder<TextInputBuilder>().addComponents(opt4Input),
+                new ActionRowBuilder<TextInputBuilder>().addComponents(opt5Input),
+                new ActionRowBuilder<TextInputBuilder>().addComponents(rewardInput),
+                new ActionRowBuilder<TextInputBuilder>().addComponents(timeInput)
             );
 
             return interaction.showModal(modal);
