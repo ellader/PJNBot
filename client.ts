@@ -528,7 +528,7 @@ async function checkTwitchLiveStatuses() {
                     for (const [_, guild] of client.guilds.cache) {
                         const channel = await guild.channels.fetch(streamerConfig.voiceChannelIdToRename).catch(() => null);
                         if (channel) {
-                            await channel.setName(`🟣・ᴛᴡɪᴛᴄʜ-ᴏғғʟɪɴᴇ`).catch(() => {});
+                            await channel.setName(`🟣・ᴛᴡɪᴛᴄʜ-ᴏꜰꜰʟɪɴᴇ`).catch(() => {});
                         }
                     }
                 }
@@ -749,13 +749,59 @@ async function setupPredictionsChannel() {
             .setDescription(
                 'Witaj w oficjalnej strefie predykcji serwera!\n\n' +
                 '🤖 **Jak to działa?**\n' +
-                '• Administratorzy tworzą oficjalne predykcje z 3 opcjami za pomocą komendy `/predykcja`.\n' +
+                '• Administratorzy tworzą oficjalne predykcje z 3 opcjami za pomocą komendy `/predykcja` (wygodne wysuwane okienko).\n' +
                 '• Nagrody: **PJN Coins** (automatyczna wypłata po zamknięciu przez bota) lub **vDolce** (nagroda przyznawana ręcznie przez administratora).\n' +
                 '• Głosuj na wybraną opcję za pomocą przycisków pod aktywnymi predykcjami!'
             )
             .setImage(LIVE_IMAGE_URL)
             .setTimestamp()
             .setFooter({ text: 'PJN System Predykcji' });
+
+        await channel.send({ embeds: [embed] });
+    } catch (e) {}
+}
+
+async function setupAnonymousConfessionsChannel() {
+    try {
+        const channel = await client.channels.fetch(ID_KANALU_ANONIMOWE_WYZNANIA).catch(() => null) as TextChannel;
+        if (!channel) return;
+        await clearBotMessagesInChannel(channel, 50);
+
+        const embed = new EmbedBuilder()
+            .setColor(0x9B59B6)
+            .setTitle('🕶️ Anonimowe Wyzwania i Wyznania PJN')
+            .setDescription(
+                'Chcesz podzielić się czymś z społecznością w pełni anonimowo?\n\n' +
+                '✨ **Jak użyć komendy?**\n' +
+                '• Wpisz w dowolnym miejscu komendę `/wyznanie [treść]`.\n' +
+                '• Bot opublikuje Twoje wyznanie tutaj całkowicie anonimowo wraz z reakcjami!'
+            )
+            .setImage(LIVE_IMAGE_URL)
+            .setTimestamp()
+            .setFooter({ text: 'PJN Anonimowe Wyznania' });
+
+        await channel.send({ embeds: [embed] });
+    } catch (e) {}
+}
+
+async function setupStreamRecordsChannel() {
+    try {
+        const channel = await client.channels.fetch(ID_KANALU_REKORDY_STREAM).catch(() => null) as TextChannel;
+        if (!channel) return;
+        await clearBotMessagesInChannel(channel, 50);
+
+        const embed = new EmbedBuilder()
+            .setColor(0xF1C40F)
+            .setTitle('🏆 Rekordy ze Streamów PJN')
+            .setDescription(
+                'Ten kanał dokumentuje największe osiągnięcia, rekordy widzów, donacji i momenty ze streamów!\n\n' +
+                '✨ **Jak użyć komendy?**\n' +
+                '• Wpisz komendę `/rekord-stream [opis]`.\n' +
+                '• Opisz swój rekord lub osiągnięcie, a bot opublikuje je tutaj dla całej społeczności!'
+            )
+            .setImage(LIVE_IMAGE_URL)
+            .setTimestamp()
+            .setFooter({ text: 'PJN Rekordy Streamu' });
 
         await channel.send({ embeds: [embed] });
     } catch (e) {}
@@ -2460,7 +2506,7 @@ const commands = [
         .setName('profil')
         .setDescription('Kompleksowa karta profilu gracza z poziomem, odznakami i statystykami')
         .addUserOption(o => o.setName('uzytkownik').setDescription('Użytkownik').setRequired(false)),
-    
+     
     // Sugestie
     new SlashCommandBuilder()
         .setName('sugestia')
@@ -2479,19 +2525,10 @@ const commands = [
         .setDescription('Zgłoś lub opublikuj rekord ze streama')
         .addStringOption(o => o.setName('opis').setDescription('Opis rekordu (np. Ilość widzów / donor)').setRequired(true)),
 
-    // Rozbudowana predykcja (3 opcje + wybór nagrody)
+    // Rozbudowana predykcja przez Modal (wysuwane okienko)
     new SlashCommandBuilder()
         .setName('predykcja')
-        .setDescription('Utwórz nową predykcję/zakład z 3 opcjami i wyborem nagrody (Admin)')
-        .addStringOption(o => o.setName('pytanie').setDescription('Temat lub pytanie predykcji').setRequired(true))
-        .addStringOption(o => o.setName('opcja1').setDescription('Pierwsza opcja').setRequired(true))
-        .addStringOption(o => o.setName('opcja2').setDescription('Druga opcja').setRequired(true))
-        .addStringOption(o => o.setName('opcja3').setDescription('Trzecia opcja (opcjonalnie)').setRequired(false))
-        .addStringOption(o => o.setName('typ_nagrody').setDescription('Typ nagrody dla zwycięzców').setRequired(true).addChoices(
-            { name: 'PJN Coins (bot automatycznie rozdaje)', value: 'coins' },
-            { name: 'vDolce / V-Bucks (nagroda od administratora)', value: 'vdolce' }
-        ))
-        .addIntegerOption(o => o.setName('wartosc_nagrody').setDescription('Ilość PJN Coins lub informacja o vDolce').setRequired(true))
+        .setDescription('Otwórz formularz tworzenia nowej predykcji/zakładu z 3 opcjami i nagrodą (Admin)')
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
 
     new SlashCommandBuilder()
@@ -2767,6 +2804,8 @@ client.once('ready', async () => {
     await setupRussianRouletteChannel();
     await setupWheelOfFortuneChannel();
     await setupPredictionsChannel();
+    await setupAnonymousConfessionsChannel();
+    await setupStreamRecordsChannel();
     await setupSuggestionsChannel();
     await setupCasinoHubChannel();
     await setupBotInteractiveChannelInstruction(); 
@@ -3916,6 +3955,73 @@ client.on('interactionCreate', async interaction => {
         return;
     }
 
+    // Obsługa Modala wysuwanego dla Predykcji (3 opcje, nagroda coins / vdolce, ilość)
+    if (interaction.isModalSubmit() && interaction.customId === 'prediction_create_modal') {
+        await interaction.deferReply({ ephemeral: true });
+        const pytanie = interaction.fields.getTextInputValue('pred_question');
+        const opcja1 = interaction.fields.getTextInputValue('pred_opt1');
+        const opcja2 = interaction.fields.getTextInputValue('pred_opt2');
+        const opcja3 = interaction.fields.getTextInputValue('pred_opt3') || null;
+        const typNagrodyRaw = interaction.fields.getTextInputValue('pred_reward_type').toLowerCase().trim();
+        const typNagrody = typNagrodyRaw.includes('vdol') || typNagrodyRaw.includes('v') ? 'vdolce' : 'coins';
+        const wartoscNagrody = parseInt(interaction.fields.getTextInputValue('pred_reward_amount')) || 0;
+
+        const channel = await interaction.guild?.channels.fetch(ID_KANAL_PREDICTY).catch(() => null) as TextChannel;
+        if (!channel) {
+            return interaction.editReply({ content: '❌ Kanał predykcji nie został skonfigurowany lub nie istnieje.' });
+        }
+
+        let rewardInfoText = typNagrody === 'coins' 
+            ? `🎁 **Nagroda:** ${wartoscNagrody} PJN-Coins (automatycznie po zamknięciu)` 
+            : `🎁 **Nagroda:** ${wartoscNagrody} vDolce / V-Bucks (nagroda od administratora)`;
+
+        let desc = `Głosuj na poniższe opcje za pomocą przycisków!\n\n` +
+            `1️⃣ **${opcja1}** — **0%** (0 głosów)\n` +
+            `2️⃣ **${opcja2}** — **0%** (0 głosów)\n`;
+        if (opcja3) {
+            desc += `3️⃣ **${opcja3}** — **0%** (0 głosów)\n`;
+        }
+        desc += `\n${rewardInfoText}\n👥 Łącznie głosów: **0**`;
+
+        const embed = new EmbedBuilder()
+            .setColor(0x00D9FF)
+            .setTitle(`🔮 Predykcja: ${pytanie}`)
+            .setDescription(desc)
+            .setTimestamp();
+
+        const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+            new ButtonBuilder().setCustomId('predict_vote_1').setLabel(`1️⃣ ${opcja1}`).setStyle(ButtonStyle.Primary),
+            new ButtonBuilder().setCustomId('predict_vote_2').setLabel(`2️⃣ ${opcja2}`).setStyle(ButtonStyle.Secondary)
+        );
+        if (opcja3) {
+            row.addComponents(new ButtonBuilder().setCustomId('predict_vote_3').setLabel(`3️⃣ ${opcja3}`).setStyle(ButtonStyle.Success));
+        }
+
+        const sentMsg = await channel.send({ embeds: [embed], components: [row] });
+
+        const adminCloseRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+            new ButtonBuilder().setCustomId(`predict_close_${sentMsg.id}`).setLabel('🔒 Zamknij predykcję (Admin)').setStyle(ButtonStyle.Danger)
+        );
+        await sentMsg.edit({ embeds: [embed], components: [row, adminCloseRow] });
+
+        await PredictionModel.create({
+            messageId: sentMsg.id,
+            channelId: channel.id,
+            question: pytanie,
+            option1: opcja1,
+            option2: opcja2,
+            option3: opcja3,
+            votes1: [],
+            votes2: [],
+            votes3: [],
+            rewardType: typNagrody,
+            rewardAmount: wartoscNagrody,
+            ended: false
+        });
+
+        return interaction.editReply({ content: `✅ Pomyślnie utworzono rozbudowaną predykcję na kanale <#${ID_KANALU_PREDICTY}>!` });
+    }
+
     if (interaction.isAutocomplete()) {
         const focusedValue = interaction.options.getFocused();
 
@@ -4028,74 +4134,62 @@ client.on('interactionCreate', async interaction => {
             return interaction.editReply({ content: `✅ Rekord został pomyślnie opublikowany na kanale <#${ID_KANALU_REKORDY_STREAM}>!` });
         }
 
-        // Rozbudowana predykcja (3 opcje + wybór nagrody)
+        // Wywołanie modala (wysuwane okienko) dla predykcji
         if (commandName === 'predykcja') {
-            await interaction.deferReply({ ephemeral: true });
             if (!isAuthorized(interaction.user.id) && !interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) {
-                return interaction.editReply({ content: '❌ Brak uprawnień do tworzenia predykcji!' });
+                return interaction.reply({ content: '❌ Brak uprawnień do tworzenia predykcji!', ephemeral: true });
             }
 
-            const pytanie = interaction.options.getString('pytanie', true);
-            const opcja1 = interaction.options.getString('opcja1', true);
-            const opcja2 = interaction.options.getString('opcja2', true);
-            const opcja3 = interaction.options.getString('opcja3');
-            const typNagrody = interaction.options.getString('typ_nagrody', true); // 'coins' lub 'vdolce'
-            const wartoscNagrody = interaction.options.getInteger('wartosc_nagrody', true);
+            const modal = new ModalBuilder()
+                .setCustomId('prediction_create_modal')
+                .setTitle('Utwórz Nową Predykcję PJN');
 
-            const channel = await interaction.guild?.channels.fetch(ID_KANALU_PREDICTY).catch(() => null) as TextChannel;
-            if (!channel) {
-                return interaction.editReply({ content: '❌ Kanał predykcji nie został skonfigurowany lub nie istnieje.' });
-            }
+            const qInput = new TextInputBuilder()
+                .setCustomId('pred_question')
+                .setLabel('Temat lub pytanie predykcji')
+                .setStyle(TextInputStyle.Short)
+                .setRequired(true);
 
-            let rewardInfoText = typNagrody === 'coins' 
-                ? `🎁 **Nagroda:** ${wartoscNagrody} PJN-Coins (automatycznie po zamknięciu)` 
-                : `🎁 **Nagroda:** ${wartoscNagrody} vDolce / V-Bucks (nagroda od administratora)`;
+            const opt1Input = new TextInputBuilder()
+                .setCustomId('pred_opt1')
+                .setLabel('Opcja 1')
+                .setStyle(TextInputStyle.Short)
+                .setRequired(true);
 
-            let desc = `Głosuj na poniższe opcje za pomocą przycisków!\n\n` +
-                `1️⃣ **${opcja1}** — **0%** (0 głosów)\n` +
-                `2️⃣ **${opcja2}** — **0%** (0 głosów)\n`;
-            if (opcja3) {
-                desc += `3️⃣ **${opcja3}** — **0%** (0 głosów)\n`;
-            }
-            desc += `\n${rewardInfoText}\n👥 Łącznie głosów: **0**`;
+            const opt2Input = new TextInputBuilder()
+                .setCustomId('pred_opt2')
+                .setLabel('Opcja 2')
+                .setStyle(TextInputStyle.Short)
+                .setRequired(true);
 
-            const embed = new EmbedBuilder()
-                .setColor(0x00D9FF)
-                .setTitle(`🔮 Predykcja: ${pytanie}`)
-                .setDescription(desc)
-                .setTimestamp();
+            const opt3Input = new TextInputBuilder()
+                .setCustomId('pred_opt3')
+                .setLabel('Opcja 3 (opcjonalnie)')
+                .setStyle(TextInputStyle.Short)
+                .setRequired(false);
 
-            const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
-                new ButtonBuilder().setCustomId('predict_vote_1').setLabel(`1️⃣ ${opcja1}`).setStyle(ButtonStyle.Primary),
-                new ButtonBuilder().setCustomId('predict_vote_2').setLabel(`2️⃣ ${opcja2}`).setStyle(ButtonStyle.Secondary)
+            const rewardTypeInput = new TextInputBuilder()
+                .setCustomId('pred_reward_type')
+                .setLabel('Nagroda: wpisz "coins" lub "vdolce"')
+                .setStyle(TextInputStyle.Short)
+                .setRequired(true);
+
+            const rewardAmtInput = new TextInputBuilder()
+                .setCustomId('pred_reward_amount')
+                .setLabel('Ilość (liczba nagrody)')
+                .setStyle(TextInputStyle.Short)
+                .setRequired(true);
+
+            modal.addComponents(
+                new ActionRowBuilder<TextInputBuilder>().addComponents(qInput),
+                new ActionRowBuilder<TextInputBuilder>().addComponents(opt1Input),
+                new ActionRowBuilder<TextInputBuilder>().addComponents(opt2Input),
+                new ActionRowBuilder<TextInputBuilder>().addComponents(opt3Input),
+                new ActionRowBuilder<TextInputBuilder>().addComponents(rewardTypeInput),
+                new ActionRowBuilder<TextInputBuilder>().addComponents(rewardAmtInput)
             );
-            if (opcja3) {
-                row.addComponents(new ButtonBuilder().setCustomId('predict_vote_3').setLabel(`3️⃣ ${opcja3}`).setStyle(ButtonStyle.Success));
-            }
 
-            const sentMsg = await channel.send({ embeds: [embed], components: [row] });
-
-            const adminCloseRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
-                new ButtonBuilder().setCustomId(`predict_close_${sentMsg.id}`).setLabel('🔒 Zamknij predykcję (Admin)').setStyle(ButtonStyle.Danger)
-            );
-            await sentMsg.edit({ embeds: [embed], components: [row, adminCloseRow] });
-
-            await PredictionModel.create({
-                messageId: sentMsg.id,
-                channelId: channel.id,
-                question: pytanie,
-                option1: opcja1,
-                option2: opcja2,
-                option3: opcja3 || null,
-                votes1: [],
-                votes2: [],
-                votes3: [],
-                rewardType: typNagrody,
-                rewardAmount: wartoscNagrody,
-                ended: false
-            });
-
-            return interaction.editReply({ content: `✅ Pomyślnie utworzono rozbudowaną predykcję na kanale <#${ID_KANALU_PREDICTY}>!` });
+            return interaction.showModal(modal);
         }
 
         // Naprawiona komenda /poker
