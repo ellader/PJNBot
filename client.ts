@@ -4703,10 +4703,11 @@ client.on('interactionCreate', async interaction => {
                 user.consecutiveWins = 0;
                 await user.save();
                 return interaction.editReply({ content: `🎰 **Jednoręki Bandyta:**\n[ ${r1} | ${r2} | ${r3} ]\n\n💥 Przegrana! Tracisz **${stawka} PJN-Coins**
-                // (ciąg dalsza pliku bota)
+                } else {
+                user.consecutiveLosses = (user.consecutiveLosses || 0) + 1;
                 user.consecutiveWins = 0;
                 await user.save();
-                return interaction.editReply({ content: `✂️ **Kamień, Papier, Nożyce:**\nTwój wybór: **${userChoice}** | Wybór bota: **${botChoice}**\n❌ Przegrana! Tracisz postawione **${stawka} PJN-Coins**.` });
+                return interaction.editReply({ content: `🎰 **Maszyna Slotowa:**\n[ ${s1} | ${s2} | ${s3} ]\n❌ Nic z tego! Tracisz **${stawka} PJN-Coins**.` });
             }
         }
 
