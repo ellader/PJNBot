@@ -758,7 +758,7 @@ async function setupPredictionsChannel() {
     try {
         const channel = await client.channels.fetch(ID_KANALU_PREDICTY).catch(() => null) as TextChannel;
         if (!channel) return;
-        await clearBotMessagesInChannel(channel, 50);
+        // UWAGA: nie czyscimy historii tego kanalu - kasowaloby to aktywne predykcje i zaklady.
 
         const embed = new EmbedBuilder()
             .setColor(0x00D9FF)
@@ -782,7 +782,7 @@ async function setupAnonymousConfessionsChannel() {
     try {
         const channel = await client.channels.fetch(ID_KANALU_ANONIMOWE_WYZNANIA).catch(() => null) as TextChannel;
         if (!channel) return;
-        await clearBotMessagesInChannel(channel, 50);
+        // UWAGA: nie czyscimy historii tego kanalu - kasowaloby to opublikowane wyznania.
 
         const embed = new EmbedBuilder()
             .setColor(0x9B59B6)
@@ -828,7 +828,7 @@ async function setupSuggestionsChannel() {
     try {
         const channel = await client.channels.fetch(ID_KANALU_POMYSLE_I_SUGESTIE).catch(() => null) as TextChannel;
         if (!channel) return;
-        await clearBotMessagesInChannel(channel, 50);
+        // UWAGA: nie czyscimy historii tego kanalu - kasowaloby to zgloszone sugestie.
 
         const embed = new EmbedBuilder()
             .setColor(0x3498DB)
@@ -4207,12 +4207,14 @@ client.on('interactionCreate', async interaction => {
         const pytanie = interaction.fields.getTextInputValue('pred_question');
         const opcja1 = interaction.fields.getTextInputValue('pred_opt1');
         const opcja2 = interaction.fields.getTextInputValue('pred_opt2');
+        // Modal predykcji ma tylko 3 pola opcji - pola 4 i 5 nie istnieją,
+        // a getTextInputValue rzuca wyjątek, gdy pola nie ma w modalu.
         const opcja3 = interaction.fields.getTextInputValue('pred_opt3') || null;
-        const opcja4 = interaction.fields.getTextInputValue('pred_opt4') || null;
-        const opcja5 = interaction.fields.getTextInputValue('pred_opt5') || null;
+        const opcja4 = null;
+        const opcja5 = null;
         const nagroda = interaction.fields.getTextInputValue('pred_reward') || '500 PJN-Coins';
 
-        const channel = await interaction.guild?.channels.fetch(ID_KANAL_PREDICTY).catch(() => null) as TextChannel;
+        const channel = await interaction.guild?.channels.fetch(ID_KANALU_PREDICTY).catch(() => null) as TextChannel;
         if (!channel) {
             return interaction.editReply({ content: '❌ Kanał predykcji nie został skonfigurowany lub nie istnieje.' });
         }
@@ -4702,7 +4704,7 @@ client.on('interactionCreate', async interaction => {
                 user.consecutiveLosses = (user.consecutiveLosses || 0) + 1;
                 user.consecutiveWins = 0;
                 await user.save();
-                return interaction.editReply({ content: `🎰 **Jednoręki Bandyta:**\n[ ${r1} | ${r2} | ${r3} ]\n\n💥 Przegrana! Tracisz **${stawka} PJN-Coins**
+                return interaction.editReply({ content: `🎰 **Jednoręki Bandyta:**\n[ ${r1} | ${r2} | ${r3} ]\n\n💥 Przegrana! Tracisz **${stawka} PJN-Coins**.` });
             }
         }
 
@@ -5282,7 +5284,7 @@ client.on('interactionCreate', async interaction => {
                 const data = await res.json() as any;
 
                 if (!data || data.status !== 200 || !data.data) {
-                    return interaction.editReply({ content: `❌ Nie znaleziono gracza o nicku **${nick}`} w bazie Fortnite lub konta są prywatne.` });
+                    return interaction.editReply({ content: `❌ Nie znaleziono gracza o nicku **${nick}** w bazie Fortnite lub konta są prywatne.` });
                 }
 
                 let user = await UserModel.findOne({ userId: interaction.user.id });
