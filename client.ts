@@ -307,6 +307,8 @@ const ID_RANGI_ZWERYFIKOWANY = '1549659335179763772';
 const ID_ROLI_MEZCZYZNA = '1532327338430431383';
 const ID_ROLI_KOBIETA = '1532328153786224751';
 const ID_KANAL_TWORZENIA_POKOJU = '1554409138824417300';
+const ID_KANAL_MUZYCZNEGO = '1532870796530155641';
+const XP_ZA_MINUTE_RADIA = 5;      // XP serwera za minutę słuchania radia na kanale muzycznym
 
 const ID_KANAL_REPUTACJI = "1540233764477730908";
 const ID_ALEJA_SLAW_REPUTACJI = "1540238376278687754";
@@ -362,7 +364,8 @@ const SHOP_ITEMS = [
     { id: 'badge_client', name: '🏷️ Odznaka "Klient sklepu PJN"', price: 1000, description: 'Unikalna odznaka w profilu.', type: 'badge', badgeName: '🏷️ **Klient sklepu PJN**' },
     { id: 'badge_advanced', name: '🎖️ Odznaka "Zaawansowany klient"', price: 5000, description: 'Ekskluzywna zaawansowana odznaka w profilu.', type: 'badge', badgeName: '🎖️ **Zaawansowany klient sklepu PJN**' },
     { id: 'custom_voice', name: '🎙️ Własny kanał głosowy na 30 dni', price: 6000, description: 'Prywatny pokój głosowy na okres 30 dni.', type: 'custom_voice' },
-    { id: 'daily_boost', name: '🎁 Pakiet "2x Daily" na tydzień', price: 8000, description: 'Podwójna ilość PJN-Coins z komendy /daily przez 7 dni.', type: 'daily_boost' }
+    { id: 'daily_boost', name: '🎁 Pakiet "2x Daily" na tydzień', price: 8000, description: 'Podwójna ilość PJN-Coins z komendy /daily przez 7 dni.', type: 'daily_boost' },
+    { id: 'bp_premium', name: '⚔️ Karnet Premium PJN Battle Pass', price: 20000, description: 'Odblokowuje Ścieżkę Elitarną karnetu (30 poziomów nagród: rangi VIP, PJN-Coins, XP i bonusy). Posiadacze rangi VIP kupują taniej — 10 000 PJN-Coins.', type: 'battlepass' }
 ];
 
 const LIVE_IMAGE_URL = "https://cdn.discordapp.com/attachments/1532321067731783684/1545708586108325898/IMG_20260905_101345.jpg?ex=6a9d20cc&is=6a9bcf4c&hm=a3a2a62e8f092f637ca72db6600ba805fb1a84a709595a77073021274e250a3e&";
@@ -774,7 +777,7 @@ async function setupPredictionsChannel() {
             .setTimestamp()
             .setFooter({ text: 'PJN System Predykcji i Zakładów' });
 
-        await channel.send({ embeds: [embed] });
+        await sendOrUpdateInfoEmbed(channel, 'info_msg_predykcje', embed);
     } catch (e) {}
 }
 
@@ -797,15 +800,77 @@ async function setupAnonymousConfessionsChannel() {
             .setTimestamp()
             .setFooter({ text: 'PJN Anonimowe Wyznania' });
 
-        await channel.send({ embeds: [embed] });
+        await sendOrUpdateInfoEmbed(channel, 'info_msg_wyznania', embed);
     } catch (e) {}
+}
+
+// Wysyla embed informacyjny kanalu, a przy kolejnych restartach EDYTUJE ta sama wiadomosc
+// (channelId/messageId zapisane w bazie), zeby na kanale nie tworzyly sie duplikaty,
+// a historia kanalu (wyznania, sugestie, zaklady, rekordy) nie byla kasowana.
+async function sendOrUpdateInfoEmbed(channel: TextChannel, configKey: string, embed: EmbedBuilder, components?: any[]) {
+    try {
+        // Tytul embeda pozwala rozpoznac wlasna wiadomosc nawet wtedy, gdy zapisu w bazie nie ma
+        // albo wskazuje na skasowana wiadomosc. Bez tego bot wysylal kolejna kopie przy kazdym starcie.
+        const title: string | null = (embed.data && embed.data.title) || null;
+        const isOwnPanel = (msg: any) =>
+            msg.author?.id === client.user?.id &&
+            (msg.embeds || []).some((e: any) => e && e.title && (!title || e.title === title));
+
+        const saved: any = await ConfigModel.findOne({ key: configKey });
+        let target: any = null;
+        if (saved) {
+            const oldChannel = await client.channels.fetch(saved.channelId).catch(() => null) as TextChannel | null;
+            const oldMessage = oldChannel
+                ? await oldChannel.messages.fetch(saved.messageId).catch(() => null)
+                : null;
+            if (oldChannel && oldMessage) target = oldMessage;
+        }
+
+        if (target) {
+            await target.edit({ embeds: [embed], components: components || [] }).catch(() => {});
+            // Sprzatanie kopii, ktore powstanily wczesniej - zostaje tylko jedna wiadomosc tego panelu.
+            const recent = await channel.messages.fetch({ limit: 100 }).catch(() => null);
+            if (recent) {
+                for (const msg of recent.values()) {
+                    if (msg.id !== target.id && isOwnPanel(msg)) await msg.delete().catch(() => {});
+                }
+            }
+            return;
+        }
+
+        // Brak zapisu lub skasowana wiadomosc: szukamy istniejacej kopii panelu i edytujemy ja,
+        // a nadmiarowe kopie usuwamy - zamiast wysylac kolejna wiadomosc.
+        let adopted: any = null;
+        const recent = await channel.messages.fetch({ limit: 100 }).catch(() => null);
+        if (recent) {
+            for (const msg of recent.values()) {
+                if (!isOwnPanel(msg)) continue;
+                if (!adopted) { adopted = msg; continue; }
+                await msg.delete().catch(() => {});
+            }
+        }
+
+        if (adopted) {
+            await adopted.edit({ embeds: [embed], components: components || [] }).catch(() => {});
+        }
+
+        const finalMsg = adopted || await channel.send({ embeds: [embed], components: components || [] });
+
+        await ConfigModel.findOneAndUpdate(
+            { key: configKey },
+            { key: configKey, channelId: channel.id, messageId: finalMsg.id },
+            { upsert: true }
+        ).catch(() => {});
+    } catch (e) {
+        console.error('Nie udalo sie wyslac/edytowac wiadomosci informacyjnej:', configKey, e);
+    }
 }
 
 async function setupStreamRecordsChannel() {
     try {
         const channel = await client.channels.fetch(ID_KANALU_REKORDY_STREAM).catch(() => null) as TextChannel;
         if (!channel) return;
-        await clearBotMessagesInChannel(channel, 50);
+        // UWAGA: nie czyscimy historii tego kanalu - kasowaloby to opublikowane rekordy streamu.
 
         const embed = new EmbedBuilder()
             .setColor(0xF1C40F)
@@ -820,7 +885,7 @@ async function setupStreamRecordsChannel() {
             .setTimestamp()
             .setFooter({ text: 'PJN Rekordy Streamu' });
 
-        await channel.send({ embeds: [embed] });
+        await sendOrUpdateInfoEmbed(channel, 'info_msg_rekordy_stream', embed);
     } catch (e) {}
 }
 
@@ -844,7 +909,7 @@ async function setupSuggestionsChannel() {
             .setTimestamp()
             .setFooter({ text: 'PJN System Sugestii' });
 
-        await channel.send({ embeds: [embed] });
+        await sendOrUpdateInfoEmbed(channel, 'info_msg_sugestie', embed);
     } catch (e) {}
 }
 
@@ -984,14 +1049,46 @@ async function sendQuoteToChannel(channelId: string) {
     return true;
 }
 
+function warsawDayKey(date: Date = new Date()): string {
+    return new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Europe/Warsaw',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+    }).format(date);
+}
+
+/** Blokada drugiej wysyłki: sprawdza, czy dzisiejszy cytat już poszedł na kanał. */
+async function quoteAlreadySentToday(): Promise<boolean> {
+    try {
+        const channel = await client.channels.fetch(ID_KANALU_CYTATY).catch(() => null) as TextChannel;
+        if (!channel || !channel.messages) return false;
+        const messages = await channel.messages.fetch({ limit: 30 });
+        const today = warsawDayKey();
+        for (const msg of messages.values()) {
+            if (msg.author.id !== client.user?.id) continue;
+            const isQuote = msg.embeds.some(e => (e.footer?.text || '').includes('PJN Codzienne Cytaty'));
+            if (isQuote && warsawDayKey(msg.createdAt) === today) return true;
+        }
+    } catch (e) {}
+    return false;
+}
+
 function startDailyQuotes() {
-    cron.schedule('30 8 * * *', async () => {
+    // Jeden cytat dziennie o 7:30 czasu polskiego. Strefa podana wprost, żeby nie zależała
+    // od strefy kontenera (Europe/Helsinki), a recoverMissedExecutions:false blokuje
+    // dosłanie cytatu po restarcie bota.
+    cron.schedule('30 7 * * *', async () => {
         try {
+            if (await quoteAlreadySentToday()) {
+                console.log('[Cytaty] Dzisiejszy cytat już poszedł - pomijam drugą wysyłkę.');
+                return;
+            }
             await sendQuoteToChannel(ID_KANALU_CYTATY);
         } catch (err) {
             console.error('Błąd podczas wysyłania codziennego cytatu:', err);
         }
-    });
+    }, { timezone: 'Europe/Warsaw', recoverMissedExecutions: false });
 }
 
 function startDailyShopAutoPoster() {
@@ -1044,15 +1141,358 @@ function startDailyShopAutoPoster() {
     });
 }
 
-let lastFortniteEventId: string | null = null;
+let lastFortniteNewsKey: string | null = null;
 let lastFortniteServerStatus: boolean | null = null;
-let lastFortniteVersion: string | null = null;
+const FORTNITE_NEWS_KEY_CONFIG = 'fortnite_news_last_key';
+
+// Klucz ostatniej ogloszonej aktualizacji zapisujemy w bazie, zeby po restarcie bot
+// wiedzial, co juz ogloszono, i nie wysylal powiadomienia o tej samej wersji drugi raz.
+async function loadLastFortniteNewsKey(): Promise<string | null> {
+    if (lastFortniteNewsKey) return lastFortniteNewsKey;
+    try {
+        const cfg: any = await ConfigModel.findOne({ key: FORTNITE_NEWS_KEY_CONFIG });
+        if (cfg && cfg.messageId) lastFortniteNewsKey = cfg.messageId;
+    } catch (e) {
+        console.error('[Fortnite News] Nie udało się odczytać zapamiętanego klucza aktualizacji z bazy:', e);
+    }
+    return lastFortniteNewsKey;
+}
+
+async function rememberLastFortniteNewsKey(key: string) {
+    lastFortniteNewsKey = key;
+    try {
+        await ConfigModel.findOneAndUpdate(
+            { key: FORTNITE_NEWS_KEY_CONFIG },
+            { key: FORTNITE_NEWS_KEY_CONFIG, channelId: FORTNITE_NEWS_KEY_CONFIG, messageId: key },
+            { upsert: true }
+        );
+    } catch (e) {
+        console.error('[Fortnite News] Nie udało się zapisać klucza aktualizacji w bazie:', e);
+    }
+}
+
+// === FORTNITE: STATUS SERWERÓW, AKTUALIZACJE I RANGA POWIADOMIEŃ ===
+// Stare endpointy fortnite-api.com/v1/status oraz fortnite-api.com/v2/events zwracają HTTP 404.
+const EPIC_STATUS_SUMMARY_URL = 'https://status.epicgames.com/api/v2/summary.json';
+const FORTNITE_NEWS_URL = 'https://fortnite-api.com/v2/news?language=pl';
+const FORTNITE_UPDATES_ROLE_NAME = '🔔 Aktualizacje Fortnite';
+const FORTNITE_UPDATES_ROLE_KEY = 'fortnite_updates_role';
+const FORTNITE_DOWN_STATUSES = ['degraded_performance', 'partial_outage', 'major_outage', 'under_maintenance'];
+
+function fortniteLog(area: string, message: string) {
+    console.log(`[Fortnite ${area}] ${message}`);
+}
+
+async function rememberFortniteUpdateRole(roleId: string) {
+    try {
+        if (roleId === ID_RANGI_AKTUALIZACJE_FORTNITE) return;
+        await ConfigModel.findOneAndUpdate(
+            { key: FORTNITE_UPDATES_ROLE_KEY },
+            { key: FORTNITE_UPDATES_ROLE_KEY, channelId: roleId, messageId: 'role' },
+            { upsert: true }
+        );
+        fortniteLog('Ranga', `Zapisano w bazie nowe ID rangi powiadomień: ${roleId}.`);
+    } catch (e) {
+        console.error('[Fortnite Ranga] Nie udało się zapisać ID rangi w bazie:', e);
+    }
+}
+
+/**
+ * Ranga powiadomień o aktualizacjach Fortnite.
+ * Najpierw cache, potem zapytanie do API (rola nie musi być w cache), a jeśli naprawdę
+ * nie istnieje na serwerze - bot tworzy ją sam i zapamiętuje nowe ID w bazie.
+ */
+async function getOrCreateFortniteUpdateRole(guild: any): Promise<any | null> {
+    if (!guild) return null;
+
+    let roleId = ID_RANGI_AKTUALIZACJE_FORTNITE;
+    try {
+        const cfg = await ConfigModel.findOne({ key: FORTNITE_UPDATES_ROLE_KEY });
+        if (cfg && cfg.channelId) roleId = cfg.channelId;
+    } catch (e) {
+        fortniteLog('Ranga', 'Nie udało się odczytać zapisanego ID rangi z bazy - używam domyślnego.');
+    }
+
+    let role = guild.roles.cache.get(roleId) || await guild.roles.fetch(roleId).catch(() => null);
+    if (!role) {
+        const byName = guild.roles.cache.find((r: any) => r.name === FORTNITE_UPDATES_ROLE_NAME);
+        if (byName) {
+            fortniteLog('Ranga', `Rola ${roleId} nie istnieje - używam roli o nazwie "${FORTNITE_UPDATES_ROLE_NAME}" (${byName.id}).`);
+            role = byName;
+        }
+    }
+
+    if (role) {
+        fortniteLog('Ranga', `Używam rangi powiadomień "${role.name}" (${role.id}), wzmiankowalna: ${role.mentionable ? 'tak' : 'nie'}.`);
+        // Ranga musi być wzmiankowalna, żeby ping przy powiadomieniach działał.
+        if (!role.mentionable) {
+            try {
+                await role.setMentionable(true, 'Ranga powiadomień o aktualizacjach Fortnite musi być wzmiankowalna (PJN Bot)');
+                fortniteLog('Ranga', `Ustawiono wzmiankowalność rangi "${role.name}" (${role.id}) na tak.`);
+            } catch (err) {
+                console.error('[Fortnite Ranga] Nie udało się ustawić wzmiankowalności rangi (wymagane uprawnienie Zarządzanie rolami):', err);
+            }
+        }
+        await rememberFortniteUpdateRole(role.id);
+        return role;
+    }
+
+    try {
+        const created = await guild.roles.create({
+            name: FORTNITE_UPDATES_ROLE_NAME,
+            color: 0x00D9FF,
+            mentionable: true,
+            hoist: false,
+            reason: 'Automatyczne utworzenie rangi powiadomień o aktualizacjach Fortnite (PJN Bot)'
+        });
+        fortniteLog('Ranga', `Rangi nie było na serwerze - utworzono "${created.name}" (${created.id}).`);
+        await rememberFortniteUpdateRole(created.id);
+        return created;
+    } catch (err) {
+        console.error('[Fortnite Ranga] Nie udało się utworzyć rangi powiadomień (wymagane uprawnienie Zarządzanie rolami):', err);
+        return null;
+    }
+}
+
+/**
+ * Status serwerów Fortnite ze status.epicgames.com.
+ * Szuka grupy "Fortnite" i sprawdza statusy jej podkomponentów:
+ * operational = serwery otwarte, degraded_performance/partial_outage/major_outage = zamknięte.
+ */
+async function fetchFortniteServerOnline(): Promise<boolean | null> {
+    try {
+        const res = await fetch(EPIC_STATUS_SUMMARY_URL);
+        fortniteLog('Status', `${EPIC_STATUS_SUMMARY_URL} -> HTTP ${res.status}`);
+        if (!res.ok) {
+            console.error(`[Fortnite Status] status.epicgames.com zwrócił HTTP ${res.status} - pomijam sprawdzanie statusu.`);
+            return null;
+        }
+
+        const summary = await res.json() as any;
+        const components: any[] = Array.isArray(summary && summary.components) ? summary.components : [];
+        const group = components.find((c: any) => String(c && c.name || '').toLowerCase() === 'fortnite' && !c.group_id);
+        if (!group) {
+            console.error('[Fortnite Status] Brak komponentu "Fortnite" w odpowiedzi status.epicgames.com - pomijam.');
+            return null;
+        }
+
+        const children = (group.components || [])
+            .map((id: string) => components.find((c: any) => c.id === id))
+            .filter(Boolean);
+        const groupStatus = String(group.status || 'unknown').toLowerCase();
+        const childStatuses = children.map((c: any) => String(c.status || 'unknown').toLowerCase());
+        const downStatus = [groupStatus, ...childStatuses].find((s: string) => FORTNITE_DOWN_STATUSES.includes(s));
+        const isOnline = !downStatus;
+
+        fortniteLog('Status', `Grupa "Fortnite": ${groupStatus} | komponenty: ${children.map((c: any) => `${c.name}=${c.status}`).join(', ') || 'brak'} => serwery ${isOnline ? 'OTWARTE' : `ZAMKNIĘTE (${downStatus})`}`);
+        return isOnline;
+    } catch (err) {
+        console.error('[Fortnite Status] Błąd pobierania statusu z status.epicgames.com:', err);
+        return null;
+    }
+}
+
+/**
+ * Informacje o aktualizacjach / patch notes z fortnite-api.com/v2/news.
+ * Kluczem zmiany jest hash/data sekcji BR oraz ID najnowszego wpisu.
+ */
+// Wersja gry: fortnite-api.com/v2/aes zwraca build w formacie "++Fortnite+Release-43.00-CL-59596594".
+const FORTNITE_AES_URL = 'https://fortnite-api.com/v2/aes';
+const EPIC_MAINTENANCE_URL = 'https://status.epicgames.com/api/v2/scheduled-maintenances.json';
+
+/** Data i godzina po polsku, w strefie Europe/Warsaw, np. "01.11.2026, 06:00 (czas polski)". */
+function formatWarsawDateTime(value?: string | number | Date | null): string | null {
+    if (!value) return null;
+    const date = new Date(value);
+    if (isNaN(date.getTime())) return null;
+    const text = new Intl.DateTimeFormat('pl-PL', {
+        timeZone: 'Europe/Warsaw',
+        day: '2-digit', month: '2-digit', year: 'numeric',
+        hour: '2-digit', minute: '2-digit'
+    }).format(date);
+    return `${text} (czas polski)`;
+}
+
+/** Rzeczywista wersja gry z builda, np. "43.00". */
+async function fetchFortniteBuildVersion(): Promise<string | null> {
+    try {
+        const res = await fetch(FORTNITE_AES_URL);
+        fortniteLog('Wersja', `${FORTNITE_AES_URL} -> HTTP ${res.status}`);
+        if (!res.ok) {
+            console.error(`[Fortnite Wersja] /v2/aes zwrócił HTTP ${res.status} - pomijam wersję gry.`);
+            return null;
+        }
+        const data = await res.json() as any;
+        const build = String((data && data.data && data.data.build) || '');
+        const match = build.match(/Release-([0-9]+\.[0-9]+)/i);
+        const version = match ? match[1] : (build || null);
+        fortniteLog('Wersja', `Aktualna wersja gry: ${version || '(nie udało się odczytać)'} (build: ${build || 'brak'})`);
+        return version;
+    } catch (err) {
+        console.error('[Fortnite Wersja] Błąd pobierania wersji gry:', err);
+        return null;
+    }
+}
+
+type FortniteMaintenance = { name: string; status: string; start: string | null; end: string | null; link: string | null };
+
+/**
+ * Okno serwisowe (downtime) z status.epicgames.com: od kiedy do kiedy, nazwa z wersją i link.
+ * Bierze wpis aktywny/nadchodzący, a gdy takiego nie ma - ostatni zakończony.
+ */
+async function fetchFortniteMaintenance(): Promise<FortniteMaintenance | null> {
+    try {
+        const res = await fetch(EPIC_MAINTENANCE_URL);
+        fortniteLog('Downtime', `${EPIC_MAINTENANCE_URL} -> HTTP ${res.status}`);
+        if (!res.ok) {
+            console.error(`[Fortnite Downtime] status.epicgames.com zwrócił HTTP ${res.status} - pomijam okno serwisowe.`);
+            return null;
+        }
+        const data = await res.json() as any;
+        const all: any[] = Array.isArray(data && data.scheduled_maintenances) ? data.scheduled_maintenances : [];
+        const fortnite = all.filter((m: any) => /fortnite/i.test(String((m && m.name) || '')));
+        if (fortnite.length === 0) {
+            fortniteLog('Downtime', 'Brak wpisów o przerwach technicznych Fortnite na status.epicgames.com.');
+            return null;
+        }
+        const active = fortnite.find((m: any) => ['scheduled', 'in_progress', 'verifying'].includes(String(m.status)));
+        const chosen = active || fortnite[0];
+        const info: FortniteMaintenance = {
+            name: String(chosen.name || 'Przerwa techniczna Fortnite'),
+            status: String(chosen.status || 'unknown'),
+            start: chosen.scheduled_for || chosen.started_at || null,
+            end: chosen.scheduled_until || chosen.resolved_at || null,
+            link: chosen.shortlink || null
+        };
+        fortniteLog('Downtime', `${info.name} | status: ${info.status} | od: ${info.start || '—'} | do: ${info.end || '—'}${active ? ' (aktywne/nadchodzące)' : ' (ostatnie zakończone)'}`);
+        return info;
+    } catch (err) {
+        console.error('[Fortnite Downtime] Błąd pobierania okna serwisowego:', err);
+        return null;
+    }
+}
+
+/** Wersja wyciągnięta z nazwy przerwy technicznej, np. "Downtime for v43.00 Update" -> "43.00". */
+function maintenanceVersion(name: string): string | null {
+    const match = String(name || '').match(/v?([0-9]+\.[0-9]+)/);
+    return match ? match[1] : null;
+}
+
+/** Po polsku opis stanu przerwy technicznej. */
+function maintenanceStatusText(status: string): string {
+    switch (String(status || '').toLowerCase()) {
+        case 'scheduled': return '🟡 zaplanowana';
+        case 'in_progress': return '🔴 trwa teraz';
+        case 'verifying': return '🟠 trwa weryfikacja';
+        case 'completed': return '✅ zakończona';
+        default: return `ℹ️ ${status || 'nieznany'}`;
+    }
+}
+
+async function fetchLatestFortniteNews(): Promise<{ key: string; title: string; body: string; items: { title: string; body: string }[] } | null> {
+    try {
+        const res = await fetch(FORTNITE_NEWS_URL);
+        fortniteLog('News', `${FORTNITE_NEWS_URL} -> HTTP ${res.status}`);
+        if (!res.ok) {
+            console.error(`[Fortnite News] fortnite-api.com/v2/news zwrócił HTTP ${res.status} - pomijam powiadomienie o aktualizacji.`);
+            return null;
+        }
+
+        const data = await res.json() as any;
+        const br = data && data.data ? data.data.br : null;
+        const motds: any[] = br && Array.isArray(br.motds) ? br.motds : [];
+        const visible = motds.filter((m: any) => !m.hidden);
+        if (visible.length === 0) {
+            console.warn('[Fortnite News] Brak widocznych wpisów w data.br.motds - pomijam.');
+            return null;
+        }
+
+        const latest = visible[0];
+        const key = String((br && (br.hash || br.date)) || latest.id || latest.title || '');
+        const title = String(latest.title || latest.tabTitle || 'Aktualizacja Fortnite');
+        const body = String(latest.body || '').replace(/\s+/g, ' ').trim();
+        // Wszystkie widoczne wpisy: z nich bierzemy RZECZYWISTĄ treść "czego dotyczy aktualizacja".
+        const items = visible
+            .map((m: any) => ({
+                title: String(m.title || m.tabTitle || '').replace(/\s+/g, ' ').trim(),
+                body: String(m.body || '').replace(/\s+/g, ' ').trim()
+            }))
+            .filter((i: any) => i.title || i.body)
+            .slice(0, 8);
+        fortniteLog('News', `Najnowszy wpis: "${title}" (klucz: ${key}, wpisów: ${visible.length})`);
+        items.forEach((i: any, idx: number) => fortniteLog('News', `  wpis ${idx + 1}: "${i.title}"${i.body ? ` - ${i.body.slice(0, 100)}…` : ' (brak treści)'}`));
+        return { key, title, body, items };
+    } catch (err) {
+        console.error('[Fortnite News] Błąd pobierania informacji o aktualizacjach:', err);
+        return null;
+    }
+}
+
+/**
+ * Rzeczywisty opis aktualizacji: bierze najnowszy wpis z fortnite-api.com/v2/news
+ * (tytul + pelna tresc) i, gdy jest klucz GEMINI_API_KEY, prosi model o zwiezle
+ * podsumowanie po polsku: czego dotyczy update, nowe przedmioty, eventy.
+ * Bez klucza (albo gdy model nie odpowie) zwracany jest tekst z API, wiec opis nigdy nie jest pusty.
+ */
+async function buildFortniteUpdateDescription(news: { title: string; body: string; items?: { title: string; body: string }[] }): Promise<string> {
+    const raw = String(news.body || '').replace(/\s+/g, ' ').trim();
+    const entries = (news.items && news.items.length
+        ? news.items
+        : (news.title || raw ? [{ title: news.title, body: raw }] : []))
+        .slice(0, 8);
+    // Bez klucza API pokazujemy realne punkty z serwisu Epic, a nie ogólnik.
+    const fallback = entries.length
+        ? entries.map(e => `• **${e.title || 'Nowość'}**${e.body ? ` — ${e.body.length > 220 ? `${e.body.slice(0, 220)}…` : e.body}` : ''}`).join('\n')
+        : 'Szczegóły znajdziesz w kliencie gry po pobraniu aktualizacji.';
+
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+        fortniteLog('Opis', 'Brak GEMINI_API_KEY - używam opisu z fortnite-api.com.');
+        return fallback;
+    }
+
+    try {
+        const prompt =
+            `Jesteś autorem powiadomień na serwerze Discord o grze Fortnite. Na podstawie danych z API napisz po polsku` +
+            ` zwięzły, RZECZYWISTY opis najnowszej aktualizacji: od 3 do 6 krótkich punktów, każdy zaczynający się od "• ",` +
+            ` opisujących zmiany, nowości i eventy. Nie wymyślaj niczego, czego nie ma w tekście.` +
+            ` Nie używaj nagłówków ani innego markdownu poza "• ".\n\n` +
+            `Wpisy z gry (każdy opisuje inny element aktualizacji):\n` +
+            (entries.map(e => `- ${e.title || 'Nowość'}: ${e.body || '(brak treści)'}`).join('\n') || '(brak treści)');
+
+        const res = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+            body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+        });
+        fortniteLog('Opis', `Gemini (opis aktualizacji) -> HTTP ${res.status}`);
+        if (!res.ok) return fallback;
+
+        const data = await res.json() as any;
+        const text = String(data && data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts && data.candidates[0].content.parts[0] ? data.candidates[0].content.parts[0].text : '').trim();
+        if (!text) return fallback;
+        const trimmed = text.length > 1500 ? `${text.slice(0, 1500)}…` : text;
+        fortniteLog('Opis', `Wygenerowano opis aktualizacji (${trimmed.length} znaków).`);
+        return trimmed;
+    } catch (err) {
+        console.error('[Fortnite Opis] Błąd generowania opisu przez Gemini - używam tekstu z API:', err);
+        return fallback;
+    }
+}
 
 async function setupFortniteUpdateChannel() {
     try {
         const channel = await client.channels.fetch(ID_KANAL_AKTUALIZACJI_FORTNITE).catch(() => null) as TextChannel;
-        if (!channel) return;
-        await clearBotMessagesInChannel(channel, 50);
+        if (!channel) {
+            fortniteLog('Kanał', 'Nie znaleziono kanału aktualizacji Fortnite - panel nie został odświeżony.');
+            return;
+        }
+        // Ranga musi istnieć, zanim ruszy panel - tworzymy ją albo pobieramy z API, gdy nie ma jej w cache.
+        const fnRole = await getOrCreateFortniteUpdateRole(channel.guild);
+        const fnRoleId = fnRole ? fnRole.id : ID_RANGI_AKTUALIZACJE_FORTNITE;
+        if (!fnRole) {
+            fortniteLog('Ranga', 'Panel startuje bez rangi powiadomień - ping nie zadziała, dopóki rola nie powstanie.');
+        }
 
         const embed = new EmbedBuilder()
             .setColor(0x00D9FF)
@@ -1063,7 +1503,7 @@ async function setupFortniteUpdateChannel() {
                 '• 📢 **Informacje o nadchodzących aktualizacjach i wersjach gry wraz z opisem**.\n' +
                 '• 🟢/🔴 **Powiadomienia o statusie serwerów (przerwy techniczne)**.\n' +
                 '• ✨ **Informacje o nowych eventach w Fortnite** z oznaczeniem odpowiedniej rangi!\n\n' +
-                '🔔 *Kliknij poniższy przycisk, aby włączyć lub wyłączyć powiadomienia (rangę <@&' + ID_RANGI_AKTUALIZACJE_FORTNITE + '>)!*'
+                '🔔 *Kliknij poniższy przycisk, aby włączyć lub wyłączyć powiadomienia (rangę <@&' + fnRoleId + '>)!*'
             )
             .setImage(LIVE_IMAGE_URL)
             .setTimestamp()
@@ -1077,114 +1517,937 @@ async function setupFortniteUpdateChannel() {
                 .setEmoji('🔔')
         );
 
-        const sentMsg = await channel.send({ embeds: [embed], components: [row] });
-        await sentMsg.pin().catch(() => {});
+        // Panel edytujemy przy kazdym restarcie (jedna wiadomosc, bez duplikatow).
+        await sendOrUpdateInfoEmbed(channel, 'info_msg_fortnite_updates', embed, [row]);
     } catch (e) {
         console.error('Błąd inicjalizacji panelu aktualizacji Fortnite:', e);
+    }
+}
+
+// ============================================================================
+// === PJN BATTLE PASS — KARNET SEZONOWY (Lv 1 – 30) ===
+// Ścieżka darmowa (Free) dla każdego gracza + ścieżka elitarna (Premium) dla VIP.
+// XP karnetu płynie z czatu, kanałów głosowych, predykcji i zakładów.
+// ============================================================================
+const ID_KANALU_KARNETU = '1564607469651623946';
+const BATTLE_PASS_SEASON = 1;
+const BP_PREMIUM_PRICE = 20000;      // cena karnetu Premium w sklepie (PJN-Coins)
+const BP_PREMIUM_PRICE_VIP = 10000;  // zniżka dla posiadaczy rangi VIP
+const BP_XP_BASE = 100;                 // poziom N wymaga N * 100 XP karnetu
+const BP_VOICE_XP_PER_MINUTE = 2;       // XP karnetu za minutę na kanale głosowym
+const BP_CHAT_XP_FACTOR = 1;            // XP karnetu = XP serwera z wiadomości * factor
+
+function bpLog(area: string, message: string) {
+    console.log(`[BattlePass ${area}] ${message}`);
+}
+
+const battlePassSchema = new mongoose.Schema({
+    userId: { type: String, required: true, unique: true },
+    season: { type: Number, default: BATTLE_PASS_SEASON },
+    xp: { type: Number, default: 0 },
+    level: { type: Number, default: 1 },
+    totalXp: { type: Number, default: 0 },
+    premium: { type: Boolean, default: false },
+    claimedFree: { type: [Number], default: [] },
+    claimedPremium: { type: [Number], default: [] },
+    bpBadges: { type: [String], default: [] },
+    chatBoostMult: { type: Number, default: 1 },
+    chatBoostUntil: { type: Date, default: null },
+    voiceBoostMult: { type: Number, default: 1 },
+    voiceBoostUntil: { type: Date, default: null },
+    pagBoostUntil: { type: Date, default: null },
+    dailySkipTickets: { type: Number, default: 0 },
+    dailyDoubleUntil: { type: Date, default: null },
+    pagShieldUntil: { type: Date, default: null },
+    betaAccessUntil: { type: Date, default: null },
+    hallOfFame: { type: Boolean, default: false },
+    seasonTitle: { type: String, default: null }
+});
+const BattlePassModel = mongoose.model('BattlePass', battlePassSchema);
+
+type BpReward = { label: string; type: string; amount?: number; badge?: string; hours?: number; mult?: number; days?: number };
+
+const BATTLE_PASS_REWARDS: { level: number; free: BpReward; premium: BpReward }[] = [
+    { level: 1, free: { label: '💰 `150 PJN-Coins`', type: 'coins', amount: 150 }, premium: { label: '🟡 1 Dzień Rangi VIP', type: 'vip', days: 1 } },
+    { level: 2, free: { label: '⭐ `100 XP`', type: 'xp', amount: 100 }, premium: { label: '💰 `300 PJN-Coins`', type: 'coins', amount: 300 } },
+    { level: 3, free: { label: '💬 +10% XP za pisanie na 24h', type: 'chatBoost', mult: 1.1, hours: 24 }, premium: { label: '⭐ `250 XP`', type: 'xp', amount: 250 } },
+    { level: 4, free: { label: '💰 `200 PJN-Coins`', type: 'coins', amount: 200 }, premium: { label: '💎 `500 PJN-Coins`', type: 'coins', amount: 500 } },
+    { level: 5, free: { label: '🪙 Odznaka: „Nowicjusz BP”', type: 'badge', badge: '🪙 **Nowicjusz BP**' }, premium: { label: '🛡️ +15% do predykcji na 24h', type: 'pagBoost', hours: 24, mult: 1.15 } },
+    { level: 6, free: { label: '⭐ `150 XP`', type: 'xp', amount: 150 }, premium: { label: '💰 `600 PJN-Coins`', type: 'coins', amount: 600 } },
+    { level: 7, free: { label: '💰 `250 PJN-Coins`', type: 'coins', amount: 250 }, premium: { label: '🎟️ Bilet pominięcia cooldownu `/daily`', type: 'dailySkip', amount: 1 } },
+    { level: 8, free: { label: '🎙️ +20% XP za czas na głosowym na 24h', type: 'voiceBoost', mult: 1.2, hours: 24 }, premium: { label: '💰 `700 PJN-Coins`', type: 'coins', amount: 700 } },
+    { level: 9, free: { label: '⭐ `200 XP`', type: 'xp', amount: 200 }, premium: { label: '✨ Własny kanał głosowy (tymczasowy) na 3 dni', type: 'voiceChannel', days: 3 } },
+    { level: 10, free: { label: '🎁 **Paczka Startowa** (`+500 Coins`)', type: 'pack', amount: 500 }, premium: { label: '👑 **Ranga VIP na 3 dni**', type: 'vip', days: 3 } },
+    { level: 11, free: { label: '💰 `300 PJN-Coins`', type: 'coins', amount: 300 }, premium: { label: '⭐ `400 XP`', type: 'xp', amount: 400 } },
+    { level: 12, free: { label: '⭐ `250 XP`', type: 'xp', amount: 250 }, premium: { label: '💰 `800 PJN-Coins`', type: 'coins', amount: 800 } },
+    { level: 13, free: { label: '🪙 Odznaka: „Aktywny Bywalec”', type: 'badge', badge: '🪙 **Aktywny Bywalec**' }, premium: { label: '🍀 Podwójny bonus z `/daily` na 1 dzień', type: 'dailyDouble', hours: 24 } },
+    { level: 14, free: { label: '💰 `350 PJN-Coins`', type: 'coins', amount: 350 }, premium: { label: '🛡️ Ochrona przed spadkiem punktów w predykcji', type: 'pagShield', hours: 168 } },
+    { level: 15, free: { label: '⭐ `300 XP`', type: 'xp', amount: 300 }, premium: { label: '💎 `1 000 PJN-Coins`', type: 'coins', amount: 1000 } },
+    { level: 16, free: { label: '💬 Podwójny XP z wiadomości na 12h', type: 'chatBoost', mult: 2, hours: 12 }, premium: { label: '🎙️ Priorytet mówienia na kanałach głosowych', type: 'perk', amount: 1 } },
+    { level: 17, free: { label: '💰 `400 PJN-Coins`', type: 'coins', amount: 400 }, premium: { label: '✨ VIP na kanałach głosowych (dostęp do ukrytych pokoi)', type: 'perk', amount: 1 } },
+    { level: 18, free: { label: '⭐ `350 XP`', type: 'xp', amount: 350 }, premium: { label: '💰 `1 200 PJN-Coins`', type: 'coins', amount: 1200 } },
+    { level: 19, free: { label: '🪙 Odznaka: „Wzorowy Bywalec”', type: 'badge', badge: '🪙 **Wzorowy Bywalec**' }, premium: { label: '👑 Ranga VIP na 5 dni', type: 'vip', days: 5 } },
+    { level: 20, free: { label: '🎁 **Złota Skrzynia** (`+1 500 Coins`)', type: 'chest', amount: 1500 }, premium: { label: '👑 **Ranga VIP na 7 dni**', type: 'vip', days: 7 } },
+    { level: 21, free: { label: '💰 `500 PJN-Coins`', type: 'coins', amount: 500 }, premium: { label: '⭐ `600 XP`', type: 'xp', amount: 600 } },
+    { level: 22, free: { label: '⭐ `400 XP`', type: 'xp', amount: 400 }, premium: { label: '💰 `1 500 PJN-Coins`', type: 'coins', amount: 1500 } },
+    { level: 23, free: { label: '🎙️ Potrójny XP z kanałów głosowych na 12h', type: 'voiceBoost', mult: 3, hours: 12 }, premium: { label: '💎 `2 000 PJN-Coins`', type: 'coins', amount: 2000 } },
+    { level: 24, free: { label: '💰 `600 PJN-Coins`', type: 'coins', amount: 600 }, premium: { label: '🛡️ Stała ochrona statystyk predykcji na 7 dni', type: 'pagShield', hours: 168 } },
+    { level: 25, free: { label: '🪙 Odznaka: „Mistrz Grindowania”', type: 'badge', badge: '🪙 **Mistrz Grindowania**' }, premium: { label: '🛠️ Dostęp do testowania nowych komend bota w fazie beta', type: 'beta', days: 30 } },
+    { level: 26, free: { label: '⭐ `500 XP`', type: 'xp', amount: 500 }, premium: { label: '💰 `2 500 PJN-Coins`', type: 'coins', amount: 2500 } },
+    { level: 27, free: { label: '💰 `750 PJN-Coins`', type: 'coins', amount: 750 }, premium: { label: '👑 Ranga VIP na 14 dni', type: 'vip', days: 14 } },
+    { level: 28, free: { label: '💬 Stały bonus +5% XP do końca sezonu', type: 'chatBoostPerm', mult: 1.05 }, premium: { label: '🎟️ Wpis na serwerową tablicę sławy Hall of Fame', type: 'hallOfFame' } },
+    { level: 29, free: { label: '⭐ `600 XP`', type: 'xp', amount: 600 }, premium: { label: '💎 `3 500 PJN-Coins`', type: 'coins', amount: 3500 } },
+    { level: 30, free: { label: '🏆 Odznaka Elitarna: „Legenda PJN”', type: 'badge', badge: '🏆 **Legenda PJN**' }, premium: { label: '🏆 **Ranga VIP na 30 dni + Unikalny Tytuł Sezonowy**', type: 'vipTitle', days: 30 } }
+];
+
+function bpXpForLevel(level: number): number {
+    return BP_XP_BASE * Math.max(1, level);
+}
+
+async function getOrCreateBattlePass(userId: string) {
+    let bp = await BattlePassModel.findOne({ userId });
+    if (!bp) bp = await BattlePassModel.create({ userId, season: BATTLE_PASS_SEASON });
+    return bp;
+}
+
+async function isBattlePassPremium(userId: string, guild: any): Promise<boolean> {
+    const bp = await getOrCreateBattlePass(userId);
+    return !!bp.premium;
+}
+
+/** Cena przedmiotu w sklepie, z uwzględnieniem zniżki VIP na karnet Premium. */
+async function getShopPrice(item: any, guild: any, userId: string): Promise<number> {
+    if (item && item.id === 'bp_premium') {
+        return await memberHasVipRole(guild, userId) ? BP_PREMIUM_PRICE_VIP : BP_PREMIUM_PRICE;
+    }
+    return item.price;
+}
+
+/** Zakup ścieżki elitarnej karnetu: pobiera PJN-Coins i odblokowuje nagrody Premium. */
+async function bpPurchasePremium(userId: string, guild: any): Promise<{ ok: boolean; message: string }> {
+    const bp = await getOrCreateBattlePass(userId);
+    if (bp.premium) {
+        return { ok: false, message: '✅ Masz już odblokowaną **Ścieżkę Elitarną** tego sezonu. Odbieraj nagrody przyciskiem **👑 Odbierz nagrody Elitarne**!' };
+    }
+
+    let user = await UserModel.findOne({ userId });
+    if (!user) user = await UserModel.create({ userId });
+
+    const price = await getShopPrice({ id: 'bp_premium' }, guild, userId);
+    if (user.balance < price) {
+        return { ok: false, message: `❌ Brakuje Ci środków na karnet Premium. Kosztuje **${price} PJN-Coins**, a masz **${user.balance} PJN-Coins**.` };
+    }
+
+    user.balance -= price;
+    await user.save();
+
+    bp.premium = true;
+    await bp.save();
+
+    await ShopHistoryModel.create({ userId, itemName: '⚔️ Karnet Premium PJN Battle Pass', price });
+    bpLog('Premium', `<@${userId}> kupił karnet Premium za ${price} PJN-Coins.`);
+
+    return { ok: true, message: `👑 **Karnet Premium odblokowany!** Zapłaciłeś **${price} PJN-Coins**. Kliknij **👑 Odbierz nagrody Elitarne**, aby zgarnąć nagrody ze Ścieżki Elitarnej.` };
+}
+
+async function memberHasVipRole(guild: any, userId: string): Promise<boolean> {
+    if (!guild) return false;
+    try {
+        const member = guild.members.cache.get(userId) || await guild.members.fetch(userId).catch(() => null);
+        return !!(member && member.roles.cache.has(ID_ROLI_VIP));
+    } catch (e) {
+        return false;
+    }
+}
+
+async function addBattlePassXp(userId: string, amount: number, guild: any, source: string) {
+    if (!amount || amount <= 0) return;
+    try {
+        const bp = await getOrCreateBattlePass(userId);
+        if (bp.season !== BATTLE_PASS_SEASON) {
+            bp.season = BATTLE_PASS_SEASON;
+            bp.xp = 0;
+            bp.level = 1;
+            bp.claimedFree = [];
+            bp.claimedPremium = [];
+            bp.totalXp = 0;
+            bpLog('Sezon', `Nowy sezon ${BATTLE_PASS_SEASON} dla <@${userId}> - postęp zresetowany.`);
+        }
+
+        bp.xp = (bp.xp || 0) + amount;
+        bp.totalXp = (bp.totalXp || 0) + amount;
+
+        let need = bpXpForLevel(bp.level || 1);
+        let leveled = false;
+        while (bp.xp >= need && (bp.level || 1) < 30) {
+            bp.xp -= need;
+            bp.level = (bp.level || 1) + 1;
+            leveled = true;
+            need = bpXpForLevel(bp.level);
+        }
+        if ((bp.level || 1) >= 30) bp.xp = Math.min(bp.xp, bpXpForLevel(30));
+        await bp.save();
+
+        if (leveled) {
+            bpLog('Awans', `<@${userId}> awansował na poziom ${bp.level} karnetu (źródło: ${source}).`);
+            await announceBattlePassLevel(userId, guild, bp);
+        }
+    } catch (e) {
+        console.error('[BattlePass XP] Błąd naliczania XP karnetu:', e);
+    }
+}
+
+// Śledzenie czasu na kanałach głosowych - źródło XP karnetu z głosu.
+// Sesja pamięta, ile minut już zaliczono, żeby licznik na żywo nie naliczał ich dwa razy.
+type BpVoiceSession = { joinedAt: number; credited: number; channelId: string | null; guildId?: string };
+const bpVoiceSessions = new Map<string, BpVoiceSession>();
+const VOICE_TICK_MS = 60 * 1000;
+let voiceTickerRunning = false;
+
+/** Zalicza podaną liczbę minut głosu: odznaki, XP karnetu oraz XP serwera z radia. */
+async function creditVoiceMinutes(userId: string, guild: any, channelId: string | null, minutes: number, tag: string) {
+    if (minutes < 1) return;
+
+    let user = await UserModel.findOne({ userId });
+    if (!user) user = await UserModel.create({ userId });
+    user.voiceMinutes = (user.voiceMinutes || 0) + minutes;
+    await user.save();
+
+    const member = guild
+        ? (guild.members.cache.get(userId) || await guild.members.fetch(userId).catch(() => null))
+        : null;
+    if (member) await checkAndAwardBadges(user, member, guild);
+
+    const bp = await getOrCreateBattlePass(userId);
+    let mult = 1;
+    if (bp.voiceBoostUntil && new Date(bp.voiceBoostUntil).getTime() > Date.now()) {
+        mult = bp.voiceBoostMult || 1;
+    }
+    const gain = Math.round(minutes * BP_VOICE_XP_PER_MINUTE * mult);
+    await addBattlePassXp(userId, gain, guild, 'kanał głosowy');
+    bpLog('Głos', `${tag}: ${minutes} min na głosie (x${mult}) -> +${gain} XP karnetu.`);
+
+    // Radio: kanał muzyczny nalicza również XP serwera (poziomy i ranking).
+    if (channelId === ID_KANAL_MUZYCZNEGO) {
+        const expGain = minutes * XP_ZA_MINUTE_RADIA;
+        await addExp(userId, expGain, guild);
+        bpLog('Radio', `${tag}: ${minutes} min słuchania radia -> +${expGain} XP serwera.`);
+    }
+}
+
+/**
+ * Dopasowuje sesje do rzeczywistości: każdy, kto TERAZ siedzi na głosie, ma sesję.
+ * Bez tego osoby, które były na kanale już w chwili startu bota (albo restartu),
+ * nie dostawały nic - zdarzenie wejścia na kanał po prostu nie miało miejsca.
+ */
+function syncVoiceSessions() {
+    try {
+        for (const guild of client.guilds.cache.values()) {
+            for (const state of guild.voiceStates.cache.values()) {
+                const member = state.member;
+                if (!state.channelId || !member || member.user?.bot) continue;
+
+                const existing = bpVoiceSessions.get(member.id);
+                if (!existing) {
+                    bpVoiceSessions.set(member.id, {
+                        joinedAt: Date.now(),
+                        credited: 0,
+                        channelId: state.channelId,
+                        guildId: guild.id
+                    });
+                } else if (existing.channelId !== state.channelId) {
+                    existing.channelId = state.channelId;
+                }
+            }
+        }
+    } catch (e) {
+        console.error('[BattlePass Głos] Błąd synchronizacji sesji głosowych:', e);
+    }
+}
+
+/** Co minutę dopisuje XP wszystkim, którzy teraz siedzą na głosie - postęp jest widoczny od razu. */
+function startVoiceTicker() {
+    if (voiceTickerRunning) return;
+    voiceTickerRunning = true;
+
+    setInterval(async () => {
+        syncVoiceSessions();
+        for (const [userId, session] of bpVoiceSessions) {
+            try {
+                const elapsed = Math.floor((Date.now() - session.joinedAt) / 60000);
+                const pending = elapsed - session.credited;
+                if (pending < 1) continue;
+                session.credited += pending;
+
+                const guild = session.guildId ? client.guilds.cache.get(session.guildId) : null;
+                const member = guild ? await guild.members.fetch(userId).catch(() => null) : null;
+                await creditVoiceMinutes(userId, guild, session.channelId, pending, member ? member.user.tag : userId);
+            } catch (e) {
+                console.error('[BattlePass Głos] Błąd naliczania na żywo:', e);
+            }
+        }
+    }, VOICE_TICK_MS);
+}
+
+async function trackBattlePassVoiceTime(oldState: any, newState: any) {
+    try {
+        const member = newState.member || oldState.member;
+        if (!member || !member.user || member.user.bot) return;
+
+        const guild = newState.guild || oldState.guild;
+        const userId = member.id;
+        const wasIn = !!oldState.channelId;
+        const isIn = !!newState.channelId;
+
+        if (!wasIn && isIn) {
+            startVoiceTicker();
+            bpVoiceSessions.set(userId, {
+                joinedAt: Date.now(),
+                credited: 0,
+                channelId: newState.channelId || null,
+                guildId: guild?.id
+            });
+            return;
+        }
+
+        if (wasIn) {
+            const session = bpVoiceSessions.get(userId);
+            bpVoiceSessions.delete(userId);
+            if (session) {
+                // Reszta minut, których ticker jeszcze nie zdążył dopisać.
+                const elapsed = Math.floor((Date.now() - session.joinedAt) / 60000);
+                const pending = elapsed - session.credited;
+                if (pending >= 1) await creditVoiceMinutes(userId, guild, session.channelId, pending, member.user.tag);
+            }
+            // Wejście na inny kanał (albo powrót z wyciszenia) otwiera nową sesję.
+            if (isIn) {
+                bpVoiceSessions.set(userId, {
+                    joinedAt: Date.now(),
+                    credited: 0,
+                    channelId: newState.channelId || null,
+                    guildId: guild?.id
+                });
+            }
+        }
+    } catch (e) {
+        console.error('[BattlePass Głos] Błąd naliczania czasu głosowego:', e);
+    }
+}
+
+// --- Nadawanie nagród karnetu -------------------------------------------------
+
+async function bpGrantVip(userId: string, days: number, guild: any): Promise<Date> {
+    let user = await UserModel.findOne({ userId });
+    if (!user) user = await UserModel.create({ userId });
+
+    const now = Date.now();
+    const current = user.vipExpiresAt ? new Date(user.vipExpiresAt).getTime() : 0;
+    const base = current > now ? current : now;
+    const expires = new Date(base + days * 24 * 60 * 60 * 1000);
+    user.vipExpiresAt = expires;
+    await user.save();
+
+    if (guild) {
+        const member = guild.members.cache.get(userId) || await guild.members.fetch(userId).catch(() => null);
+        if (member) await member.roles.add(ID_ROLI_VIP).catch(() => {});
+    }
+    return expires;
+}
+
+async function bpApplyReward(userId: string, reward: BpReward, guild: any, silent = false): Promise<string> {
+    const bp = await getOrCreateBattlePass(userId);
+    let user = await UserModel.findOne({ userId });
+    if (!user) user = await UserModel.create({ userId });
+
+    const now = Date.now();
+    const boostMs = (reward.hours || 0) * 60 * 60 * 1000;
+    const daysMs = (reward.days || 0) * 24 * 60 * 60 * 1000;
+    const extend = (current: any) => {
+        const c = current ? new Date(current).getTime() : 0;
+        return new Date((c > now ? c : now) + boostMs);
+    };
+
+    switch (reward.type) {
+        case 'coins':
+        case 'pack':
+        case 'chest': {
+            const amount = reward.amount || 0;
+            user.balance += amount;
+            await user.save();
+            await TransactionHistoryModel.create({ userId, type: 'battlepass', amount, details: `PJN Battle Pass: ${reward.label}` });
+            if (!silent) {
+                try { await sendCoinsNotification(userId, amount, 'PJN Battle Pass', `Nagroda z karnetu: ${reward.label}`); } catch (e) {}
+            }
+            return `Do portfela dodano **${amount} PJN-Coins**.`;
+        }
+        case 'xp': {
+            const amount = reward.amount || 0;
+            try { await addExp(userId, amount, guild); } catch (e) {}
+            return `Przyznano **${amount} XP** serwera.`;
+        }
+        case 'badge': {
+            if (reward.badge && !user.badges.includes(reward.badge)) {
+                user.badges.push(reward.badge);
+                await user.save();
+            }
+            if (reward.badge && !bp.bpBadges.includes(reward.badge)) {
+                bp.bpBadges.push(reward.badge);
+                await bp.save();
+            }
+            return `Odblokowano odznakę ${reward.badge}.`;
+        }
+        case 'vip': {
+            const expires = await bpGrantVip(userId, reward.days || 1, guild);
+            return `Ranga **VIP** aktywna do <t:${Math.floor(expires.getTime() / 1000)}:D>.`;
+        }
+        case 'vipTitle': {
+            const expires = await bpGrantVip(userId, reward.days || 30, guild);
+            const title = `Legenda PJN • Sezon ${BATTLE_PASS_SEASON}`;
+            bp.seasonTitle = title;
+            await bp.save();
+            if (!user.badges.includes('🏆 **Legenda PJN**')) {
+                user.badges.push('🏆 **Legenda PJN**');
+                await user.save();
+            }
+            return `Ranga **VIP** do <t:${Math.floor(expires.getTime() / 1000)}:D> oraz unikalny tytuł sezonowy **${title}**.`;
+        }
+        case 'chatBoost': {
+            bp.chatBoostMult = Math.max(bp.chatBoostMult || 1, reward.mult || 1);
+            bp.chatBoostUntil = extend(bp.chatBoostUntil);
+            await bp.save();
+            return `Bonus **+${Math.round(((reward.mult || 1) - 1) * 100)}% XP z wiadomości** na ${reward.hours}h.`;
+        }
+        case 'chatBoostPerm': {
+            bp.chatBoostMult = Math.max(bp.chatBoostMult || 1, reward.mult || 1);
+            bp.chatBoostUntil = null;
+            await bp.save();
+            return `Stały bonus **+5% XP z wiadomości** do końca sezonu.`;
+        }
+        case 'voiceBoost': {
+            bp.voiceBoostMult = Math.max(bp.voiceBoostMult || 1, reward.mult || 1);
+            bp.voiceBoostUntil = extend(bp.voiceBoostUntil);
+            await bp.save();
+            return `Bonus **x${reward.mult} XP za czas na głosie** na ${reward.hours}h.`;
+        }
+        case 'pagBoost': {
+            bp.pagBoostUntil = extend(bp.pagBoostUntil);
+            await bp.save();
+            return `Bonus **+15% do predykcji** na ${reward.hours}h.`;
+        }
+        case 'pagShield': {
+            bp.pagShieldUntil = extend(bp.pagShieldUntil);
+            await bp.save();
+            return `Ochrona statystyk predykcji na ${reward.hours}h.`;
+        }
+        case 'dailySkip': {
+            bp.dailySkipTickets = (bp.dailySkipTickets || 0) + (reward.amount || 1);
+            await bp.save();
+            return `Bilet pominięcia cooldownu \`/daily\` (masz teraz **${bp.dailySkipTickets}**).`;
+        }
+        case 'dailyDouble': {
+            bp.dailyDoubleUntil = extend(bp.dailyDoubleUntil);
+            await bp.save();
+            return `Podwójny bonus z \`/daily\` na ${reward.hours}h.`;
+        }
+        case 'voiceChannel': {
+            user.customVoiceExpiresAt = new Date(now + daysMs);
+            await user.save();
+            return `Własny, tymczasowy kanał głosowy na **${reward.days} dni**.`;
+        }
+        case 'beta': {
+            bp.betaAccessUntil = new Date(now + daysMs);
+            await bp.save();
+            return `Dostęp do testów nowych komend bota w fazie beta na **${reward.days} dni**.`;
+        }
+        case 'hallOfFame': {
+            bp.hallOfFame = true;
+            await bp.save();
+            return `Wpis na serwerową tablicę sławy **Hall of Fame**.`;
+        }
+        default:
+            return `Przywilej aktywny: **${reward.label}**.`;
+    }
+}
+
+// --- Postęp i wypłata nagród karnetu ----------------------------------------
+
+function bpBoostsText(bp: any): string {
+    const now = Date.now();
+    const lines: string[] = [];
+    const stamp = (d: any) => `<t:${Math.floor(new Date(d).getTime() / 1000)}:R>`;
+    if ((bp.chatBoostMult || 1) > 1) {
+        lines.push(bp.chatBoostUntil ? `💬 XP z wiadomości x${bp.chatBoostMult} — do ${stamp(bp.chatBoostUntil)}` : `💬 Stały bonus XP z wiadomości x${bp.chatBoostMult}`);
+    }
+    if ((bp.voiceBoostMult || 1) > 1 && bp.voiceBoostUntil && new Date(bp.voiceBoostUntil).getTime() > now) {
+        lines.push(`🎙️ XP z głosu x${bp.voiceBoostMult} — do ${stamp(bp.voiceBoostUntil)}`);
+    }
+    if (bp.pagBoostUntil && new Date(bp.pagBoostUntil).getTime() > now) lines.push(`🛡️ Bonus do predykcji — do ${stamp(bp.pagBoostUntil)}`);
+    if (bp.pagShieldUntil && new Date(bp.pagShieldUntil).getTime() > now) lines.push(`🛡️ Ochrona predykcji — do ${stamp(bp.pagShieldUntil)}`);
+    if (bp.dailyDoubleUntil && new Date(bp.dailyDoubleUntil).getTime() > now) lines.push(`🍀 Podwójny /daily — do ${stamp(bp.dailyDoubleUntil)}`);
+    if ((bp.dailySkipTickets || 0) > 0) lines.push(`🎟️ Bilety pominięcia /daily: **${bp.dailySkipTickets}**`);
+    if (bp.betaAccessUntil && new Date(bp.betaAccessUntil).getTime() > now) lines.push(`🛠️ Dostęp beta — do ${stamp(bp.betaAccessUntil)}`);
+    if (bp.hallOfFame) lines.push('🎟️ Wpis w Hall of Fame');
+    if (bp.seasonTitle) lines.push(`🏆 Tytuł sezonowy: **${bp.seasonTitle}**`);
+    return lines.length ? lines.join('\n') : '*Brak aktywnych bonusów z karnetu.*';
+}
+
+async function bpAddXp(userId: string, amount: number, guild: any, source: string) {
+    if (!amount || amount <= 0) return null;
+    const bp = await getOrCreateBattlePass(userId);
+
+    bp.xp = (bp.xp || 0) + amount;
+    bp.totalXp = (bp.totalXp || 0) + amount;
+
+    let leveled = false;
+    let required = bpXpForLevel(bp.level);
+    while (bp.level < 30 && bp.xp >= required) {
+        bp.xp -= required;
+        bp.level += 1;
+        leveled = true;
+        required = bpXpForLevel(bp.level);
+    }
+    if (bp.level >= 30) bp.xp = Math.min(bp.xp, bpXpForLevel(30));
+    await bp.save();
+
+    if (leveled) await announceBattlePassLevel(userId, guild, bp);
+    return bp;
+}
+
+function bpIsPremium(user: any, member: any): boolean {
+    const now = Date.now();
+    if (user && user.vipExpiresAt && new Date(user.vipExpiresAt).getTime() > now) return true;
+    if (member && member.roles?.cache?.has(ID_ROLI_VIP)) return true;
+    return false;
+}
+
+async function bpClaimTrack(bp: any, member: any, guild: any, track: 'free' | 'premium') {
+    const claimed: number[] = track === 'free' ? bp.claimedFree : bp.claimedPremium;
+    const granted: string[] = [];
+
+    for (const entry of BATTLE_PASS_REWARDS) {
+        if (entry.level > bp.level) continue;
+        if (claimed.includes(entry.level)) continue;
+        const reward = track === 'free' ? entry.free : entry.premium;
+        if (!reward) continue;
+        const result = await bpApplyReward(bp.userId, reward, guild, true);
+        claimed.push(entry.level);
+        granted.push(`**Lv ${entry.level}** — ${reward.label}\n┗ ${result}`);
+    }
+    bp.markModified(track === 'free' ? 'claimedFree' : 'claimedPremium');
+    await bp.save();
+    return granted;
+}
+
+// Powiadomienie o awansie w karnecie. Wysyłane na PW, żeby nie zaśmiecać kanału karnetu.
+async function announceBattlePassLevel(userId: string, guild: any, bp: any, reason?: string) {
+    try {
+        const discordUser = await client.users.fetch(userId).catch(() => null);
+        if (!discordUser) return;
+        const entry = BATTLE_PASS_REWARDS.find(r => r.level === bp.level);
+        const embed = new EmbedBuilder()
+            .setColor(0xFFD700)
+            .setTitle('⚔️ AWANS W KARNETCIE PJN BATTLE PASS!')
+            .setDescription(
+                `Gratulacje! Osiągnąłeś **poziom ${bp.level} / 30** karnetu${reason ? ` (${reason})` : ''}.\n\n` +
+                `🆓 **Ścieżka Darmowa:** ${entry ? entry.free.label : '—'}\n` +
+                `👑 **Ścieżka Elitarna:** ${entry ? entry.premium.label : '—'}\n\n` +
+                `🎁 **Nagrody odbierasz** przyciskami w panelu na kanale karnetu (<#${ID_KANALU_KARNETU}>) ` +
+                `albo komendą \`/karnet\`.\n` +
+                `💎 **Elitarny Karnet (Premium)** kupisz w **sklepie serwera** — 20 000 PJN-Coins, a z rangą VIP 10 000 PJN-Coins.\n` +
+                `Poziom 30 to maksimum tego sezonu — czekaj na kolejny sezon PJN Battle Pass!`
+            )
+            .setTimestamp()
+            .setFooter({ text: `PJN Battle Pass • Sezon ${BATTLE_PASS_SEASON}` });
+        await discordUser.send({ embeds: [embed] });
+    } catch (e) {
+        // Zamknięte PW: informacja zostaje w panelu karnetu, nic nie wysyłamy na kanał.
+        bpLog('PW', `Nie udało się wysłać PW o awansie w karnecie do <@${userId}> (prywatne wiadomości zablokowane?).`);
+    }
+}
+
+/** Krótka informacja na PW o nagrodach do odbioru - używana przy awansie w systemie XP. */
+async function dmKarnetInfo(userId: string, level: number) {
+    try {
+        const discordUser = await client.users.fetch(userId).catch(() => null);
+        if (!discordUser) return;
+        const embed = new EmbedBuilder()
+            .setColor(0xFFD700)
+            .setTitle('⚔️ PJN Battle Pass — nagrody czekają!')
+            .setDescription(
+                `Awansowałeś na **${level} poziom** w systemie XP! Twój postęp w karnecie sprawdzisz i nagrody ` +
+                `odbierzesz przyciskami w panelu na kanale karnetu (<#${ID_KANALU_KARNETU}>) albo komendą \`/karnet\`.\n\n` +
+                `💎 **Elitarny Karnet (Premium)** kupisz w **sklepie serwera** za **20 000 PJN-Coins**, a z rangą **VIP** za **10 000 PJN-Coins**.`
+            )
+            .setTimestamp()
+            .setFooter({ text: `PJN Battle Pass • Sezon ${BATTLE_PASS_SEASON}` });
+        await discordUser.send({ embeds: [embed] });
+    } catch (e) {
+        bpLog('PW', `Nie udało się wysłać PW z informacją o karnecie do <@${userId}> (prywatne wiadomości zablokowane?).`);
+    }
+}
+
+// ============================================================================
+// === MODUŁ ODZNAK — czytelny podgląd osiągnięć gracza ===
+const BADGE_TIERS = ['Elitarna', 'Epicka', 'Rzadka', 'Zwykła'];
+const BADGE_TIER_ICONS: Record<string, string> = {
+    'Elitarna': '🏆',
+    'Epicka': '🎟️',
+    'Rzadka': '💎',
+    'Zwykła': '🔹'
+};
+const BADGES_PER_PAGE = 12;
+
+function badgeClean(badge: string): string {
+    return String(badge || '').replace(/\*\*/g, '').replace(/\s+/g, ' ').trim();
+}
+
+function badgeTier(badge: string): string {
+    const clean = badgeClean(badge).toLowerCase();
+    if (clean.includes('elitarna')) return 'Elitarna';
+    if (clean.includes('epicka')) return 'Epicka';
+    if (clean.includes('rzadka')) return 'Rzadka';
+    return 'Zwykła';
+}
+
+/** Unikalne odznaki gracza — usuwa duplikaty, które mogły wejść z różnych systemów. */
+function uniqueBadges(user: any): string[] {
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const b of (user && user.badges ? user.badges : []) as string[]) {
+        const clean = badgeClean(b);
+        if (!clean || seen.has(clean)) continue;
+        seen.add(clean);
+        out.push(clean);
+    }
+    return out;
+}
+
+function badgeCountLine(user: any): string {
+    const badges = uniqueBadges(user);
+    if (badges.length === 0) return 'Brak odznak — zdobądź pierwsze, będąc aktywnym!';
+    const byTier = BADGE_TIERS
+        .map(t => ({ t, n: badges.filter(b => badgeTier(b) === t).length }))
+        .filter(x => x.n > 0)
+        .map(x => `${BADGE_TIER_ICONS[x.t]} ${x.t}: **${x.n}**`)
+        .join(' • ');
+    return `**${badges.length}** odznak\n${byTier}`;
+}
+
+/** Moduł odznak: podział na rzadkości, paginacja, przyciski nawigacji. */
+function buildBadgeModule(user: any, targetUser: any, page: number) {
+    const badges = uniqueBadges(user);
+    const totalPages = Math.max(1, Math.ceil(badges.length / BADGES_PER_PAGE));
+    const safePage = Math.min(Math.max(0, page), totalPages - 1);
+    const slice = badges.slice(safePage * BADGES_PER_PAGE, (safePage + 1) * BADGES_PER_PAGE);
+
+    let desc = `👤 <@${targetUser.id}>\n${badgeCountLine(user)}\n\n`;
+    if (badges.length === 0) {
+        desc += 'Bądź aktywny na czacie i głosie, graj w kasynie, kupuj w sklepie i zdobywaj poziomy karnetu, aby odblokować odznaki.';
+    } else {
+        desc += slice.map(b => `• ${b} — *${badgeTier(b)}*`).join('\n');
+        if (totalPages > 1) desc += `\n\n📄 Strona **${safePage + 1} / ${totalPages}**`;
+    }
+
+    const embed = new EmbedBuilder()
+        .setColor(0x9B59B6)
+        .setTitle(`🏆 Moduł Odznak: ${targetUser.username || targetUser.tag || 'Gracz'}`)
+        .setDescription(desc)
+        .setTimestamp()
+        .setFooter({ text: `PJN System Osiągnięć • Odznak: ${badges.length}` });
+    try {
+        if (targetUser.displayAvatarURL) embed.setThumbnail(targetUser.displayAvatarURL());
+    } catch (e) {}
+
+    const components: ActionRowBuilder<ButtonBuilder>[] = [];
+    if (totalPages > 1) {
+        components.push(new ActionRowBuilder<ButtonBuilder>().addComponents(
+            new ButtonBuilder()
+                .setCustomId(`badge_mod_${targetUser.id}_${safePage - 1}`)
+                .setLabel('Poprzednia')
+                .setEmoji('◀️')
+                .setStyle(ButtonStyle.Secondary)
+                .setDisabled(safePage === 0),
+            new ButtonBuilder()
+                .setCustomId(`badge_mod_${targetUser.id}_${safePage + 1}`)
+                .setLabel('Następna')
+                .setEmoji('▶️')
+                .setStyle(ButtonStyle.Secondary)
+                .setDisabled(safePage >= totalPages - 1)
+        ));
+    }
+    return { embeds: [embed], components };
+}
+
+/** Zwięzła karta profilu — bez pełnej listy odznak (ta żyje w module odznak). */
+function buildProfileEmbed(user: any, targetUser: any): EmbedBuilder {
+    const embed = new EmbedBuilder()
+        .setColor(0x9B59B6)
+        .setTitle(`👤 Profil Gracza: ${targetUser.tag || targetUser.username}`)
+        .setDescription(
+            `💼 **Portfel:** \`${user.balance} PJN-Coins\`\n` +
+            `⭐ **Poziom:** \`${user.level || 1}\` (Exp: \`${user.exp || 0} / ${(user.level || 1) * 150}\`)\n` +
+            `💬 **Wiadomości:** \`${user.messageCount || 0}\`\n` +
+            `🎙️ **Czas na głosie:** \`${Math.floor((user.voiceMinutes || 0) / 60)}h ${(user.voiceMinutes || 0) % 60}m\`\n` +
+            `🎲 **Gry w kasynie:** \`${user.casinoPlays || 0}\`\n\n` +
+            `🏆 **Odznaki i Osiągnięcia:**\n${badgeCountLine(user)}\n\n` +
+            `*Pełną listę odznak otworzysz przyciskiem poniżej albo komendą \`/odznaki\`.*`
+        )
+        .setTimestamp()
+        .setFooter({ text: 'PJN System Osiągnięć i Profilu' });
+    try {
+        if (targetUser.displayAvatarURL) embed.setThumbnail(targetUser.displayAvatarURL());
+    } catch (e) {}
+    return embed;
+}
+
+// --- Panel karnetu: instrukcja, postęp, odbieranie nagród ---------------------
+
+function bpProgressBar(bp: any): string {
+    const need = bpXpForLevel(bp.level || 1);
+    const done = Math.min(10, Math.floor(((bp.xp || 0) / need) * 10));
+    return '▰'.repeat(done) + '▱'.repeat(10 - done);
+}
+
+function bpTableEmbeds(): EmbedBuilder[] {
+    const embeds: EmbedBuilder[] = [];
+    for (let i = 0; i < BATTLE_PASS_REWARDS.length; i += 10) {
+        const page = BATTLE_PASS_REWARDS.slice(i, i + 10);
+        const desc = page.map(e => `**Lv ${e.level}**\n🆓 ${e.free.label}\n👑 ${e.premium.label}`).join('\n');
+        embeds.push(
+            new EmbedBuilder()
+                .setColor(0xFFD700)
+                .setTitle(`🛤️ Ścieżka Karnetu • Poziomy ${page[0].level} – ${page[page.length - 1].level}`)
+                .setDescription(desc)
+                .setFooter({ text: `PJN Battle Pass • Sezon ${BATTLE_PASS_SEASON}` })
+        );
+    }
+    return embeds;
+}
+
+async function bpProfileEmbed(userId: string, guild: any): Promise<EmbedBuilder> {
+    const bp = await getOrCreateBattlePass(userId);
+    let premium = false;
+    try { premium = await isBattlePassPremium(userId, guild); } catch (e) {}
+    const need = bpXpForLevel(bp.level || 1);
+    const member = guild ? await guild.members.fetch(userId).catch(() => null) : null;
+    return new EmbedBuilder()
+        .setColor(premium ? 0xF1C40F : 0x9B59B6)
+        .setTitle('⚔️ PJN Battle Pass — Twój postęp')
+        .setThumbnail(member ? member.user.displayAvatarURL() : (client.user?.displayAvatarURL() || null))
+        .setDescription(
+            `<@${userId}>\n\n` +
+            `🏅 **Poziom karnetu:** \`${bp.level} / 30\`\n` +
+            `⭐ **XP karnetu:** \`${bp.xp} / ${need}\`\n` +
+            `${bpProgressBar(bp)}\n` +
+            `📈 **XP łącznie w sezonie:** \`${bp.totalXp || 0}\`\n` +
+            `💳 **Ścieżka elitarna (Premium):** ${premium ? '✅ odblokowana' : `🔒 do kupienia w sklepie — ${BP_PREMIUM_PRICE} PJN-Coins (${BP_PREMIUM_PRICE_VIP} z rangą VIP)`}\n` +
+            `🆓 **Odebrane nagrody Free:** \`${(bp.claimedFree || []).length} / 30\`\n` +
+            `👑 **Odebrane nagrody Elitarne:** \`${(bp.claimedPremium || []).length} / 30\`\n\n` +
+            `🎁 **Aktywne bonusy z karnetu:**\n${bpBoostsText(bp)}`
+        )
+        .setTimestamp()
+        .setFooter({ text: `PJN Battle Pass • Sezon ${BATTLE_PASS_SEASON}` });
+}
+
+function bpPanelRows(): ActionRowBuilder<ButtonBuilder>[] {
+    const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+        new ButtonBuilder().setCustomId('bp_profile').setLabel('Mój postęp').setEmoji('📊').setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId('bp_claim_free').setLabel('Odbierz nagrody Free').setEmoji('🆓').setStyle(ButtonStyle.Success),
+        new ButtonBuilder().setCustomId('bp_claim_premium').setLabel('Odbierz nagrody Elitarne').setEmoji('👑').setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId('bp_table').setLabel('Tabela nagród').setEmoji('🛤️').setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId('bp_help').setLabel('Jak to działa?').setEmoji('❓').setStyle(ButtonStyle.Secondary)
+    );
+    return [row];
+}
+
+async function setupBattlePassChannel() {
+    try {
+        const channel = await client.channels.fetch(ID_KANALU_KARNETU).catch(() => null) as TextChannel;
+        if (!channel) {
+            bpLog('Panel', `Nie znaleziono kanału karnetu (${ID_KANALU_KARNETU}).`);
+            return;
+        }
+        await clearBotMessagesInChannel(channel, 50);
+
+        const intro = new EmbedBuilder()
+            .setColor(0xFFD700)
+            .setTitle('⚔️ PJN Battle Pass — System Sezonowy')
+            .setDescription(
+                '**PJN Battle Pass** to cykliczny system postępów gracza zintegrowany z ekonomią serwera (**PJN-Coins**), poziomami doświadczenia (**XP**), systemem odznak oraz przywilejami **VIP**.\n\n' +
+                '📋 **Jak to działa?**\n' +
+                '• **Zdobywanie poziomów:** awansujesz na kolejne poziomy karnetu poprzez aktywność na czacie tekstowym, kanałach głosowych oraz udział w predykcjach i zakładach.\n' +
+                '• **Dwie ścieżki:** każdy uczestniczy w **Ścieżce Darmowej (Free)**, a **Elitarny Karnet** (Ścieżka Elitarna / Premium) kupisz w **sklepie serwera** za **20 000 PJN-Coins** — z rangą **VIP** tylko za **10 000 PJN-Coins**.\n' +
+                '• **30 poziomów** nagród na sezon — od PJN-Coinsów i XP, przez odznaki i bonusy, aż po rangi VIP i unikalny tytuł sezonowy.\n\n' +
+                `🎙️ Za każdą minutę na kanale głosowym dostajesz **${BP_VOICE_XP_PER_MINUTE} XP** karnetu, a za wiadomość na czacie od **5 do 14 XP**. Każdy poziom wymaga **${BP_XP_BASE} XP × numer poziomu**.\n\n` +
+                `🎵 **Radio:** słuchanie radia na kanale muzycznym (<#${ID_KANAL_MUZYCZNEGO}>) nalicza dodatkowo **${XP_ZA_MINUTE_RADIA} XP serwera** za każdą minutę.`
+            )
+            .setImage(LIVE_IMAGE_URL)
+            .setFooter({ text: 'PJN Battle Pass • Sezon ' + BATTLE_PASS_SEASON });
+
+        const howto = new EmbedBuilder()
+            .setColor(0x9B59B6)
+            .setTitle('📋 Jak obsługiwać karnet?')
+            .setDescription(
+                '1️⃣ Kliknij **📊 Mój postęp** — zobaczysz swój poziom, XP i aktywne bonusy.\n' +
+                '2️⃣ Zdobywaj XP karnetu: pisz na czacie, siedź na kanałach głosowych (radio na kanale muzycznym daje jednocześnie XP karnetu i XP serwera), głosuj w predykcjach i wchodź do zakładów.\n' +
+                '3️⃣ Kliknij **🆓 Odbierz nagrody Free** — bot wyda wszystkie zaległe nagrody z darmowej ścieżki.\n' +
+                '4️⃣ **Ścieżka Elitarna:** kup **⚔️ Karnet Premium** w sklepie serwera za **20 000 PJN-Coins** (z rangą **VIP** tylko **10 000**), a potem kliknij **👑 Odbierz nagrody Elitarne**.\n' +
+                '5️⃣ **🛤️ Tabela nagród** pokazuje wszystkie 30 poziomów, a **❓ Jak to działa?** wraca do tego opisu.\n\n' +
+                '💡 Odznaki z karnetu trafiają do profilu `/odznaki`, rangi VIP z karnetu przedłużają się automatycznie, a bonusy XP (czat, głos, predykcje, `/daily`) naliczają się od razu po odebraniu nagrody.'
+            )
+            .setFooter({ text: 'PJN Battle Pass • Instrukcja' });
+
+        const sentMsg = await channel.send({ embeds: [intro, howto], components: bpPanelRows() });
+        await sentMsg.pin().catch(() => {});
+        bpLog('Panel', `Panel karnetu wysłany na kanał ${ID_KANALU_KARNETU}.`);
+    } catch (e) {
+        console.error('[BattlePass Panel] Błąd inicjalizacji panelu karnetu:', e);
     }
 }
 
 async function checkFortniteServerStatus() {
     try {
         const channel = await client.channels.fetch(ID_KANAL_AKTUALIZACJI_FORTNITE).catch(() => null) as TextChannel;
-        if (!channel) return;
+        if (!channel) {
+            fortniteLog('Kanał', `Nie udało się pobrać kanału aktualizacji (${ID_KANAL_AKTUALIZACJI_FORTNITE}) - pomijam sprawdzanie.`);
+            return;
+        }
 
-        const rolePing = `<@&${ID_RANGI_AKTUALIZACJE_FORTNITE}>`;
+        const fnRole = await getOrCreateFortniteUpdateRole(channel.guild);
+        const roleId = fnRole ? fnRole.id : ID_RANGI_AKTUALIZACJE_FORTNITE;
+        const rolePing = `<@&${roleId}>`;
+        fortniteLog('Ranga', `Ping powiadomień -> rola ${roleId}${fnRole ? '' : ' (nie udało się pobrać ani utworzyć rangi)'}`);
 
-        const statusRes = await fetch('https://fortnite-api.com/v1/status');
-        if (statusRes.ok) {
-            const statusData = await statusRes.json() as any;
-            if (statusData && statusData.status === 200 && statusData.data) {
-                const isOnline = statusData.data.serviceConnected ?? true;
-                const currentVersion = statusData.data.version;
+        // === STATUS SERWERÓW === źródło: status.epicgames.com (stare fortnite-api.com/v1/status zwraca 404)
+        const isOnline = await fetchFortniteServerOnline();
 
-                if (currentVersion && currentVersion !== lastFortniteVersion) {
-                    if (lastFortniteVersion !== null) {
-                        const updateEmbed = new EmbedBuilder()
-                            .setColor(0x00D9FF)
-                            .setTitle(`🚀 Nowa Aktualizacja Fortnite — Wersja v${currentVersion}`)
-                            .setDescription(
-                                `Wprowadzono oficjalny update gry!\n\n` +
-                                `📋 **Czego dotyczy aktualizacja:**\n` +
-                                `• Wydano łatkę systemową i nową wersję \`v${currentVersion}\`.\n` +
-                                `• Aktualizacja wprowadza poprawki błędów stabilności oraz przygotowuje zawartość w grze.\n` +
-                                `• *Wskocz do gry, pobierz paczkę i sprawdź nowości na mapie!*`
-                            )
-                            .setImage(LIVE_IMAGE_URL)
-                            .setTimestamp()
-                            .setFooter({ text: 'PJN Fortnite Updates & Patch Notes' });
+        if (isOnline !== null && lastFortniteServerStatus !== null && lastFortniteServerStatus !== isOnline) {
+            // Realne okno serwisowe z datami, żeby było widać kiedy i do kiedy.
+            const downtime = await fetchFortniteMaintenance();
+            const startTxt = downtime ? formatWarsawDateTime(downtime.start) : null;
+            const endTxt = downtime ? formatWarsawDateTime(downtime.end) : null;
+            let oknoSerwisowe = '';
+            if (startTxt && endTxt) {
+                oknoSerwisowe = `\n\n⏰ **Start przerwy:** \`${startTxt}\`\n🏁 **Planowany koniec:** \`${endTxt}\`\n📌 **Stan:** ${maintenanceStatusText(downtime!.status)}${maintenanceVersion(downtime!.name) ? `\n🎮 **Wersja:** \`v${maintenanceVersion(downtime!.name)}\`` : ''}`;
+            } else if (startTxt) {
+                oknoSerwisowe = `\n\n⏰ **Start przerwy:** \`${startTxt}\`\n📌 **Stan:** ${maintenanceStatusText(downtime!.status)}`;
+            } else if (downtime) {
+                oknoSerwisowe = `\n\n⏰ **Okno serwisowe:** status.epicgames.com nie podaje teraz daty dla tej przerwy.`;
+            }
 
-                        await channel.send({
-                            content: `${rolePing} 📢 Pojawiła się **nowa aktualizacja** w Fortnite (v${currentVersion})!`,
-                            embeds: [updateEmbed],
-                            allowedMentions: { roles: [ID_RANGI_AKTUALIZACJE_FORTNITE] }
-                        });
-                    }
-                    lastFortniteVersion = currentVersion;
-                }
+            const serverEmbed = new EmbedBuilder()
+                .setColor(isOnline ? 0x2ECC71 : 0xE74C3C)
+                .setTitle(isOnline ? '🟢 Serwery Fortnite zostały OTWARTE!' : '🔴 Serwery Fortnite zostały ZAMKNIĘTE!')
+                .setDescription(
+                    (isOnline
+                        ? 'Przerwa techniczna dobiegła końca. Serwery są ponownie dostępne, możesz dołączać do gier!'
+                        : 'Rozpoczęła się przerwa techniczna lub wdrażanie nowej aktualizacji. Trwa wyłączanie usług gry.') + oknoSerwisowe
+                )
+                .setImage(LIVE_IMAGE_URL)
+                .setTimestamp()
+                .setFooter({ text: 'PJN Fortnite Server Status' });
 
-                if (lastFortniteServerStatus !== null && lastFortniteServerStatus !== isOnline) {
-                    const serverEmbed = new EmbedBuilder()
-                        .setColor(isOnline ? 0x2ECC71 : 0xE74C3C)
-                        .setTitle(isOnline ? '🟢 Serwery Fortnite zostały OTWARTE!' : '🔴 Serwery Fortnite zostały ZAMKNIĘTE!')
-                        .setDescription(
-                            isOnline 
-                                ? 'Przerwa techniczna dobiegła końca. Serwery są ponownie dostępne, możesz dołączać do gier!' 
-                                : 'Rozpoczęła się przerwa techniczna lub wdrażanie nowej aktualizacji. Trwa wyłączanie usług gry.'
-                        )
-                        .setTimestamp()
-                        .setFooter({ text: 'PJN Fortnite Server Status' });
-
-                    await channel.send({
-                        content: `${rolePing} 🔔 Status serwerów Fortnite uległ zmianie!`,
-                        embeds: [serverEmbed],
-                        allowedMentions: { roles: [ID_RANGI_AKTUALIZACJE_FORTNITE] }
-                    });
-                }
-                lastFortniteServerStatus = isOnline;
+            try {
+                await channel.send({
+                    content: `${rolePing} 🔔 Status serwerów Fortnite uległ zmianie!`,
+                    embeds: [serverEmbed],
+                    allowedMentions: { roles: [roleId] }
+                });
+                fortniteLog('Status', `Wysłano powiadomienie o zmianie statusu serwerów: ${isOnline ? 'OTWARTE' : 'ZAMKNIĘTE'}.`);
+            } catch (err) {
+                console.error('[Fortnite Status] Nie udało się wysłać powiadomienia o statusie serwerów:', err);
             }
         }
 
-        const res = await fetch('https://fortnite-api.com/v2/events', {
-            headers: { 'Authorization': process.env.FORTNITE_API_KEY || '' }
-        });
-        if (!res.ok) return;
-        const data = await res.json() as any;
+        if (isOnline !== null) lastFortniteServerStatus = isOnline;
 
-        if (!data || !data.data || !data.data.events) return;
+        // === AKTUALIZACJE / PATCH NOTES === źródło: fortnite-api.com/v2/news (stare v2/events zwraca 404)
+        const news = await fetchLatestFortniteNews();
+        if (news) {
+            const knownKey = await loadLastFortniteNewsKey();
+            if (knownKey === null) {
+                await rememberLastFortniteNewsKey(news.key);
+                fortniteLog('News', `Zapamiętano bieżący stan aktualizacji (${news.key}) - następna zmiana wyśle powiadomienie.`);
+            } else if (news.key !== knownKey) {
+                await rememberLastFortniteNewsKey(news.key);
+                const opis = await buildFortniteUpdateDescription(news);
+                // Wersja gry i realne okno serwisowe (od kiedy do kiedy, w czasie polskim).
+                const buildVersion = await fetchFortniteBuildVersion();
+                const downtime = await fetchFortniteMaintenance();
+                const versionFromName = downtime ? maintenanceVersion(downtime.name) : null;
+                const versionText = buildVersion || versionFromName;
 
-        const events = data.data.events;
-        if (events.length === 0) return;
+                const startRaw = downtime ? downtime.start : null;
+                const endRaw = downtime ? downtime.end : null;
+                const startTxt = formatWarsawDateTime(startRaw);
+                const endTxt = formatWarsawDateTime(endRaw);
+                const startMs = startRaw ? new Date(startRaw).getTime() : NaN;
+                const endMs = endRaw ? new Date(endRaw).getTime() : NaN;
 
-        const latestEvent = events[0];
-        const eventId = latestEvent.id || latestEvent.name;
+                // Etykieta rozróżnia zaplanowaną przerwę od ostatniej zakończonej, żeby nie wprowadzać w błąd.
+                const przerwaAktywna = downtime ? ['scheduled', 'in_progress', 'verifying'].includes(String(downtime.status).toLowerCase()) : false;
+                const naglowek = przerwaAktywna
+                    ? '⏰ **Zaplanowane okno serwisowe:**'
+                    : '🗓️ **Ostatnie okno serwisowe (już zakończone):**';
+                let oknoTxt: string;
+                if (startTxt && endTxt && !isNaN(startMs) && !isNaN(endMs)) {
+                    const minuty = Math.max(1, Math.round((endMs - startMs) / 60000));
+                    oknoTxt =
+                        `${naglowek}\n` +
+                        `⏰ **Start przerwy technicznej:** \`${startTxt}\`\n` +
+                        `🏁 **Planowany koniec:** \`${endTxt}\`\n` +
+                        `⏳ **Przewidywany czas:** \`~${Math.floor(minuty / 60)}h ${minuty % 60}m\`\n` +
+                        `📌 **Stan przerwy:** ${maintenanceStatusText(downtime!.status)}\n` +
+                        `🏷️ **Nazwa na status.epicgames.com:** ${downtime!.name}\n`;
+                } else if (startTxt) {
+                    oknoTxt =
+                        `${naglowek}\n` +
+                        `⏰ **Start przerwy technicznej:** \`${startTxt}\`\n` +
+                        `🏁 **Planowany koniec:** status.epicgames.com nie podaje godziny zakończenia\n` +
+                        `📌 **Stan przerwy:** ${maintenanceStatusText(downtime!.status)}\n`;
+                } else {
+                    oknoTxt = `⏰ **Okno serwisowe:** status.epicgames.com nie podaje teraz zaplanowanej przerwy dla tej aktualizacji.\n`;
+                }
 
-        if (eventId !== lastFortniteEventId) {
-            lastFortniteEventId = eventId;
-            const eventName = latestEvent.name || 'Nowy Event w Fortnite';
-            const eventDesc = latestEvent.shortDescription || latestEvent.description || 'Sprawdź szczegóły w grze!';
+                const updateEmbed = new EmbedBuilder()
+                    .setColor(0x00D9FF)
+                    .setTitle(`🚀 Nowa Aktualizacja Fortnite${versionText ? ` — v${versionText}` : ''}: ${news.title}`)
+                    .setDescription(
+                        `Wprowadzono oficjalny update gry!\n\n` +
+                        `🎮 **Wersja gry:** ${versionText ? `\`v${versionText}\`` : 'brak danych z fortnite-api.com'}\n` +
+                        `${oknoTxt}\n` +
+                        `📋 **Czego dotyczy aktualizacja:**\n` +
+                        `${opis}\n\n` +
+                        `🎮 *Wskocz do gry, pobierz paczkę i sprawdź nowości na mapie!*`
+                    )
+                    .setImage(LIVE_IMAGE_URL)
+                    .setTimestamp()
+                    .setFooter({ text: 'PJN Fortnite Updates & Patch Notes' });
 
-            const embed = new EmbedBuilder()
-                .setColor(0x9B59B6)
-                .setTitle(`🎉 Nowy Event w Fortnite: ${eventName}`)
-                .setDescription(`📋 **Opis wydarzenia:**\n${eventDesc}\n\n*Wskocz do gry i sprawdź najnowszą zawartość oraz wyzwania!*`)
-                .setImage(LIVE_IMAGE_URL)
-                .setTimestamp()
-                .setFooter({ text: 'Fortnite Events • API' });
+                if (downtime && downtime.link) updateEmbed.setURL(downtime.link);
 
-            await channel.send({
-                content: `${rolePing} 📢 Pojawił się nowy event w Fortnite!`,
-                embeds: [embed],
-                allowedMentions: { roles: [ID_RANGI_AKTUALIZACJE_FORTNITE] }
-            });
+                try {
+                    await channel.send({
+                        content: `${rolePing} 📢 Pojawiła się **nowa aktualizacja** w Fortnite!`,
+                        embeds: [updateEmbed],
+                        allowedMentions: { roles: [roleId] }
+                    });
+                    fortniteLog('News', `Wysłano powiadomienie o aktualizacji: "${news.title}".`);
+                } catch (err) {
+                    console.error('[Fortnite News] Nie udało się wysłać powiadomienia o aktualizacji:', err);
+                }
+            } else {
+                fortniteLog('News', `Bez zmian w aktualizacjach (${knownKey}).`);
+            }
         }
     } catch (err) {
-        console.error('Błąd podczas sprawdzania statusu i eventów Fortnite:', err);
+        console.error('Błąd podczas sprawdzania statusu i aktualizacji Fortnite:', err);
     }
 }
 
 function startFortniteStatusCron() {
     cron.schedule('*/5 * * * *', async () => {
+        fortniteLog('Cron', 'Uruchamiam sprawdzanie statusu serwerów i aktualizacji Fortnite...');
         await checkFortniteServerStatus();
     });
 }
@@ -1271,11 +2534,11 @@ async function refreshFortniteRankingMessage(guild: any) {
         await clearBotMessagesInChannel(channel, 50);
         await updateAllFortniteStats();
 
-        const underUsers = await UserModel.find({ epicNick: { $ne: null }, matchesPlayed: { $lt: 2800 } }).sort({ fortniteKills: -1 }).limit(100);
+        const underUsers = await findRankedMembers(guild, { epicNick: { $ne: null }, matchesPlayed: { $lt: 2800 } }, { fortniteKills: -1 }, 100);
         const payloadUnder = await generateFortniteRankingEmbeds(guild, underUsers, '🟢 TOP • Początkujący (<2800 meczów)', 0x2ECC71, 0);
         await channel.send(payloadUnder);
 
-        const overUsers = await UserModel.find({ epicNick: { $ne: null }, matchesPlayed: { $gte: 2800 } }).sort({ fortniteKills: -1 }).limit(100);
+        const overUsers = await findRankedMembers(guild, { epicNick: { $ne: null }, matchesPlayed: { $gte: 2800 } }, { fortniteKills: -1 }, 100);
         const payloadOver = await generateFortniteRankingEmbeds(guild, overUsers, '🔥 TOP • Weterani (2800+ meczów)', 0xE74C3C, 0);
         await channel.send(payloadOver);
 
@@ -1735,11 +2998,13 @@ async function setupShopChannel() {
     try {
         const channel = await client.channels.fetch(ID_KANAL_SKLEPU).catch(() => null) as TextChannel;
         if (!channel) return;
-        await clearBotMessagesInChannel(channel, 100);
+        // UWAGA: nie czyscimy historii tego kanalu - kasowaloby to menu sklepu z karnetem Premium.
+        // Wystarczy jedno menu z karnetem: przy restarcie edytujemy te sama wiadomosc (shop_config).
 
         let desc = 'Witaj w oficjalnym sklepie serwera PJN! Wydawaj swoje PJN-Coins na unikalne przedmioty, role i usługi.\n\n*Wszystkie rangi czasowe (w tym VIP) są ważne przez 30 dni, po czym automatycznie wygasają.*\n\n**📋 Dostępny asortyment:**\n\n';
         SHOP_ITEMS.forEach((item, index) => {
-            desc += `**${index + 1}.${item.name}** — 💰 **${item.price} PJN-Coins**\n> *${item.description}*\n\n`;
+            const vipNote = item.id === 'bp_premium' ? ' *(z rangą VIP: 10 000)*' : '';
+            desc += `**${index + 1}.${item.name}** — 💰 **${item.price} PJN-Coins**${vipNote}\n> *${item.description}*\n\n`;
         });
 
         const embed = new EmbedBuilder()
@@ -1762,8 +3027,9 @@ async function setupShopChannel() {
             );
 
         const row = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(selectMenu);
-        const sentMsg = await channel.send({ embeds: [embed], components: [row] });
-        await sentMsg.pin().catch(() => {});
+        // Te sama wiadomosc edytujemy przy kazdym restarcie, wiec menu (w tym Karnet Premium)
+        // zostaje na kanale i nie zniknie po restarcie bota.
+        await sendOrUpdateInfoEmbed(channel, 'info_msg_sklep', embed, [row]);
     } catch (e) {
         console.error('Błąd inicjalizacji kanału sklepu:', e);
     }
@@ -2041,6 +3307,9 @@ async function addExp(userId: string, amount: number, guild: any) {
 
     await user.save();
 
+    // Informacja o karnecie idzie na PW - kanał awansów zostaje czysty.
+    if (leveledUp) await dmKarnetInfo(userId, user.level);
+
     if (leveledUp) {
         try {
             const channelToSend = await guild.channels.fetch(ID_KANAL_AWANSOW).catch(() => null) as TextChannel;
@@ -2055,6 +3324,8 @@ async function addExp(userId: string, amount: number, guild: any) {
                 rewardText = `\n\n🎁 **Nagroda za awans na ${user.level} lvl:** Otrzymałeś **1500 PJN-Coins** do portfela! 💰`;
             }
 
+            const karnetText = '';
+
             const embed = new EmbedBuilder()
                 .setColor(0x9B59B6)
                 .setTitle('🚀 AWANS NA WYŻSZY POZIOM!')
@@ -2064,7 +3335,8 @@ async function addExp(userId: string, amount: number, guild: any) {
                     `⭐ **Nowy Poziom:** \`${user.level}\`\n` +
                     `🏆 **Miejsce w rankingu XP:** \`#${rankDetails.rank} z ${rankDetails.total}\`\n` +
                     `🎯 **Twój Postęp:** \`${user.exp} / ${user.level * 150} XP\`` +
-                    rewardText
+                    rewardText +
+                    karnetText
                 )
                 .setTimestamp()
                 .setFooter({ text: 'PJN System Doświadczenia • Awans' });
@@ -2078,8 +3350,110 @@ async function addExp(userId: string, amount: number, guild: any) {
     }
 }
 
+// === FILTROWANIE BYŁYCH CZŁONKÓW Z RANKINGÓW ===
+// Rankingi pokazują wyłącznie osoby, które nadal są na serwerze - żadnych samych ID.
+// Danych byłych graczy NIE kasujemy: gdy wrócą, ich portfel, poziom i odznaki są nietknięte.
+
+/** Zwraca tylko tych użytkowników, którzy nadal są członkami serwera. */
+async function filterPresentMembers(guild: any, users: any[]): Promise<any[]> {
+    if (!guild || !guild.members) return users;
+
+    const withId: { u: any; id: string }[] = [];
+    const seen = new Set<string>();
+    for (const u of users) {
+        if (!u || !u.userId) continue;
+        const id = String(u.userId);
+        if (seen.has(id)) continue;
+        seen.add(id);
+        withId.push({ u, id });
+    }
+
+    const present: any[] = [];
+    const missing: string[] = [];
+    for (const { u, id } of withId) {
+        // Zawsze pytamy REST z force: true. Cache potrafi trzymać kogoś, kto już wyszedł,
+        // a wtedy taki gracz przechodził filtr i lądował w rankingu jako samo ID.
+        const member = await guild.members.fetch({ user: id, force: true }).catch(() => null);
+        if (member) present.push(u);
+        else missing.push(id);
+    }
+
+    if (missing.length) {
+        console.log(`[Rankingi] Pomijam byłych członków (${missing.length}): ${missing.join(', ')}`);
+    }
+    return present;
+}
+
+/**
+ * Ranking bez byłych członków: pobiera zapas z bazy (limit * 3), odrzuca osoby,
+ * których już nie ma na serwerze, i zwraca żądaną liczbę pozycji.
+ */
+async function findRankedMembers(guild: any, filter: any, sort: any, limit: number): Promise<any[]> {
+    const users = await UserModel.find(filter).sort(sort).limit(Math.min(limit * 3, 300));
+    const present = await filterPresentMembers(guild, users);
+    return present.slice(0, limit);
+}
+
+/**
+ * Rozwiązuje nazwy wyświetlane dla kandydatów do rankingu.
+ * Kto nie jest już członkiem serwera (albo nazwy nie da się pobrać), wypada z listy -
+ * dzięki temu w rankingu nigdy nie pojawi się wpis typu "Użytkownik (123456...)".
+ */
+async function resolveRankedNames(guild: any, users: any[]): Promise<{ u: any; name: string }[]> {
+    const resolved: { u: any; name: string }[] = [];
+    for (const u of users) {
+        if (!u || !u.userId) continue;
+        const member = guild
+            ? await guild.members.fetch({ user: String(u.userId), force: true }).catch(() => null)
+            : null;
+        if (member) resolved.push({ u, name: member.displayName });
+    }
+    return resolved;
+}
+
+/** Tytuły wiadomości rankingowych - służą do rozpoznania i sprzątnięcia starych kopii. */
+const TOP_RANKING_TITLE = '🏆 TOP 10 - Ranking PJN-Coins';
+const REP_RANKING_TITLE = '🌟 Aleja Sław - TOP 5 Traderów Reputacji';
+
+/**
+ * Usuwa z kanału wszystkie wiadomości bota z danym tytułem rankingu.
+ * Dzięki temu na kanale zostaje dokładnie jedna, świeża wiadomość, a żadna stara kopia
+ * (np. z okresu przed poprawką) nie wisi dalej z samymi ID. Limit powtórzeń chroni
+ * przez niekończoną pętlą, gdyby Discord zwracał błąd kasowania.
+ */
+async function deleteRankingCopies(channel: TextChannel, title: string) {
+    try {
+        for (let pass = 0; pass < 5; pass++) {
+            const messages = await channel.messages.fetch({ limit: 100 }).catch(() => null);
+            if (!messages) return;
+            const copies = messages.filter(m =>
+                m.author.id === client.user?.id &&
+                m.embeds.some(e => (e.title || '').trim() === title)
+            );
+            if (copies.size === 0) return;
+            for (const [, msg] of copies) await msg.delete().catch(() => {});
+            if (copies.size < 100) return;
+        }
+    } catch (e) {}
+}
+
+// Odświeżenie rankingu Fortnite po odejściu gracza - najwyżej raz na minutę, aby nie spamować API.
+let fortniteRankingRefreshTimer: ReturnType<typeof setTimeout> | null = null;
+function scheduleFortniteRankingRefresh(guild: any) {
+    if (fortniteRankingRefreshTimer) return;
+    fortniteRankingRefreshTimer = setTimeout(async () => {
+        fortniteRankingRefreshTimer = null;
+        try {
+            await refreshFortniteRankingMessage(guild);
+        } catch (e) {}
+    }, 60 * 1000);
+}
+
 async function getTopEmbedData(guild: any) {
-    const topUsers = await UserModel.find().sort({ balance: -1 }).limit(10);
+    // Bierzemy zapas kandydatów i rozwiązujemy nazwy: kogo nie ma już na serwerze,
+    // ten w ogóle nie trafia do rankingu.
+    const candidates = await findRankedMembers(guild, {}, { balance: -1 }, 30);
+    const topUsers = (await resolveRankedNames(guild, candidates)).slice(0, 10);
 
     if (topUsers.length === 0) {
         return {
@@ -2092,16 +3466,8 @@ async function getTopEmbedData(guild: any) {
     let desc = 'Ranking jest automatycznie aktualizowany co 5 minut.\n\nNajbogatsi użytkownicy\n';
 
     for (let index = 0; index < topUsers.length; index++) {
-        const u = topUsers[index];
+        const { u, name: userName } = topUsers[index];
         const medal = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `**${index + 1}.**`;
-
-        let userName = `Użytkownik (${u.userId})`;
-        try {
-            if (guild) {
-                const member = await guild.members.fetch(u.userId).catch(() => null);
-                if (member) userName = member.displayName;
-            }
-        } catch (e) {}
 
         desc += `${medal} — **${userName}** — **${u.balance} PJN-Coins**\n`;
     }
@@ -2114,7 +3480,8 @@ async function getTopEmbedData(guild: any) {
 }
 
 async function getReputationTopEmbedData(guild: any) {
-    const topUsers = await UserModel.find().sort({ reputation: -1 }).limit(5);
+    const candidates = await findRankedMembers(guild, {}, { reputation: -1 }, 30);
+    const topUsers = (await resolveRankedNames(guild, candidates)).slice(0, 5);
 
     if (topUsers.length === 0) {
         return {
@@ -2127,16 +3494,8 @@ async function getReputationTopEmbedData(guild: any) {
     let desc = 'Ranking najlepszych i najbezpieczniejszych traderów Fortnite na serwerze. Aktualizowany co 5 godzin.\n\n';
 
     for (let index = 0; index < topUsers.length; index++) {
-        const u = topUsers[index];
+        const { u, name: userName } = topUsers[index];
         const medal = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `**${index + 1}.**`;
-
-        let userName = `Użytkownik (${u.userId})`;
-        try {
-            if (guild) {
-                const member = await guild.members.fetch(u.userId).catch(() => null);
-                if (member) userName = member.displayName;
-            }
-        } catch (e) {}
 
         const repValue = u.reputation || 0;
         const sign = repValue > 0 ? '+' : '';
@@ -2152,39 +3511,63 @@ async function getReputationTopEmbedData(guild: any) {
     };
 }
 
+/** Przebudowuje TOP 10 PJN-Coins: kasuje poprzednią wiadomość i wysyła świeżą listę. */
+async function refreshTopRanking() {
+    try {
+        const config = await ConfigModel.findOne({ key: 'topka_msg' });
+        if (!config) return;
+
+        const channel = await client.channels.fetch(config.channelId).catch(() => null) as TextChannel;
+        if (!channel) return;
+
+        // Kasujemy WSZYSTKIE kopie tego rankingu (także te sprzed poprawki), nie tylko
+        // ostatnio zapisaną - inaczej stara lista z samymi ID wisiałaby dalej.
+        await deleteRankingCopies(channel, TOP_RANKING_TITLE);
+
+        const embedData = await getTopEmbedData(channel.guild);
+        const newMessage = await channel.send({ embeds: [embedData] });
+
+        config.messageId = newMessage.id;
+        await config.save();
+        console.log('[Rankingi] TOP 10 PJN-Coins odświeżone (bez byłych członków).');
+    } catch (err) {
+        console.error('Błąd odświeżania TOP 10 PJN-Coins:', err);
+    }
+}
+
+/** Przebudowuje Aleję Sław: usuwa stare wiadomości rankingu i wysyła świeżą listę. */
+async function refreshReputationRanking() {
+    try {
+        const channel = await client.channels.fetch(ID_ALEJA_SLAW_REPUTACJI).catch(() => null) as TextChannel;
+        if (!channel) return;
+
+        await deleteRankingCopies(channel, REP_RANKING_TITLE);
+
+        const embedData = await getReputationTopEmbedData(channel.guild);
+        await channel.send({ embeds: [embedData] });
+        console.log('[Rankingi] Aleja Sław odświeżona (bez byłych członków).');
+    } catch (err) {
+        console.error('Błąd odświeżania Alei Sław:', err);
+    }
+}
+
+// Po odejściu gracza odświeżamy oba rankingi - najwyżej raz na minutę, żeby nie spamować kanałów.
+let rankingsRefreshTimer: ReturnType<typeof setTimeout> | null = null;
+function scheduleAllRankingsRefresh() {
+    if (rankingsRefreshTimer) return;
+    rankingsRefreshTimer = setTimeout(async () => {
+        rankingsRefreshTimer = null;
+        await refreshTopRanking();
+        await refreshReputationRanking();
+    }, 60 * 1000);
+}
+
 async function startTopUpdater() {
-    setInterval(async () => {
-        try {
-            const config = await ConfigModel.findOne({ key: 'topka_msg' });
-            if (!config) return;
-
-            const channel = await client.channels.fetch(config.channelId).catch(() => null) as TextChannel;
-            if (!channel) return;
-
-            const oldMessage = await channel.messages.fetch(config.messageId).catch(() => null);
-            if (oldMessage) await oldMessage.delete().catch(() => {});
-
-            const embedData = await getTopEmbedData(channel.guild);
-            const newMessage = await channel.send({ embeds: [embedData] });
-
-            config.messageId = newMessage.id;
-            await config.save();
-        } catch (err) {}
-    }, 5 * 60 * 1000);
+    setInterval(() => { refreshTopRanking(); }, 5 * 60 * 1000);
 }
 
 async function startReputationTopUpdater() {
-    setInterval(async () => {
-        try {
-            const channel = await client.channels.fetch(ID_ALEJA_SLAW_REPUTACJI).catch(() => null) as TextChannel;
-            if (!channel) return;
-
-            await clearBotMessagesInChannel(channel, 100);
-
-            const embedData = await getReputationTopEmbedData(channel.guild);
-            await channel.send({ embeds: [embedData] });
-        } catch (err) {}
-    }, 5 * 60 * 60 * 1000);
+    setInterval(() => { refreshReputationRanking(); }, 5 * 60 * 60 * 1000);
 }
 
 async function startBadgesInfoUpdater() {
@@ -2404,6 +3787,8 @@ client.on('voiceStateUpdate', async (oldState: VoiceState, newState: VoiceState)
     try {
         const guild = newState.guild || oldState.guild;
 
+        await trackBattlePassVoiceTime(oldState, newState);
+
         if (newState.channelId === ID_KANAL_TWORZENIA_POKOJU && newState.member) {
             const parentCategoryId = newState.channel?.parentId || await getFirstCategory(guild);
 
@@ -2464,6 +3849,38 @@ client.on('voiceStateUpdate', async (oldState: VoiceState, newState: VoiceState)
     }
 });
 
+// === Powitania na kanale powitań — proste, po ludzku ===
+const WELCOME_CHANNEL_ID = '1532302511459926068';
+const WELCOME_WORDS = ['witam', 'siema', 'siemanko', 'cześć', 'czesc'];
+const welcomeCooldowns = new Map<string, number>();
+const WELCOME_COOLDOWN_MS = 2 * 60 * 1000;
+
+/** Czy wiadomość to powitanie? Krótka wypowiedź zawierająca jedno ze słów powitalnych. */
+function isWelcomeMessage(content: string): boolean {
+    const cleaned = content
+        .toLowerCase()
+        .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+    if (!cleaned) return false;
+    const words = cleaned.split(' ');
+    if (words.length > 5) return false;
+    return words.some(w => WELCOME_WORDS.includes(w));
+}
+
+/** Odpowiedź jak od zwykłego użytkownika — kilka wariantów, żeby nie było sztampowo. */
+function buildWelcomeReply(displayName: string): string {
+    const replies = [
+        `Siema ${displayName}! 👋`,
+        `Cześć ${displayName}! Miło Cię widzieć 😄`,
+        `Siemanko ${displayName}! 🖐️`,
+        `Witam witam ${displayName}! 🙌`,
+        `Hejka ${displayName}! Co słychać? 😎`,
+        `Ooo, ${displayName}! Siemanko 👋`
+    ];
+    return replies[Math.floor(Math.random() * replies.length)];
+}
+
 client.on('messageCreate', async message => {
     if (message.author.bot || !message.guild) return;
 
@@ -2484,10 +3901,41 @@ client.on('messageCreate', async message => {
     }
 
     await user.save();
-    await addExp(message.author.id, Math.floor(Math.random() * 10) + 5, message.guild);
+    const bpChatBase = Math.floor(Math.random() * 10) + 5;
+    await addExp(message.author.id, bpChatBase, message.guild);
+
+    // XP karnetu z czatu (z uwzględnieniem bonusów z PJN Battle Pass)
+    try {
+        const bpChat = await getOrCreateBattlePass(message.author.id);
+        let bpChatMult = 1;
+        const boostActive = bpChat.chatBoostUntil && new Date(bpChat.chatBoostUntil).getTime() > Date.now();
+        const boostPermanent = !bpChat.chatBoostUntil && (bpChat.chatBoostMult || 1) > 1;
+        if (boostActive || boostPermanent) bpChatMult = bpChat.chatBoostMult || 1;
+        await addBattlePassXp(message.author.id, Math.max(1, Math.round(bpChatBase * BP_CHAT_XP_FACTOR * bpChatMult)), message.guild, 'wiadomość na czacie');
+    } catch (e) {}
+
     await checkAndAwardBadges(user, message.member || message.author, message.guild);
 
     const content = message.content.trim();
+
+    // Powitanie na kanale powitań (z krótkim cooldownem, żeby bot nie spamował)
+    try {
+        if (message.channelId === WELCOME_CHANNEL_ID && isWelcomeMessage(content)) {
+            const last = welcomeCooldowns.get(message.author.id) || 0;
+            if (Date.now() - last > WELCOME_COOLDOWN_MS) {
+                welcomeCooldowns.set(message.author.id, Date.now());
+                const displayName = message.member?.displayName || message.author.username;
+                await message.reply({
+                    content: buildWelcomeReply(displayName),
+                    allowedMentions: { repliedUser: false }
+                });
+                return;
+            }
+        }
+    } catch (e) {
+        console.error('Błąd powitania:', e);
+    }
+
     if (
         content.startsWith('+rep') || 
         content.startsWith('-rep') || 
@@ -2570,6 +4018,10 @@ const commands = [
     new SlashCommandBuilder().setName('ustaw-odznaki').setDescription('Ustaw ten kanał jako centrum odznak (Admin)').setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
     new SlashCommandBuilder().setName('darmowe-gry').setDescription('Ręcznie wyślij aktualne informacje o darmowych grach z Epic Games i Steam (Admin)').setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
     new SlashCommandBuilder().setName('daily').setDescription('Odbieraj codzienne 100 PJN-Coins'),
+    new SlashCommandBuilder()
+        .setName('karnet')
+        .setDescription('Sprawdź swój postęp w karnetcie PJN Battle Pass')
+        .addUserOption(o => o.setName('uzytkownik').setDescription('Sprawdź karnet innego gracza').setRequired(false)),
     new SlashCommandBuilder().setName('przelej').setDescription('Przelewa PJN-Coins').addUserOption(o => o.setName('uzytkownik').setDescription('Komu').setRequired(true)).addIntegerOption(o => o.setName('kwota').setDescription('Ile').setRequired(true)),
     new SlashCommandBuilder().setName('kostka').setDescription('Rzuć kością').addIntegerOption(o => o.setName('stawka').setDescription('Stawka').setRequired(true)),
     new SlashCommandBuilder().setName('moneta').setDescription('Orzeł czy reszka').addStringOption(o => o.setName('wybor').setDescription('Wybór').setRequired(true).addChoices({name: 'Orzeł', value: 'orzel'}, {name: 'Reszka', value: 'reszka'})).addIntegerOption(o => o.setName('stawka').setDescription('Stawka').setRequired(true)),
@@ -2672,6 +4124,12 @@ const commands = [
         .setName('daj-bonus-wygranych')
         .setDescription('Aktywuje 100% wygranych w kasynie na 30 minut dla wybranego gracza (Admin)')
         .addUserOption(o => o.setName('uzytkownik').setDescription('Gracz, który otrzyma bonus').setRequired(true))
+        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+    new SlashCommandBuilder()
+        .setName('daj-karnet-premium')
+        .setDescription('Nadaje lub odbiera karnet Premium PJN Battle Pass wybranemu graczowi (Admin)')
+        .addUserOption(o => o.setName('uzytkownik').setDescription('Gracz, który ma otrzymać karnet Premium').setRequired(true))
+        .addBooleanOption(o => o.setName('odbierz').setDescription('Ustaw na true, aby odebrać karnet Premium zamiast go nadawać').setRequired(false))
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
     new SlashCommandBuilder()
         .setName('daj-wszystkim')
@@ -2821,6 +4279,10 @@ client.on('guildMemberRemove', async member => {
         }
 
         await channel.send({ embeds: [embed] });
+
+        // Gracz odszedł - odśwież rankingi, aby nie zostało w nich samo jego ID.
+        scheduleFortniteRankingRefresh(guild);
+        scheduleAllRankingsRefresh();
     } catch (e) {}
 });
 
@@ -2867,20 +4329,15 @@ client.once('ready', async () => {
     console.log(`Zalogowano jako ${client.user?.tag}!`);
     await seedQuotesIfNeeded();
 
-    try {
-        const topConfig = await ConfigModel.findOne({ key: 'topka_msg' });
-        if (topConfig) {
-            const channel = await client.channels.fetch(topConfig.channelId).catch(() => null) as TextChannel;
-            if (channel) {
-                const oldMessage = await channel.messages.fetch(topConfig.messageId).catch(() => null);
-                if (oldMessage) await oldMessage.delete().catch(() => {});
+    // Licznik głosu działa od startu, także dla osób, które były na kanale przed restartem bota.
+    syncVoiceSessions();
+    startVoiceTicker();
 
-                const embedData = await getTopEmbedData(channel.guild);
-                const newMessage = await channel.send({ embeds: [embedData] });
-                topConfig.messageId = newMessage.id;
-                await topConfig.save();
-            }
-        }
+    try {
+        // Ranking odświeżamy tą samą drogą co co 5 minut: kasuje wszystkie stare kopie
+        // i wysyła jedną świeżą listę, już bez byłych członków.
+        await refreshTopRanking();
+        await refreshReputationRanking();
     } catch (e) {}
 
     try {
@@ -2917,6 +4374,7 @@ client.once('ready', async () => {
     await setupCasinoHubChannel();
     await setupBotInteractiveChannelInstruction(); 
     await setupCenterZgloszenChannel(); 
+    await setupBattlePassChannel();
     await cleanupOrphanedLfgVoices();
 
     const rest = new REST({ version: '10' }).setToken(token);
@@ -2940,11 +4398,17 @@ client.once('ready', async () => {
     startHourlyAnnouncements();
     startDailyQuotes();
     startReputationTopUpdater();
+    // Po starcie od razu poprawiamy oba rankingi: inaczej wiadomość z samym ID byłego członka
+    // wisiałaby na kanale do 5 minut (topka), a na Alei Sław nawet do 5 godzin.
+    setTimeout(() => { refreshTopRanking(); }, 5000);
+    setTimeout(() => { refreshReputationRanking(); }, 8000);
     startLfgAutoCloser();
     startExpirationChecker();
     startDailyShopAutoPoster(); 
     startFortniteRankingCron();
     startFortniteStatusCron(); 
+    // Pierwsze sprawdzenie od razu po starcie - ustawia punkt odniesienia (bez powiadomień) i pokazuje w konsoli, co zwróciły źródła.
+    checkFortniteServerStatus();
     startServerStatsCron();
     startPollChecker();
     startBetChecker();
@@ -2981,6 +4445,76 @@ client.on('interactionCreate', async interaction => {
         }
     }
 
+    // === Moduł odznak — przycisk otwarcia i paginacja ===
+    if (interaction.isButton() && interaction.customId.startsWith('badge_mod_')) {
+        const parts = interaction.customId.split('_');
+        const targetId = parts[2];
+        const page = parseInt(parts[3] || '0', 10) || 0;
+
+        await interaction.deferReply({ ephemeral: true });
+        const targetUser = await client.users.fetch(targetId).catch(() => null);
+        if (!targetUser) {
+            return interaction.editReply({ content: '❌ Nie znaleziono użytkownika.' });
+        }
+        let user = await UserModel.findOne({ userId: targetId });
+        if (!user) user = await UserModel.create({ userId: targetId });
+
+        const view = buildBadgeModule(user, targetUser, page);
+        return interaction.editReply({ embeds: view.embeds, components: view.components });
+    }
+
+    // === PJN Battle Pass — obsługa przycisków panelu karnetu ===
+    if (interaction.isButton() && interaction.customId.startsWith('bp')) {
+        const guild = interaction.guild;
+
+        if (interaction.customId === 'bp_help') {
+            return interaction.reply({
+                content: '📋 **Jak obsługiwać karnet?**\n' +
+                    '• **📊 Mój postęp** — Twój poziom, XP i aktywne bonusy.\n' +
+                    '• **🆓 Odbierz nagrody Free** — wydaje wszystkie zaległe nagrody z darmowej ścieżki.\n' +
+                    '• **👑 Odbierz nagrody Elitarne** — nagrody Premium, wymaga rangi VIP.\n' +
+                    '• XP karnetu zdobywasz za czat, kanały głosowe, predykcje i zakłady.\n' +
+                    `• Zasady i tabela nagród: <#${ID_KANALU_KARNETU}> oraz komenda \`/karnet\`.`,
+                ephemeral: true
+            });
+        }
+
+        if (interaction.customId === 'bp_table') {
+            return interaction.reply({ embeds: bpTableEmbeds(), ephemeral: true });
+        }
+
+        await interaction.deferReply({ ephemeral: true });
+
+        if (interaction.customId === 'bp_profile') {
+            return interaction.editReply({ embeds: [await bpProfileEmbed(interaction.user.id, guild)] });
+        }
+
+        const bp = await getOrCreateBattlePass(interaction.user.id);
+        const bpMember = guild ? await guild.members.fetch(interaction.user.id).catch(() => null) : null;
+
+        if (interaction.customId === 'bp_claim_free') {
+            const granted = await bpClaimTrack(bp, bpMember, guild, 'free');
+            if (!granted.length) {
+                return interaction.editReply({ content: `ℹ️ Nie masz zaległych nagród z darmowej ścieżki. Twój poziom karnetu: **${bp.level} / 30** — zdobywaj XP i wróć tutaj!` });
+            }
+            return interaction.editReply({ content: `🆓 **Odebrano nagrody Ścieżki Darmowej:**\n\n${granted.join('\n')}` });
+        }
+
+        if (interaction.customId === 'bp_claim_premium') {
+            const premium = await isBattlePassPremium(interaction.user.id, guild);
+            if (!premium) {
+                return interaction.editReply({ content: `🔒 **Ścieżka Elitarna nie jest jeszcze odblokowana.** Kup **⚔️ Karnet Premium PJN Battle Pass** w sklepie serwera (<#${ID_KANAL_SKLEPU}>) za **${BP_PREMIUM_PRICE} PJN-Coins** — z rangą **VIP** zapłacisz tylko **${BP_PREMIUM_PRICE_VIP} PJN-Coins**.` });
+            }
+            const granted = await bpClaimTrack(bp, bpMember, guild, 'premium');
+            if (!granted.length) {
+                return interaction.editReply({ content: `ℹ️ Nie masz zaległych nagród elitarnych. Twój poziom karnetu: **${bp.level} / 30**.` });
+            }
+            return interaction.editReply({ content: `👑 **Odebrano nagrody Ścieżki Elitarnej:**\n\n${granted.join('\n')}` });
+        }
+
+        return;
+    }
+
     // Głosowanie w predykcji (bez limitu czasowego)
     if (interaction.isButton() && interaction.customId.startsWith('predict_vote_')) {
         await interaction.deferUpdate();
@@ -3005,6 +4539,7 @@ client.on('interactionCreate', async interaction => {
         else if (choice === 5 && prediction.option5) prediction.votes5.push(userId);
 
         await prediction.save();
+        await addBattlePassXp(userId, 40, interaction.guild, 'głos w predykcji');
 
         const v1 = prediction.votes1.length;
         const v2 = prediction.votes2.length;
@@ -3131,15 +4666,24 @@ client.on('interactionCreate', async interaction => {
         for (const winnerId of winnersIds) {
             let uDoc = await UserModel.findOne({ userId: winnerId });
             if (!uDoc) uDoc = await UserModel.create({ userId: winnerId });
-            uDoc.balance += finalReward;
+            // Bonus z karnetu (Ścieżka Elitarna, Lv 5): +15% do wygranej w predykcji
+            let payout = finalReward;
+            try {
+                const bpWin = await getOrCreateBattlePass(winnerId);
+                if (bpWin.pagBoostUntil && new Date(bpWin.pagBoostUntil).getTime() > Date.now()) {
+                    payout = Math.round(finalReward * 1.15);
+                }
+            } catch (e) {}
+
+            uDoc.balance += payout;
             await uDoc.save();
-            await sendCoinsNotification(winnerId, finalReward, 'System Predykcji PJN', `Wygrana w predykcji: "${prediction.question}"`);
+            await sendCoinsNotification(winnerId, payout, 'System Predykcji PJN', `Wygrana w predykcji: "${prediction.question}"`);
             await TransactionHistoryModel.create({
                 userId: client.user?.id || 'system',
                 targetUserId: winnerId,
                 type: 'prediction_win',
-                amount: finalReward,
-                details: `Wygrana w predykcji (${finalReward} coins)`
+                amount: payout,
+                details: `Wygrana w predykcji (${payout} coins)`
             });
         }
 
@@ -3219,6 +4763,7 @@ client.on('interactionCreate', async interaction => {
             bet.participants.push({ userId: interaction.user.id, amount });
         }
         await bet.save();
+        await addBattlePassXp(interaction.user.id, 60, interaction.guild, 'udział w zakładzie');
 
         await TransactionHistoryModel.create({
             userId: interaction.user.id,
@@ -3690,16 +5235,25 @@ client.on('interactionCreate', async interaction => {
             let user = await UserModel.findOne({ userId: interaction.user.id });
             if (!user) user = await UserModel.create({ userId: interaction.user.id });
 
-            const canAfford = user.balance >= item.price;
-            const diff = item.price - user.balance;
+            const canAfford = user.balance >= (await getShopPrice(item, interaction.guild, interaction.user.id));
+            const _bpPrice = await getShopPrice(item, interaction.guild, interaction.user.id);
+            const diff = _bpPrice - user.balance;
+
+            let _bpVipNote = '';
+            if (item.id === 'bp_premium') {
+                const _hasVip = await memberHasVipRole(interaction.guild, interaction.user.id);
+                _bpVipNote = _hasVip
+                    ? `\n👑 **Zniżka VIP aktywna:** kupujesz karnet za **${BP_PREMIUM_PRICE_VIP} PJN-Coins** zamiast ${BP_PREMIUM_PRICE}.`
+                    : `\n👑 Masz rangę **VIP**? Wtedy karnet kosztuje tylko **${BP_PREMIUM_PRICE_VIP} PJN-Coins**.`;
+            }
 
             const previewEmbed = new EmbedBuilder()
                 .setColor(canAfford ? 0x2ECC71 : 0xE74C3C)
                 .setTitle(`🛒 Podgląd przedmiotu: ${item.name}`)
                 .setDescription(
                     `📝 **Opis:** ${item.description}\n` +
-                    `💰 **Cena:** ${item.price} PJN-Coins\n` +
-                    `💼 **Twój stan portfela:** ${user.balance} PJN-Coins\n\n` +
+                    `💰 **Cena:** ${_bpPrice} PJN-Coins\n` +
+                    `💼 **Twój stan portfela:** ${user.balance} PJN-Coins${_bpVipNote}\n\n` +
                     (canAfford 
                         ? `✅ **Status:** Stać Cię na ten zakup! Kliknij przycisk poniżej, aby sfinalizować transakcję.` 
                         : `❌ **Status:** Brakuje Ci jeszcze **${diff} PJN-Coins**!`)
@@ -3827,13 +5381,14 @@ client.on('interactionCreate', async interaction => {
                 return interaction.editReply({ content: '❌ Nie udało się pobrać Twoich danych na serwerze.' });
             }
 
-            const role = guild.roles.cache.get(ID_RANGI_AKTUALIZACJE_FORTNITE);
+            // Ranga jest tworzona automatycznie, jeśli nie istnieje (także wtedy, gdy nie ma jej w cache).
+            const role = await getOrCreateFortniteUpdateRole(guild);
             if (!role) {
-                return interaction.editReply({ content: '❌ Ranga powiadomień Fortnite nie istnieje na serwerze.' });
+                return interaction.editReply({ content: '❌ Nie udało się utworzyć ani pobrać rangi powiadomień Fortnite. Sprawdź uprawnienie bota: Zarządzanie rolami.' });
             }
 
             try {
-                if (member.roles.cache.has(ID_RANGI_AKTUALIZACJE_FORTNITE)) {
+                if (member.roles.cache.has(role.id)) {
                     await member.roles.remove(role);
                     await interaction.editReply({ content: `✅ Usunięto rangę powiadomień o aktualizacjach Fortnite.` });
                 } else {
@@ -3857,11 +5412,11 @@ client.on('interactionCreate', async interaction => {
             if (direction === 'next') currentPage++;
 
             if (type === 'under') {
-                const topUsers = await UserModel.find({ epicNick: { $ne: null }, matchesPlayed: { $lt: 2800 } }).sort({ fortniteKills: -1 }).limit(100);
+                const topUsers = await findRankedMembers(interaction.guild, { epicNick: { $ne: null }, matchesPlayed: { $lt: 2800 } }, { fortniteKills: -1 }, 100);
                 const payload = await generateFortniteRankingEmbeds(interaction.guild, topUsers, '🟢 TOP • Początkujący (<2800 meczów)', 0x2ECC71, currentPage);
                 await interaction.editReply(payload);
             } else {
-                const topUsers = await UserModel.find({ epicNick: { $ne: null }, matchesPlayed: { $gte: 2800 } }).sort({ fortniteKills: -1 }).limit(100);
+                const topUsers = await findRankedMembers(interaction.guild, { epicNick: { $ne: null }, matchesPlayed: { $gte: 2800 } }, { fortniteKills: -1 }, 100);
                 const payload = await generateFortniteRankingEmbeds(interaction.guild, topUsers, '🔥 TOP • Weterani (2800+ meczów)', 0xE74C3C, currentPage);
                 await interaction.editReply(payload);
             }
@@ -3908,20 +5463,28 @@ client.on('interactionCreate', async interaction => {
             const item = SHOP_ITEMS.find(i => i.id === itemId);
             if (!item) return interaction.editReply({ content: '❌ Nie znaleziono takiego przedmiotu.' });
 
+            // Karnet Premium PJN Battle Pass: osobna logika (zniżka dla rangi VIP, odblokowanie Ścieżki Elitarnej)
+            if (item.type === 'battlepass') {
+                const result = await bpPurchasePremium(interaction.user.id, interaction.guild);
+                return interaction.editReply({ content: result.message });
+            }
+
+            const price = await getShopPrice(item, interaction.guild, interaction.user.id);
+
             let user = await UserModel.findOne({ userId: interaction.user.id });
             if (!user) user = await UserModel.create({ userId: interaction.user.id });
 
-            if (user.balance < item.price) {
-                return interaction.editReply({ content: `❌ Nie masz wystarczająco środków! Posiadasz **${user.balance} PJN-Coins**.` });
+            if (user.balance < price) {
+                return interaction.editReply({ content: `❌ Nie masz wystarczająco środków! Posiadasz **${user.balance} PJN-Coins** (potrzebujesz ${price}).` });
             }
 
-            user.balance -= item.price;
+            user.balance -= price;
             await user.save();
 
             await ShopHistoryModel.create({
                 userId: interaction.user.id,
                 itemName: item.name,
-                price: item.price
+                price: price
             });
 
             const member = await interaction.guild?.members.fetch(interaction.user.id).catch(() => null);
@@ -3964,7 +5527,7 @@ client.on('interactionCreate', async interaction => {
                 await user.save();
             }
 
-            await interaction.editReply({ content: `🎉 Zakupiono przedmiot **${item.name}** za **${item.price} PJN-Coins**!` });
+            await interaction.editReply({ content: `🎉 Zakupiono przedmiot **${item.name}** za **${price} PJN-Coins**!` });
             return;
         }
 
@@ -4733,7 +6296,8 @@ client.on('interactionCreate', async interaction => {
             await interaction.deferReply();
             let desc = 'Oficjalny sklep serwera PJN. Wybierz przedmiot z menu poniżej na dedykowanym kanale skleprowym lub sprawdź asortyment:\n\n';
             SHOP_ITEMS.forEach((item, index) => {
-                desc += `**${index + 1}.${item.name}** — 💰 **${item.price} PJN-Coins**\n> *${item.description}*\n\n`;
+                const vipNote = item.id === 'bp_premium' ? ' *(z rangą VIP: 10 000)*' : '';
+                desc += `**${index + 1}.${item.name}** — 💰 **${item.price} PJN-Coins**${vipNote}\n> *${item.description}*\n\n`;
             });
 
             const embed = new EmbedBuilder()
@@ -4847,8 +6411,12 @@ client.on('interactionCreate', async interaction => {
             }
             await interaction.deferReply({ ephemeral: true });
 
-            const embedData = await getTopEmbedData(interaction.guild);
             const channel = interaction.channel as TextChannel;
+            // Najpierw kasujemy wszystkie stare kopie rankingu (także te sprzed poprawki),
+            // żeby po ustawieniu została dokładnie jedna, świeża wiadomość.
+            await deleteRankingCopies(channel, TOP_RANKING_TITLE);
+
+            const embedData = await getTopEmbedData(interaction.guild);
             const msg = await channel.send({ embeds: [embedBuilderToEmbed(embedData)] });
 
             await ConfigModel.findOneAndUpdate(
@@ -4898,20 +6466,31 @@ client.on('interactionCreate', async interaction => {
 
             const now = new Date();
             const twentyFourHours = 24 * 60 * 60 * 1000;
+            const bpDaily = await getOrCreateBattlePass(interaction.user.id);
 
             if (user.lastDaily) {
                 const diff = now.getTime() - new Date(user.lastDaily).getTime();
                 if (diff < twentyFourHours) {
-                    const timeLeft = twentyFourHours - diff;
-                    const hours = Math.floor(timeLeft / (1000 * 60 * 60));
-                    const mins = Math.floor((timeLeft % (1000 * 60 * 60)) / (1000 * 60));
-                    return interaction.editReply({ content: `⏳ Odbierałeś już swoją codzienną nagrodę! Spróbuj ponownie za **${hours}h ${mins}m**.` });
+                    if ((bpDaily.dailySkipTickets || 0) > 0) {
+                        // Karnet: bilet pominięcia cooldownu /daily (Ścieżka Elitarna, Lv 7)
+                        bpDaily.dailySkipTickets -= 1;
+                        bpDaily.markModified('dailySkipTickets');
+                        await bpDaily.save();
+                    } else {
+                        const timeLeft = twentyFourHours - diff;
+                        const hours = Math.floor(timeLeft / (1000 * 60 * 60));
+                        const mins = Math.floor((timeLeft % (1000 * 60 * 60)) / (1000 * 60));
+                        return interaction.editReply({ content: `⏳ Odbierałeś już swoją codzienną nagrodę! Spróbuj ponownie za **${hours}h ${mins}m**.` });
+                    }
                 }
             }
 
             let amount = 100;
             if (user.dailyBoostUntil && new Date(user.dailyBoostUntil) > now) {
                 amount = 200; // podwojona nagroda z boostem
+            }
+            if (bpDaily.dailyDoubleUntil && new Date(bpDaily.dailyDoubleUntil).getTime() > now.getTime()) {
+                amount *= 2; // Karnet: podwójny bonus z /daily (Ścieżka Elitarna, Lv 13)
             }
 
             user.balance += amount;
@@ -4926,6 +6505,17 @@ client.on('interactionCreate', async interaction => {
             });
 
             return interaction.editReply({ content: `🎁 Otrzymałeś swoją codzienną nagrodę w wysokości **${amount} PJN-Coins**! (Stan portfela: **${user.balance}**)` });
+        }
+
+        // Komenda /karnet
+        if (commandName === 'karnet') {
+            await interaction.deferReply();
+            const targetUser = interaction.options.getUser('uzytkownik', false) || interaction.user;
+            const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+                new ButtonBuilder().setCustomId('bp_claim_free').setLabel('Odbierz nagrody Free').setEmoji('🆓').setStyle(ButtonStyle.Success),
+                new ButtonBuilder().setCustomId('bp_claim_premium').setLabel('Odbierz nagrody Elitarne').setEmoji('👑').setStyle(ButtonStyle.Secondary)
+            );
+            return interaction.editReply({ embeds: [await bpProfileEmbed(targetUser.id, interaction.guild)], components: [row] });
         }
 
         // Komenda /przelej
@@ -5078,32 +6668,33 @@ client.on('interactionCreate', async interaction => {
             }
         }
 
-        // Komenda /odznaki
-        if (commandName === 'odznaki' || commandName === 'profil') {
+        // Komenda /profil — zwięzła karta gracza, pełna lista odznak w module pod przyciskiem
+        if (commandName === 'profil') {
             await interaction.deferReply();
             const targetUser = interaction.options.getUser('uzytkownik') || interaction.user;
             let user = await UserModel.findOne({ userId: targetUser.id });
             if (!user) user = await UserModel.create({ userId: targetUser.id });
 
-            const member = await interaction.guild?.members.fetch(targetUser.id).catch(() => null);
-            const badgesText = user.badges.length > 0 ? user.badges.join('\n') : 'Brak odznak. Bądź aktywny na chacie i głosie, aby je zdobyć!';
+            const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+                new ButtonBuilder()
+                    .setCustomId(`badge_mod_${targetUser.id}_0`)
+                    .setLabel('Otwórz moduł odznak')
+                    .setEmoji('🏆')
+                    .setStyle(ButtonStyle.Primary)
+            );
 
-            const embed = new EmbedBuilder()
-                .setColor(0x9B59B6)
-                .setTitle(`👤 Profil Gracza: ${targetUser.tag}`)
-                .setThumbnail(targetUser.displayAvatarURL())
-                .setDescription(
-                    `💼 **Portfel:** \`${user.balance} PJN-Coins\`\n` +
-                    `⭐ **Poziom:** \`${user.level || 1}\` (Exp: \`${user.exp || 0} / ${(user.level || 1) * 150}\`)\n` +
-                    `💬 **Wiadomości:** \`${user.messageCount || 0}\`\n` +
-                    `🎙️ **Czas na głosie:** \`${Math.floor((user.voiceMinutes || 0) / 60)}h ${(user.voiceMinutes || 0) % 60}m\`\n` +
-                    `🎲 **Gry w kasynie:** \`${user.casinoPlays || 0}\`\n\n` +
-                    `🏆 **Odznaki i Osiągnięcia (${user.badges.length}):**\n${badgesText}`
-                )
-                .setTimestamp()
-                .setFooter({ text: 'PJN System Osiągnięć i Profilu' });
+            return interaction.editReply({ embeds: [buildProfileEmbed(user, targetUser)], components: [row] });
+        }
 
-            return interaction.editReply({ embeds: [embed] });
+        // Komenda /odznaki — od razu otwiera pełny moduł odznak
+        if (commandName === 'odznaki') {
+            await interaction.deferReply();
+            const targetUser = interaction.options.getUser('uzytkownik') || interaction.user;
+            let user = await UserModel.findOne({ userId: targetUser.id });
+            if (!user) user = await UserModel.create({ userId: targetUser.id });
+
+            const view = buildBadgeModule(user, targetUser, 0);
+            return interaction.editReply({ embeds: view.embeds, components: view.components });
         }
 
         // Komenda /exp
@@ -5320,6 +6911,43 @@ client.on('interactionCreate', async interaction => {
             await user.save();
 
             return interaction.editReply({ content: `✅ Pomyślnie aktywowano 100% wygranych w kasynie na 30 minut dla <@${targetUser.id}>!` });
+        }
+
+        // Komenda /daj-karnet-premium
+        if (commandName === 'daj-karnet-premium') {
+            if (!isAuthorized(interaction.user.id) && !interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) {
+                return interaction.reply({ content: '❌ Brak uprawnień!', ephemeral: true });
+            }
+            await interaction.deferReply({ ephemeral: true });
+            const targetUser = interaction.options.getUser('uzytkownik', true);
+            const revoke = interaction.options.getBoolean('odbierz') || false;
+
+            const bp = await getOrCreateBattlePass(targetUser.id);
+
+            if (revoke) {
+                if (!bp.premium) {
+                    return interaction.editReply({ content: `ℹ️ <@${targetUser.id}> nie ma aktywnego karnetu Premium.` });
+                }
+                bp.premium = false;
+                await bp.save();
+                console.log(`[BattlePass Admin] ${interaction.user.tag} odebrał karnet Premium graczowi ${targetUser.tag}.`);
+                return interaction.editReply({ content: `✅ Odebrano karnet Premium graczowi <@${targetUser.id}>. Ścieżka Elitarna jest dla niego ponownie zablokowana.` });
+            }
+
+            if (bp.premium) {
+                return interaction.editReply({ content: `ℹ️ <@${targetUser.id}> ma już aktywny karnet Premium (poziom ${bp.level} / 30).` });
+            }
+
+            bp.premium = true;
+            await bp.save();
+            console.log(`[BattlePass Admin] ${interaction.user.tag} nadał karnet Premium graczowi ${targetUser.tag}.`);
+
+            // Powiadomienie na priv dla gracza (nie blokuje odpowiedzi, jeśli ma wyłączone DM)
+            client.users.fetch(targetUser.id).then(u => u.send({
+                content: `👑 **Administracja nadała Ci karnet Premium PJN Battle Pass!**\n\nKliknij **👑 Odbierz nagrody Elitarne** w panelu karnetu (<#${ID_KANALU_KARNETU}>), aby zgarnąć nagrody ze Ścieżki Elitarnej.`
+            }).catch(() => {})).catch(() => {});
+
+            return interaction.editReply({ content: `✅ Nadano karnet Premium graczowi <@${targetUser.id}>! Może teraz odbierać nagrody ze Ścieżki Elitarnej (poziom ${bp.level} / 30).` });
         }
 
         // Komenda /daj-wszystkim
