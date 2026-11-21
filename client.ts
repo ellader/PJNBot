@@ -1389,7 +1389,20 @@ function maintenanceStatusText(status: string): string {
     }
 }
 
-async function fetchLatestFortniteNews(): Promise<{ key: string; title: string; body: string; items: { title: string; body: string }[] } | null> {
+/**
+ * Czy okno serwisowe jest aktualne: trwa, jest zaplanowane albo skończyło się w ostatnich 24h.
+ * Bez tego bot doklejał do każdej aktualizacji zamkniętą przerwę z 12.11 (v43.10), przez co
+ * powiadomienia pokazywały ciągle tę samą, starą datę.
+ */
+function isMaintenanceCurrent(info: FortniteMaintenance | null): boolean {
+    if (!info) return false;
+    if (['scheduled', 'in_progress', 'verifying'].includes(String(info.status).toLowerCase())) return true;
+    const end = info.end ? new Date(info.end).getTime() : NaN;
+    if (isNaN(end)) return false;
+    return Date.now() - end < 24 * 60 * 60 * 1000;
+}
+
+async function fetchLatestFortniteNews(): Promise<{ key: string; date: string | null; title: string; body: string; items: { title: string; body: string }[] } | null> {
     try {
         const res = await fetch(FORTNITE_NEWS_URL);
         fortniteLog('News', `${FORTNITE_NEWS_URL} -> HTTP ${res.status}`);
@@ -1409,6 +1422,9 @@ async function fetchLatestFortniteNews(): Promise<{ key: string; title: string; 
 
         const latest = visible[0];
         const key = String((br && (br.hash || br.date)) || latest.id || latest.title || '');
+        // Data publikacji ogłoszeń - do embeda, żeby było widać KIEDY update ogłoszono,
+        // a nie tylko martwą datę starej przerwy technicznej.
+        const date = br && br.date ? String(br.date) : null;
         const title = String(latest.title || latest.tabTitle || 'Aktualizacja Fortnite');
         const body = String(latest.body || '').replace(/\s+/g, ' ').trim();
         // Wszystkie widoczne wpisy: z nich bierzemy RZECZYWISTĄ treść "czego dotyczy aktualizacja".
@@ -1421,7 +1437,7 @@ async function fetchLatestFortniteNews(): Promise<{ key: string; title: string; 
             .slice(0, 8);
         fortniteLog('News', `Najnowszy wpis: "${title}" (klucz: ${key}, wpisów: ${visible.length})`);
         items.forEach((i: any, idx: number) => fortniteLog('News', `  wpis ${idx + 1}: "${i.title}"${i.body ? ` - ${i.body.slice(0, 100)}…` : ' (brak treści)'}`));
-        return { key, title, body, items };
+        return { key, date, title, body, items };
     } catch (err) {
         console.error('[Fortnite News] Błąd pobierania informacji o aktualizacjach:', err);
         return null;
@@ -2322,8 +2338,10 @@ async function checkFortniteServerStatus() {
         const isOnline = await fetchFortniteServerOnline();
 
         if (isOnline !== null && lastFortniteServerStatus !== null && lastFortniteServerStatus !== isOnline) {
-            // Realne okno serwisowe z datami, żeby było widać kiedy i do kiedy.
-            const downtime = await fetchFortniteMaintenance();
+            // Realne okno serwisowe z datami - ale tylko gdy jest AKTUALNE, żeby stara przerwa
+            // z ostatniej aktualizacji nie wisiała przy każdym powiadomieniu o statusie.
+            const downtimeRaw = await fetchFortniteMaintenance();
+            const downtime = downtimeRaw && isMaintenanceCurrent(downtimeRaw) ? downtimeRaw : null;
             const startTxt = downtime ? formatWarsawDateTime(downtime.start) : null;
             const endTxt = downtime ? formatWarsawDateTime(downtime.end) : null;
             let oknoSerwisowe = '';
@@ -2364,31 +2382,39 @@ async function checkFortniteServerStatus() {
         // === AKTUALIZACJE / PATCH NOTES === źródło: fortnite-api.com/v2/news (stare v2/events zwraca 404)
         const news = await fetchLatestFortniteNews();
         if (news) {
+            const buildVersion = await fetchFortniteBuildVersion();
+            // Powiadamiamy RAZ NA WERSJĘ gry. Hash ogłoszeń fortnite-api zmienia się codziennie
+            // (samo odświeżenie MOTD), więc stary klucz oparty na hashu powodował, że bot
+            // codziennie ogłaszał "nową aktualizację" o tej samej wersji v43.10.
+            const versionKey = buildVersion ? `v${buildVersion}` : news.key;
             const knownKey = await loadLastFortniteNewsKey();
-            if (knownKey === null) {
-                await rememberLastFortniteNewsKey(news.key);
-                fortniteLog('News', `Zapamiętano bieżący stan aktualizacji (${news.key}) - następna zmiana wyśle powiadomienie.`);
-            } else if (news.key !== knownKey) {
-                await rememberLastFortniteNewsKey(news.key);
+            // Zapisany klucz w starym formacie (hash, nie "v43.10") migrujemy PO CICHU:
+            // inaczej przy pierwszym uruchomieniu poszłoby jeszcze jedno fałszywe ogłoszenie.
+            const legacyKey = !!knownKey && !/^v[0-9]/i.test(knownKey);
+            if (knownKey === null || legacyKey) {
+                await rememberLastFortniteNewsKey(versionKey);
+                fortniteLog('News', `Zapamiętano aktualną wersję gry (${versionKey}) - powiadomienie pójdzie dopiero przy zmianie wersji.`);
+            } else if (knownKey !== versionKey) {
+                await rememberLastFortniteNewsKey(versionKey);
+                fortniteLog('News', `Wykryto nową wersję gry: ${knownKey} -> ${versionKey}.`);
                 const opis = await buildFortniteUpdateDescription(news);
-                // Wersja gry i realne okno serwisowe (od kiedy do kiedy, w czasie polskim).
-                const buildVersion = await fetchFortniteBuildVersion();
-                const downtime = await fetchFortniteMaintenance();
-                const versionFromName = downtime ? maintenanceVersion(downtime.name) : null;
+                const newsDateTxt = formatWarsawDateTime(news.date);
+                // Okno serwisowe bierzemy TYLKO gdy jest aktualne - inaczej zamknięta przerwa
+                // z 12.11 doklejała się do każdej nowej aktualizacji.
+                const downtimeRaw = await fetchFortniteMaintenance();
+                const downtime = downtimeRaw && isMaintenanceCurrent(downtimeRaw) ? downtimeRaw : null;
+                const przerwaAktywna = downtime ? ['scheduled', 'in_progress', 'verifying'].includes(String(downtime.status).toLowerCase()) : false;
+                const versionFromName = downtime && przerwaAktywna ? maintenanceVersion(downtime.name) : null;
                 const versionText = buildVersion || versionFromName;
 
-                const startRaw = downtime ? downtime.start : null;
-                const endRaw = downtime ? downtime.end : null;
+                const startRaw = przerwaAktywna && downtime ? downtime.start : null;
+                const endRaw = przerwaAktywna && downtime ? downtime.end : null;
                 const startTxt = formatWarsawDateTime(startRaw);
                 const endTxt = formatWarsawDateTime(endRaw);
                 const startMs = startRaw ? new Date(startRaw).getTime() : NaN;
                 const endMs = endRaw ? new Date(endRaw).getTime() : NaN;
 
-                // Etykieta rozróżnia zaplanowaną przerwę od ostatniej zakończonej, żeby nie wprowadzać w błąd.
-                const przerwaAktywna = downtime ? ['scheduled', 'in_progress', 'verifying'].includes(String(downtime.status).toLowerCase()) : false;
-                const naglowek = przerwaAktywna
-                    ? '⏰ **Zaplanowane okno serwisowe:**'
-                    : '🗓️ **Ostatnie okno serwisowe (już zakończone):**';
+                const naglowek = '⏰ **Zaplanowane okno serwisowe:**';
                 let oknoTxt: string;
                 if (startTxt && endTxt && !isNaN(startMs) && !isNaN(endMs)) {
                     const minuty = Math.max(1, Math.round((endMs - startMs) / 60000));
@@ -2406,7 +2432,7 @@ async function checkFortniteServerStatus() {
                         `🏁 **Planowany koniec:** status.epicgames.com nie podaje godziny zakończenia\n` +
                         `📌 **Stan przerwy:** ${maintenanceStatusText(downtime!.status)}\n`;
                 } else {
-                    oknoTxt = `⏰ **Okno serwisowe:** status.epicgames.com nie podaje teraz zaplanowanej przerwy dla tej aktualizacji.\n`;
+                    oknoTxt = `⏰ **Okno serwisowe:** Epic nie ogłosił jeszcze przerwy technicznej dla tej aktualizacji.\n`;
                 }
 
                 const updateEmbed = new EmbedBuilder()
@@ -2415,6 +2441,7 @@ async function checkFortniteServerStatus() {
                     .setDescription(
                         `Wprowadzono oficjalny update gry!\n\n` +
                         `🎮 **Wersja gry:** ${versionText ? `\`v${versionText}\`` : 'brak danych z fortnite-api.com'}\n` +
+                        `${newsDateTxt ? `🗓️ **Data ogłoszenia:** \`${newsDateTxt}\`\n` : ''}` +
                         `${oknoTxt}\n` +
                         `📋 **Czego dotyczy aktualizacja:**\n` +
                         `${opis}\n\n` +
@@ -2424,7 +2451,7 @@ async function checkFortniteServerStatus() {
                     .setTimestamp()
                     .setFooter({ text: 'PJN Fortnite Updates & Patch Notes' });
 
-                if (downtime && downtime.link) updateEmbed.setURL(downtime.link);
+                if (downtime && downtime.link && przerwaAktywna) updateEmbed.setURL(downtime.link);
 
                 try {
                     await channel.send({
@@ -2437,7 +2464,7 @@ async function checkFortniteServerStatus() {
                     console.error('[Fortnite News] Nie udało się wysłać powiadomienia o aktualizacji:', err);
                 }
             } else {
-                fortniteLog('News', `Bez zmian w aktualizacjach (${knownKey}).`);
+                fortniteLog('News', `Bez zmian wersji gry (${versionKey}) - nie powtarzam powiadomienia.`);
             }
         }
     } catch (err) {
